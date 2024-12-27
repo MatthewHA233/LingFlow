@@ -2,7 +2,6 @@ import './globals.css';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { cn } from '@/lib/utils';
-import { ThemeProvider } from '@/components/providers/theme-provider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -18,16 +17,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh" suppressHydrationWarning>
-      <body className={cn(inter.className, "min-h-screen antialiased")}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem={false}
-          storageKey="hongliu-theme"
-          disableTransitionOnChange
-        >
-          <main>{children}</main>
-        </ThemeProvider>
+      <body className={cn(inter.className, "min-h-screen antialiased")} suppressHydrationWarning>
+        {children}
       </body>
     </html>
   );

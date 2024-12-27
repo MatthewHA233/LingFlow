@@ -3,10 +3,13 @@
 import { AnimatedButton } from '@/components/ui/animated-button';
 import { Features } from '@/components/home/Features';
 import { HowItWorks } from '@/components/home/HowItWorks';
+import { MatrixBackground } from '@/components/home/MatrixBackground';
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-black flex flex-col">
+    <div className="min-h-screen flex flex-col relative">
+      <MatrixBackground />
+      
       {/* Hero Section */}
       <section className="flex-1 flex items-center justify-center py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto text-center">
