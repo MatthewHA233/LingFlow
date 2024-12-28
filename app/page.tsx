@@ -11,7 +11,7 @@ export default function Home() {
       <MatrixBackground />
       
       {/* Hero Section */}
-      <section className="flex-1 flex items-center justify-center py-20 px-4 sm:px-6 lg:px-8">
+      <section className="flex-1 flex items-center justify-center py-40 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto text-center">
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight bg-gradient-to-b from-white to-purple-400 bg-clip-text text-transparent mb-4">
             洪流二语习得
