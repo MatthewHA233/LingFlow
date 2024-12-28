@@ -1,26 +1,37 @@
-'use client';
-
 import { useState } from 'react';
 import { FileAudio, Wand2 } from 'lucide-react';
-import { alignAudio } from '@/lib/audio-aligner';
+import { alignAudioWithText } from '@/lib/audio-aligner';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 
 interface AudioAlignerProps {
-  bookContent: string;
+  chapterId: string;
+  text: string;
+  onAlignmentComplete: (alignments: any[]) => void;
 }
 
-export function AudioAligner({ bookContent }: AudioAlignerProps) {
+export function AudioAligner({ chapterId, text, onAlignmentComplete }: AudioAlignerProps) {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [isAligning, setIsAligning] = useState(false);
+  const { toast } = useToast();
 
   const handleAlignment = async () => {
     if (!audioFile) return;
     
     setIsAligning(true);
     try {
-      const alignment = await alignAudio(audioFile, bookContent);
-      // TODO: Handle the alignment result
+      const alignments = await alignAudioWithText(audioFile, text, chapterId);
+      onAlignmentComplete(alignments);
+      toast({
+        title: "Audio aligned successfully",
+        description: "You can now click on text to play the corresponding audio.",
+      });
     } catch (error) {
-      console.error('Error aligning audio:', error);
+      toast({
+        title: "Audio alignment failed",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
+        variant: "destructive",
+      });
     } finally {
       setIsAligning(false);
     }
@@ -30,7 +41,7 @@ export function AudioAligner({ bookContent }: AudioAlignerProps) {
     <div className="bg-card rounded-lg shadow-lg p-6">
       <h2 className="text-xl font-semibold mb-4">音频对齐</h2>
       {!audioFile ? (
-        <label className="flex flex-col items-center gap-4 p-6 border-2 border-dashed rounded-lg cursor-pointer">
+        <label className="flex flex-col items-center gap-4 p-6 border-2 border-dashed rounded-lg cursor-pointer hover:border-primary/50 transition-colors">
           <FileAudio className="h-8 w-8 text-primary" />
           <span className="text-muted-foreground">上传音频文件</span>
           <input
@@ -46,14 +57,14 @@ export function AudioAligner({ bookContent }: AudioAlignerProps) {
       ) : (
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">{audioFile.name}</p>
-          <button
-            className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-lg px-4 py-2"
+          <Button
+            className="w-full"
             onClick={handleAlignment}
             disabled={isAligning}
           >
-            <Wand2 className="h-4 w-4" />
+            <Wand2 className="h-4 w-4 mr-2" />
             {isAligning ? '正在对齐...' : '开始音文对齐'}
-          </button>
+          </Button>
         </div>
       )}
     </div>

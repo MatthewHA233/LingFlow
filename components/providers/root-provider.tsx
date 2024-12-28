@@ -1,9 +1,9 @@
 'use client';
 
 import { ThemeProvider } from './theme-provider';
-import { Toaster } from '@/components/ui/toaster';
+import { ToastProvider } from './toast-provider';
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function RootProvider({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider
       attribute="class"
@@ -11,10 +11,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
       enableSystem={false}
       storageKey="hongliu-theme"
       disableTransitionOnChange
-      suppressHydrationWarning
     >
-      {children}
-      <Toaster />
+      <div className="min-h-screen bg-background antialiased">
+        {children}
+        <ToastProvider />
+      </div>
     </ThemeProvider>
   );
 }

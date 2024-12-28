@@ -20,7 +20,7 @@ export function AnimatedButton() {
         onClick={handleClick}
       >
         <div className="overlay" ref={overlayRef} />
-        <h1 className="gradient-text">导入有声书</h1>
+        <h1 className="gradient-text">导入二语习得有声书</h1>
       </div>
     </div>
   );
