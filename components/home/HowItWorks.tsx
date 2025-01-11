@@ -30,7 +30,7 @@ export function HowItWorks() {
   const titleRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
-    const steps = stepsRef.current;
+    const stepsElements = stepsRef.current;
     
     // 标题动画
     if (titleRef.current) {
@@ -53,16 +53,19 @@ export function HowItWorks() {
     }
 
     // 步骤动画
-    steps.forEach((step, index) => {
+    stepsElements.forEach((step, index) => {
       if (!step) return;
 
       // 添加发光效果
       const iconGlow = document.createElement('div');
       iconGlow.className = 'absolute inset-0 opacity-0 bg-primary/30 blur-xl';
+      
+      // 使用类型守卫确保 iconContainer 是 HTMLElement
       const iconContainer = step.querySelector('.icon-container');
       if (iconContainer) {
-        iconContainer.style.position = 'relative';
-        iconContainer.appendChild(iconGlow);
+        const container = iconContainer as HTMLElement;
+        container.style.position = 'relative';
+        container.appendChild(iconGlow);
       }
 
       // 入场动画
