@@ -14,10 +14,10 @@ export default function Home() {
       <section className="flex-1 flex items-center justify-center py-40 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto text-center">
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight bg-gradient-to-b from-white to-purple-400 bg-clip-text text-transparent mb-4">
-            洪流二语习得
+            洪流二语习得 - 革新性语言学习平台
           </h1>
           <p className="text-xl md:text-2xl text-gray-400 max-w-3xl mx-auto mb-8">
-            革新性的语言学习平台，让您的语言学习如洪流般自然流畅
+            借助智能化"词锚点域"与大语言模型，构建属于你自己习得语料的宇宙！
           </p>
           
           <AnimatedButton />

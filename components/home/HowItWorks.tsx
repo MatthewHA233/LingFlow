@@ -1,6 +1,6 @@
 'use client';
 
-import { FileText, Headphones, PlayCircle } from 'lucide-react';
+import { FileText, Headphones, PlayCircle, UserPlus, BookOpen, Brain, Clock } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -9,19 +9,34 @@ gsap.registerPlugin(ScrollTrigger);
 
 const steps = [
   {
+    icon: UserPlus,
+    title: '注册账号',
+    description: '支持手机号注册和微信一键登录，快速开始您的学习之旅'
+  },
+  {
     icon: FileText,
     title: '导入电子书',
-    description: '支持 EPUB 格式的电子书，自动提取文本和封面'
+    description: '支持EPUB等多种格式，自动提取文本和封面，智能排版成Markdown格式'
   },
   {
     icon: Headphones,
     title: '添加音频',
-    description: '上传对应的有声书音频文件，支持多种格式'
+    description: '上传有声书音频，智能识别文本并自动对齐，或使用高质量AI配音'
   },
   {
-    icon: PlayCircle,
-    title: '开始学习',
-    description: '享受交互式学习体验，点击任意文字即时播放'
+    icon: BookOpen,
+    title: '开始阅读',
+    description: '选择感兴趣的地方，开始模块化点读，通过大量的听和阅读的可理解性输入，习得第二语言'
+  },
+  {
+    icon: Brain,
+    title: '词锚点采集',
+    description: '通过手动框选和智能预测建立词锚点，从语境中大量迭代对词汇短语的理解，并将这个过程可视化和量化'
+  },
+  {
+    icon: Clock,
+    title: '科学复习',
+    description: '通过基于语境、辨析集锦、词锚点数据的智能间隔重复算法，安排复习，巩固学习效果'
   }
 ];
 
@@ -72,13 +87,15 @@ export function HowItWorks() {
       gsap.fromTo(step,
         {
           x: index % 2 === 0 ? -50 : 50,
+          y: 30,
           opacity: 0
         },
         {
           x: 0,
+          y: 0,
           opacity: 1,
           duration: 1,
-          delay: index * 0.3,
+          delay: Math.floor(index / 2) * 0.2 + (index % 2) * 0.3,
           ease: 'power2.out',
           scrollTrigger: {
             trigger: step,
@@ -119,7 +136,7 @@ export function HowItWorks() {
         <h2 ref={titleRef} className="text-3xl font-bold text-center mb-12 bg-gradient-to-r from-white to-primary bg-clip-text text-transparent">
           使用步骤
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {steps.map((step, index) => (
             <div 
               key={index}
