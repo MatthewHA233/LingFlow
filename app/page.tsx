@@ -1,5 +1,4 @@
 'use client';
-
 import { AnimatedButton } from '@/components/ui/animated-button';
 import { Features } from '@/components/home/Features';
 import { HowItWorks } from '@/components/home/HowItWorks';
@@ -17,9 +16,10 @@ export default function Home() {
             洪流二语习得 - 革新性语言学习平台
           </h1>
           <p className="text-xl md:text-2xl text-gray-400 max-w-3xl mx-auto mb-8">
-            借助智能化"词锚点域"与大语言模型，构建属于你自己习得语料的宇宙！
+            借助智能化“词锚点域”与大语言模型，构建属于你自己习得语料的宇宙！
           </p>
           
+
           <AnimatedButton />
         </div>
       </section>
