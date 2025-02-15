@@ -88,3 +88,6 @@ ENV/
 # results
 /app/api/python/results/
 /app/api/python/results/*.json
+
+# secrets
+/app/api/python/AccessKey.csv
