@@ -1,8 +1,9 @@
 'use client';
 
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { PhoneLoginForm } from './PhoneLoginForm';
+import { EmailLoginForm } from './EmailLoginForm';
+import { EmailRegisterForm } from './EmailRegisterForm';
 import { WechatLogin } from './WechatLogin';
 
 interface AuthDialogProps {
@@ -17,16 +18,22 @@ export function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
         <DialogTitle className="text-center text-lg font-semibold">
           登录/注册
         </DialogTitle>
-        <Tabs defaultValue="phone" className="w-full">
+        <DialogDescription className="text-center text-sm text-muted-foreground">
+          请选择登录方式
+        </DialogDescription>
+        <Tabs defaultValue="login" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="phone">手机号登录</TabsTrigger>
-            <TabsTrigger value="wechat">微信登录</TabsTrigger>
+            <TabsTrigger value="login">邮箱登录</TabsTrigger>
+            <TabsTrigger value="register">注册</TabsTrigger>
           </TabsList>
-          <TabsContent value="phone">
-            <PhoneLoginForm onSuccess={() => onOpenChange(false)} />
+          <TabsContent value="login">
+            <EmailLoginForm onSuccess={() => onOpenChange(false)} />
+            <div className="mt-4">
+              <WechatLogin onSuccess={() => onOpenChange(false)} />
+            </div>
           </TabsContent>
-          <TabsContent value="wechat">
-            <WechatLogin onSuccess={() => onOpenChange(false)} />
+          <TabsContent value="register">
+            <EmailRegisterForm onSuccess={() => onOpenChange(false)} />
           </TabsContent>
         </Tabs>
       </DialogContent>

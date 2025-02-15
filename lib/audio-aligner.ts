@@ -2,24 +2,20 @@ const ASSEMBLY_AI_API_KEY = process.env.NEXT_PUBLIC_ASSEMBLY_AI_API_KEY;
 const API_URL = 'https://api.assemblyai.com/v2';
 
 export async function alignAudio(audioFile: File, text: string) {
-  // First, upload the audio file
-  const uploadUrl = await uploadAudio(audioFile);
-  
-  // Then create an alignment task
-  const response = await fetch(`${API_URL}/align`, {
+  const formData = new FormData();
+  formData.append('audio', audioFile);
+  formData.append('text', text);
+
+  const response = await fetch('/api/align', {
     method: 'POST',
-    headers: {
-      'Authorization': ASSEMBLY_AI_API_KEY!,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      audio_url: uploadUrl,
-      text: text,
-    }),
+    body: formData
   });
 
-  const result = await response.json();
-  return result;
+  if (!response.ok) {
+    throw new Error(`对齐失败: ${await response.text()}`);
+  }
+
+  return response.json();
 }
 
 async function uploadAudio(file: File): Promise<string> {

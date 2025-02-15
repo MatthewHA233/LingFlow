@@ -10,8 +10,10 @@ export default function ReaderPage() {
   const [book, setBook] = useState<Book | null>(null);
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="container mx-auto px-4 py-8">
       <div className="max-w-6xl mx-auto">
+        <h1 className="text-2xl font-bold mb-8">有声书导入</h1>
+        
         {!book ? (
           <FileUploader onBookLoaded={setBook} />
         ) : (
@@ -20,7 +22,7 @@ export default function ReaderPage() {
               <EbookViewer book={book} />
             </div>
             <div>
-              <AudioAligner bookContent={book.content} />
+              <AudioAligner book={book} />
             </div>
           </div>
         )}

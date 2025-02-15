@@ -1,46 +1,37 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useAuth } from '@/hooks/use-auth';
-
-declare global {
-  interface Window {
-    WeixinJSBridge: any;
-    wx: any;
-  }
-}
+import { Button } from '@/components/ui/button';
+import { useAuthStore } from '@/stores/auth';
+import { useState } from 'react';
 
 interface WechatLoginProps {
   onSuccess: () => void;
 }
 
 export function WechatLogin({ onSuccess }: WechatLoginProps) {
-  const { signInWithWechat } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const signInWithWechat = useAuthStore(state => state.signInWithWechat);
 
-  useEffect(() => {
-    // 加载微信 JS SDK
-    const script = document.createElement('script');
-    script.src = 'https://res.wx.qq.com/connect/zh_CN/htmledition/js/wxLogin.js';
-    document.body.appendChild(script);
-
-    script.onload = () => {
-      // TODO: 实现微信登录逻辑
-      // 需要在后端获取微信登录所需的配置信息
-    };
-
-    return () => {
-      document.body.removeChild(script);
-    };
-  }, []);
+  const handleWechatLogin = async () => {
+    try {
+      setIsLoading(true);
+      await signInWithWechat();
+      onSuccess();
+    } catch (error) {
+      console.error('微信登录失败:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
-    <div className="flex flex-col items-center justify-center py-8">
-      <div id="wechat-qr" className="w-64 h-64 bg-gray-100 flex items-center justify-center">
-        正在加载微信登录...
-      </div>
-      <p className="mt-4 text-sm text-muted-foreground">
-        请使用微信扫描二维码登录
-      </p>
-    </div>
+    <Button 
+      variant="outline" 
+      className="w-full" 
+      onClick={handleWechatLogin}
+      disabled={isLoading}
+    >
+      {isLoading ? '登录中...' : '微信一键登录'}
+    </Button>
   );
 }
