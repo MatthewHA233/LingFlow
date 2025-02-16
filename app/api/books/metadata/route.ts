@@ -1,10 +1,40 @@
 import { NextResponse } from 'next/server';
-import EPub from 'epub';
-import { writeFile } from 'fs/promises';
+import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import JSZip from 'jszip';
 
-export async function POST(request: Request): Promise<NextResponse> {
+// 更新类型定义
+interface EPubMetadata {
+  title?: string;
+  creator?: string;
+  author?: string;
+  language?: string;
+  cover?: string;
+  [key: string]: any;
+}
+
+interface EPubManifest {
+  cover?: string | {
+    href: string;
+    id?: string;
+    'media-type'?: string;
+  };
+  [key: string]: any;
+}
+
+interface EPubInstance {
+  metadata: EPubMetadata;
+  manifest: EPubManifest;
+  parse(): void;
+  getImage(path: string): Promise<Buffer>;
+  on(event: 'end', callback: () => void): void;
+  on(event: 'error', callback: (error: Error) => void): void;
+}
+
+export const dynamic = 'force-dynamic';
+
+export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const epubFile = formData.get('epub') as File;
@@ -16,54 +46,47 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    // 将文件保存到临时目录
-    const buffer = Buffer.from(await epubFile.arrayBuffer());
-    const tempPath = join(tmpdir(), `${Date.now()}-${epubFile.name}`);
-    await writeFile(tempPath, buffer);
+    const arrayBuffer = await epubFile.arrayBuffer();
+    const { default: ePub } = await import('epubjs');
+    const book = ePub(arrayBuffer);
 
-    // 解析 EPUB
-    const epub = new EPub(tempPath);
+    try {
+      await book.ready;
+      const metadata = await book.loaded.metadata;
+      const manifest = await book.loaded.manifest;
+      
+      const result = {
+        title: metadata.title || '未知标题',
+        creator: metadata.creator || '未知作者',
+        language: metadata.language || 'zh',
+        cover: null as string | null
+      };
 
-    return new Promise<NextResponse>((resolve) => {
-      epub.parse();
-
-      epub.on('end', async () => {
-        // 获取封面图片
-        let coverUrl = '';
-        if (epub.metadata.cover) {
-          const coverPath = epub.manifest[epub.metadata.cover].href;
-          const coverBuffer = await epub.getImage(coverPath);
-          // 将封面图片转换为 base64
-          coverUrl = `data:image/jpeg;base64,${coverBuffer.toString('base64')}`;
+      if (manifest.cover) {
+        try {
+          const zip = await JSZip.loadAsync(arrayBuffer);
+          const coverHref = typeof manifest.cover === 'string' ? manifest.cover : manifest.cover?.href;
+          if (coverHref) {
+            const file = zip.file(coverHref);
+            
+            if (file) {
+              const blob = await file.async('blob');
+              result.cover = URL.createObjectURL(blob);
+            }
+          }
+        } catch (error) {
+          console.error('获取封面失败:', error);
         }
+      }
 
-        resolve(
-          NextResponse.json({
-            title: epub.metadata.title,
-            creator: epub.metadata.creator,
-            description: epub.metadata.description,
-            language: epub.metadata.language,
-            publisher: epub.metadata.publisher,
-            date: epub.metadata.date,
-            identifier: epub.metadata.identifier,
-            cover_url: coverUrl
-          })
-        );
-      });
-
-      epub.on('error', (error) => {
-        resolve(
-          NextResponse.json(
-            { error: '解析 EPUB 文件失败' },
-            { status: 500 }
-          )
-        );
-      });
-    });
+      return NextResponse.json(result);
+    } catch (error) {
+      throw error;
+    }
   } catch (error) {
-    console.error('处理 EPUB 文件失败:', error);
+    console.error('解析 EPUB 失败:', error);
     return NextResponse.json(
-      { error: '处理 EPUB 文件失败' },
+      { error: '解析 EPUB 失败', details: (error as Error).message },
       { status: 500 }
     );
   }

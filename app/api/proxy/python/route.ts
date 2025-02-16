@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import path from 'path';
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const { audioUrl, storageFormat = 'json' } = await req.json();
     console.log('收到请求参数:', { audioUrl, storageFormat });
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
       shell: true
     });
 
-    return new Promise((resolve, reject) => {
+    return await new Promise<NextResponse>((resolve, reject) => {
       let result = '';
       let error = '';
 
@@ -125,7 +125,10 @@ export async function POST(req: NextRequest) {
       // 设置超时
       const timeout = setTimeout(() => {
         pythonProcess.kill();
-        reject(new NextResponse('Python脚本执行超时', { status: 504 }));
+        resolve(NextResponse.json(
+          { error: 'Python脚本执行超时' },
+          { status: 504 }
+        ));
       }, 300000); // 5分钟超时
 
       pythonProcess.on('close', (code) => {
@@ -133,19 +136,19 @@ export async function POST(req: NextRequest) {
         console.log('Python进程退出码:', code);
         
         if (code !== 0) {
-          return reject(new NextResponse(
-            `Python脚本执行失败 (${code}): ${error || '未知错误'}`, 
+          resolve(NextResponse.json(
+            { error: `Python脚本执行失败 (${code}): ${error || '未知错误'}` },
             { status: 500 }
           ));
+          return;
         }
 
         try {
           const jsonResult = JSON.parse(result);
           resolve(NextResponse.json(jsonResult));
         } catch (e) {
-          console.error('JSON解析错误:', e);
-          reject(new NextResponse(
-            `无法解析Python输出: ${result}`, 
+          resolve(NextResponse.json(
+            { error: `无法解析Python输出: ${result}` },
             { status: 500 }
           ));
         }
@@ -154,8 +157,8 @@ export async function POST(req: NextRequest) {
       pythonProcess.on('error', (err) => {
         clearTimeout(timeout);
         console.error('Python进程错误:', err);
-        reject(new NextResponse(
-          `Python进程启动失败: ${err.message}`,
+        resolve(NextResponse.json(
+          { error: `Python进程启动失败: ${err.message}` },
           { status: 500 }
         ));
       });

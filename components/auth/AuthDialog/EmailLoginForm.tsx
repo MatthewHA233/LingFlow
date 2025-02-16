@@ -44,12 +44,14 @@ export function EmailLoginForm({ onSuccess }: EmailLoginFormProps) {
       await signInWithEmail(values.email, values.password);
       onSuccess();
       toast.success('登录成功');
-    } catch (error) {
+    } catch (error: any) {
       console.error('登录失败:', error);
-      if (error.message.includes('Invalid login credentials')) {
+      const errorMessage = error?.message || '未知错误';
+      
+      if (errorMessage.includes('Invalid login credentials')) {
         toast.error('邮箱或密码错误');
       } else {
-        toast.error('登录失败: ' + error.message);
+        toast.error('登录失败: ' + errorMessage);
       }
     } finally {
       setIsLoading(false);

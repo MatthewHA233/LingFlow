@@ -1,24 +1,32 @@
 'use client';
 
 import { Book } from '@/types/book';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
 import { Search, BookOpen, ChevronLeft, ChevronRight, X, Menu } from 'lucide-react';
+import JSZip from 'jszip';
+import Image from 'next/image';
+import path from 'path';
 
 interface EbookViewerProps {
   book: Book;
+  arrayBuffer: ArrayBuffer;
 }
 
-export function EbookViewer({ book }: EbookViewerProps) {
+export function EbookViewer({ book, arrayBuffer }: EbookViewerProps) {
   // 添加调试日志
   console.log('当前书籍数据:', book);
   console.log('章节数量:', book.chapters?.length);
   
-  const [currentChapter, setCurrentChapter] = useState(0);
+  const [currentChapter, setCurrentChapter] = useState(() => {
+    return book.chapters?.length > 0 ? 0 : -1;
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [showToc, setShowToc] = useState(false);
+  const [processedContent, setProcessedContent] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
   
   const chapters = book.chapters || [];
   
@@ -36,80 +44,86 @@ export function EbookViewer({ book }: EbookViewerProps) {
   }, [chapters.length, currentChapter]);
 
   // 在组件顶部添加图片处理函数
-  const processChapterContent = async (content: string): Promise<string> => {
-    const div = document.createElement('div');
-    div.innerHTML = content;
-    
-    const images = div.getElementsByTagName('img');
-    for (const img of Array.from(images)) {
-      try {
-        const src = img.getAttribute('src');
-        if (!src || src.startsWith('blob:') || src.startsWith('data:')) continue;
+  const processChapterContent = useCallback(async (content: string): Promise<string> => {
+    const blobUrls: string[] = [];
+    try {
+      const zip = await JSZip.loadAsync(arrayBuffer);
+      const manifest = book.resources?.manifest || {};
 
-        // 从URL中提取图片路径
-        const imagePath = src.startsWith('/') ? src.substring(1) : src;
-        let imageResource;
-
-        // 尝试多种匹配方式
-        if (book.resources?.manifest) {
-          imageResource = book.resources.manifest.find((resource: any) => {
-            // 匹配完整路径
-            if (resource.href === imagePath) return true;
-            // 匹配文件名
-            const resourceFile = resource.href.split('/').pop();
-            const srcFile = imagePath.split('/').pop();
-            return resourceFile === srcFile;
-          });
+      // 改进路径映射表创建和匹配逻辑
+      const pathMapping = Object.values(manifest).reduce((acc: Record<string, string>, item: any) => {
+        if (item.href) {
+          const normalized = item.href
+            .replace(/\\/g, '/')
+            .replace(/^\//, '')
+            .toLowerCase();
+          acc[normalized] = item.href;
+          acc[path.basename(normalized)] = item.href;
         }
+        return acc;
+      }, {});
 
-        if (!imageResource) {
-          // 尝试直接加载原始路径
-          try {
-            const imageBlob = await book.loadBlob(imagePath);
-            if (imageBlob) {
-              const url = URL.createObjectURL(new Blob([imageBlob]));
-              img.setAttribute('src', url);
-              return;
-            }
-          } catch (error) {
-            console.error('直接加载图片失败:', error);
-          }
-        }
-      } catch (error) {
-        console.error('处理图片失败:', error);
-      }
+      const resolvedContent = content.replace(/!\[.*?\]\((.*?)\)/g, (match, src) => {
+        const normalizedSrc = src
+          .replace(/\\/g, '/')
+          .replace(/^\//, '')
+          .toLowerCase();
+
+        // 优先精确匹配
+        const exactMatch = pathMapping[normalizedSrc];
+        if (exactMatch) return `![](${exactMatch})`;
+
+        // 次优匹配：文件名匹配（不区分大小写）
+        const basename = path.basename(normalizedSrc);
+        const fuzzyMatch = Object.keys(pathMapping).find(key => 
+          key.toLowerCase().endsWith(basename.toLowerCase())
+        );
+
+        return fuzzyMatch ? `![](${pathMapping[fuzzyMatch]})` : match;
+      });
+
+      return resolvedContent;
+    } catch (error) {
+      console.error('处理图片路径失败:', error);
+      return content;
+    } finally {
+      blobUrls.forEach(URL.revokeObjectURL);
     }
-    
-    return div.innerHTML;
-  };
+  }, [arrayBuffer, book.resources?.manifest]);
 
   // 在渲染内容之前处理图片
   useEffect(() => {
     if (currentChapterData?.content) {
       processChapterContent(currentChapterData.content)
         .then(processedContent => {
-          // 更新章节内容
-          currentChapterData.content = processedContent;
+          setProcessedContent(processedContent);
         })
         .catch(error => {
           console.error('处理章节内容时出错:', error);
         });
     }
-  }, [currentChapter]);
+  }, [currentChapter, currentChapterData, processChapterContent]);
 
   // 清理blob URLs
   useEffect(() => {
     return () => {
-      const content = document.querySelector('.prose');
-      if (content) {
-        const images = content.querySelectorAll('img[src^="blob:"]');
-        images.forEach(img => {
-          const src = img.getAttribute('src');
-          if (src) URL.revokeObjectURL(src);
-        });
-      }
+      const images = document.querySelectorAll('.prose img[src^="blob:"]');
+      images.forEach(img => {
+        const src = img.getAttribute('src');
+        if (src) URL.revokeObjectURL(src);
+      });
     };
   }, [currentChapter]);
+
+  useEffect(() => {
+    if (book.chapters?.length > 0) {
+      setIsLoading(false);
+    }
+  }, [book.chapters]);
+
+  if (isLoading) {
+    return <div className="text-center p-8 text-muted-foreground">正在加载电子书内容...</div>;
+  }
 
   if (!chapters.length || !currentChapterData) {
     return (
@@ -224,22 +238,34 @@ export function EbookViewer({ book }: EbookViewerProps) {
                     p: ({ children }) => (
                       <p className="mb-6 leading-relaxed">{children}</p>
                     ),
-                    img: ({ node, ...props }) => (
-                      <p className="my-6">
-                        <img
-                          {...props}
-                          className="mx-auto rounded-lg shadow-md"
-                          loading="lazy"
-                          onError={(e) => {
-                            const img = e.currentTarget;
-                            console.error('图片加载失败:', img.src);
-                          }}
-                        />
-                      </p>
-                    ),
+                    img: ({ node, ...props }) => {
+                      const imgSrc = props.src || '';
+                      const imgAlt = props.alt || '电子书插图';
+                      
+                      return (
+                        <figure className="my-6 relative w-full" style={{ minHeight: '300px' }}>
+                          {imgSrc.startsWith('blob:') ? (
+                            <img
+                              src={imgSrc}
+                              alt={imgAlt}
+                              className="object-contain w-full h-full"
+                              style={{ maxWidth: '100%', height: 'auto' }}
+                            />
+                          ) : (
+                            <Image
+                              src={imgSrc}
+                              alt={imgAlt}
+                              fill
+                              className="object-contain"
+                              unoptimized
+                            />
+                          )}
+                        </figure>
+                      );
+                    },
                   }}
                 >
-                  {currentChapterData.content}
+                  {processedContent || currentChapterData?.content}
                 </ReactMarkdown>
               </div>
             </div>

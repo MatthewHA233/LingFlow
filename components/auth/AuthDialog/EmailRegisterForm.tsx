@@ -44,13 +44,14 @@ export function EmailRegisterForm({ onSuccess }: EmailRegisterFormProps) {
       onSuccess(); // 关闭对话框
     } catch (error) {
       console.error('注册失败:', error);
-      if (error.message.includes('already registered')) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('already registered')) {
         toast.error('该邮箱已注册，请直接登录');
-      } else if (error.message.includes('请查收邮件')) {
+      } else if (errorMessage.includes('请查收邮件')) {
         toast.success('注册成功！请查收邮件并点击验证链接完成注册');
         onSuccess(); // 关闭对话框
       } else {
-        toast.error('注册失败: ' + error.message);
+        toast.error('注册失败: ' + errorMessage);
       }
     } finally {
       setIsLoading(false);

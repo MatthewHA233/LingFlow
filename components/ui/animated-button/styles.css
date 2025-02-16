@@ -10,6 +10,7 @@
   font-size: 32px;
   letter-spacing: 1px;
   background: linear-gradient(white 0%, white 40%, rgba(255,255,255,0.2) 80%);
+  background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
   margin: 0;
@@ -22,8 +23,8 @@
   border-radius: 100px;
   box-shadow: 
     0px 2px 9.2px -3px rgba(246, 246, 246, 0.15),
-    inset 0px -20px 52.4px -40px rgba(139, 98, 255, 0.3),
-    inset 0px 20px 52.4px -40px rgba(139, 98, 255, 0.1),
+    inset var(--purple-shadow, 0px -20px 52.4px -40px rgba(139, 98, 255, 0.3)),
+    inset var(--purple-shadow-top, 0px 20px 52.4px -40px rgba(139, 98, 255, 0.1)),
     inset 0px -1px 6px -2px #8B62FF;
   transition: box-shadow 0.3s linear;
   position: relative;

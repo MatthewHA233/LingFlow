@@ -1,51 +1,212 @@
-import ePub from 'epubjs';
-import { Book } from '@/types/book';
+import ePub, { Book as EpubBook } from 'epubjs';
+import { Book, Chapter } from '@/types/book';
 import JSZip from 'jszip';
 import TurndownService from 'turndown';
+import path from 'path';
+
+async function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
+  // 检查是否在浏览器环境
+  if (typeof window !== 'undefined') {
+    // 浏览器环境使用 FileReader
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(new Error('读取文件失败'));
+      reader.readAsArrayBuffer(file);
+    });
+  } else {
+    // 服务器环境直接使用 arrayBuffer 方法
+    return await file.arrayBuffer();
+  }
+}
 
 export async function parseEpub(file: File): Promise<Book> {
   try {
+    // 验证文件类型
+    if (!file.type.includes('epub')) {
+      throw new Error('无效的文件类型，请上传EPUB格式的电子书');
+    }
+
     const arrayBuffer = await readFileAsArrayBuffer(file);
     
-    // 使用正确的EPUB初始化方式
-    const book = ePub(arrayBuffer, {
-      request: {
-        config: {
-          // 禁用外部请求
-          requestCredentials: 'omit',
-          // 启用本地资源解析
-          allowLocalResources: true
-        }
+    // 验证文件内容并检查资源
+    console.log('开始解析EPUB ZIP结构');
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    const files = Object.keys(zip.files);
+    console.log('EPUB文件列表:', files);
+
+    // 检查图片文件
+    const imageFiles = files.filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext);
+      if (isImage) {
+        const zipFile = zip.files[file];
+        console.log('找到图片文件:', {
+          path: file,
+          extension: ext,
+          size: zipFile._data ? zipFile._data.uncompressedSize : 'unknown'
+        });
       }
+      return isImage;
+    });
+    
+    const book = ePub(arrayBuffer);
+    
+    try {
+      await book.ready;
+    } catch (error) {
+      console.error('EPUB加载失败:', error);
+      throw new Error('无法解析电子书文件，请确保文件格式正确');
+    }
+
+    const metadata = await book.loaded.metadata;
+    const manifest = await book.loaded.manifest;
+    console.log('资源清单:', manifest);
+
+    // 改进资源清单处理
+    const imageResources = Object.entries(manifest).filter(([key, item]: [string, any]) => {
+      const isImage = item.type?.startsWith('image/');
+      if (isImage) {
+        console.log('资源清单中的图片:', {
+          key,
+          href: item.href,
+          type: item.type,
+          id: item.id
+        });
+      }
+      return isImage;
     });
 
-    await book.ready;
+    // 尝试读取每个图片资源的内容
+    for (const [key, item] of imageResources) {
+      try {
+        // 尝试不同的路径组合来查找图片
+        const possiblePaths = [
+          item.href,                    // 原始路径
+          item.href.replace(/^\//, ''), // 移除开头的斜杠
+          `OEBPS/${item.href}`,        // OEBPS目录下
+          `OPS/${item.href}`,          // OPS目录下
+        ];
 
-    // 生成临时资源基地址
-    const virtualBaseUrl = `epub://${Date.now()}/`;
+        // 打印所有文件以便调试
+        console.log('ZIP中的所有文件:', Object.keys(zip.files));
+        
+        // 尝试所有可能的路径
+        let imageFile = null;
+        for (const testPath of possiblePaths) {
+          console.log(`尝试路径: ${testPath}`);
+          imageFile = zip.file(testPath);
+          if (imageFile) {
+            console.log(`找到图片文件: ${testPath}`);
+            break;
+          }
+        }
+
+        if (imageFile) {
+          // 使用 async 方法获取文件大小
+          const blob = await imageFile.async('blob');
+          console.log(`图片文件 ${item.href} 大小:`, blob.size, 'bytes');
+        } else {
+          // 如果所有路径都失败，记录更详细的错误信息
+          console.warn(`未找到图片文件: ${item.href}，尝试过的路径:`, possiblePaths);
+        }
+      } catch (error) {
+        console.error(`读取图片 ${item.href} 失败:`, error);
+      }
+    }
+
+    const now = new Date().toISOString();
+    
+    const processResources = async () => {
+      const resources: Record<string, any> = {};
+      const manifest = await book.loaded.manifest;
+      
+      // 获取基础路径
+      const opfPath = (book as any).packaging?.path || '';
+      const basePath = path.dirname(opfPath) || 'OEBPS';
+      console.log('OPF文件路径:', opfPath);
+      console.log('基础路径:', basePath);
+
+      for (const [id, item] of Object.entries(manifest)) {
+        if (item.type?.startsWith('image/')) {
+          // 规范化图片路径
+          const href = item.href.replace(/\\/g, '/').replace(/^\//, '');
+          const absolutePath = path.join(basePath, href).replace(/\\/g, '/');
+          
+          console.log('处理图片资源:', {
+            id,
+            originalHref: item.href,
+            normalizedPath: absolutePath,
+            type: item.type
+          });
+
+          // 验证文件是否存在
+          const imageFile = zip.file(absolutePath) || zip.file(href);
+          if (imageFile) {
+            resources[id] = {
+              ...item,
+              href: absolutePath,
+              exists: true
+            };
+          } else {
+            console.warn(`未找到图片文件: ${absolutePath}`);
+            resources[id] = {
+              ...item,
+              href: absolutePath,
+              exists: false
+            };
+          }
+        }
+      }
+
+      return resources;
+    };
+
+    const processedResources = await processResources();
+    console.log('处理后的资源:', processedResources);
 
     return {
-      title: book.package.metadata.title || '未知标题',
-      author: book.package.metadata.creator || '未知作者',
-      chapters: await getChapters(book, virtualBaseUrl),
-      coverUrl: await getCoverUrl(book, arrayBuffer)
+      id: crypto.randomUUID(),
+      title: metadata.title || '未知标题',
+      author: metadata.creator || '未知作者',
+      cover_url: '',  // 将在后续步骤中更新
+      created_at: now,
+      updated_at: now,
+      user_id: '',    // 将在后续步骤中更新
+      epub_path: '',  // 将在后续步骤中更新
+      audio_path: '', // 将在后续步骤中更新
+      chapters: await getChapters(book),
+      coverUrl: await getCoverUrl(book, arrayBuffer),
+      resources: {
+        manifest: processedResources
+      },
+      metadata: {
+        language: metadata.language,
+        publisher: metadata.publisher,
+        published_date: metadata.pubdate,
+      }
     };
   } catch (error) {
-    console.error('EPUB解析详细错误:', error);
+    console.error('EPUB解析详细错误:', {
+      message: error.message,
+      stack: error.stack,
+      type: error.constructor.name
+    });
+    
+    // 根据错误类型返回不同的错误信息
+    if (error instanceof Error) {
+      if (error.message.includes('无效的文件类型')) {
+        throw error;
+      }
+      if (error.message.includes('ZIP')) {
+        throw new Error('EPUB文件损坏或格式不正确');
+      }
+    }
     throw new Error('无法解析电子书文件，请确保文件格式正确');
   }
 }
 
-async function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as ArrayBuffer);
-    reader.onerror = () => reject(new Error('读取文件失败'));
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-async function getChapters(book: EpubBook, baseUrl: string): Promise<Chapter[]> {
+async function getChapters(book: EpubBook): Promise<Chapter[]> {
   const chapters: Chapter[] = [];
   const turndownService = new TurndownService({
     headingStyle: 'atx',
@@ -53,15 +214,29 @@ async function getChapters(book: EpubBook, baseUrl: string): Promise<Chapter[]> 
     emDelimiter: '*'
   });
 
-  // 自定义图片处理规则
+  // 修改图片处理规则
   turndownService.addRule('images', {
     filter: 'img',
     replacement: function(content, node) {
       const img = node as HTMLImageElement;
-      const src = img.getAttribute('src') || '';
+      let src = img.getAttribute('src') || '';
       const alt = img.getAttribute('alt') || '';
-      // 保持原始src路径
-      return `![${alt}](${src})`;
+      
+      // 规范化路径
+      src = src.replace(/\\/g, '/').replace(/^\//, '');
+      
+      // 处理相对路径
+      const opfPath = (book as any).packaging?.path || '';
+      const basePath = path.dirname(opfPath) || 'OEBPS';
+      const absolutePath = path.join(basePath, src).replace(/\\/g, '/');
+      
+      console.log('处理章节中的图片:', {
+        original: src,
+        normalized: absolutePath
+      });
+      
+      // 使用独立的 div 包装图片
+      return `\n\n<div class="book-image">![${alt}](${absolutePath})</div>\n\n`;
     }
   });
 
@@ -69,10 +244,16 @@ async function getChapters(book: EpubBook, baseUrl: string): Promise<Chapter[]> 
   const toc = book.navigation?.toc || [];
   console.log('EPUB目录结构:', toc);
 
-  for (const item of book.spine.items) {
+  // 使用目录结构来获取章节
+  for (const tocItem of toc) {
     try {
-      const content = await book.load(item.href);
-      const htmlContent = typeof content === 'string' ? content : new XMLSerializer().serializeToString(content);
+      if (!tocItem.href) continue;
+
+      // 移除锚点
+      const href = tocItem.href.split('#')[0];
+      
+      const content = await book.load(href);
+      const htmlContent = content instanceof Document ? new XMLSerializer().serializeToString(content) : String(content);
       const doc = new DOMParser().parseFromString(htmlContent, 'text/html');
       
       // 清理不需要的元素
@@ -81,69 +262,8 @@ async function getChapters(book: EpubBook, baseUrl: string): Promise<Chapter[]> 
       // 转换正文内容
       const markdown = turndownService.turndown(doc.body);
       
-      // 改进的标题提取逻辑
-      let title = '';
-      
-      // 1. 首先尝试从目录中匹配
-      const tocItem = toc.find(t => t.href === item.href);
-      if (tocItem?.label) {
-        title = tocItem.label.trim();
-      }
-      
-      // 2. 如果没有找到目录项，尝试从文档中提取标题
-      if (!title) {
-        // 按优先级查找标题元素
-        const titleElement = 
-          doc.querySelector('h1') || 
-          doc.querySelector('h2') || 
-          doc.querySelector('h3') ||
-          doc.querySelector('title');
-        
-        if (titleElement) {
-          title = titleElement.textContent?.trim() || '';
-        }
-      }
-      
-      // 3. 如果还是没有标题，尝试从文件名生成标题
-      if (!title) {
-        const filename = item.href.split('/').pop()?.replace(/\.x?html?$/, '');
-        
-        // 处理 output-x-x 格式的文件名
-        if (filename?.match(/^output-\d+-\d+/)) {
-          // 获取第一段非空文本作为标题
-          const firstParagraph = doc.evaluate(
-            '//text()[normalize-space()][1]',
-            doc,
-            null,
-            XPathResult.FIRST_ORDERED_NODE_TYPE,
-            null
-          ).singleNodeValue;
-          
-          if (firstParagraph) {
-            title = firstParagraph.textContent?.trim() || '';
-            // 限制标题长度，取前30个字符，并在末尾添加省略号
-            if (title.length > 30) {
-              title = title.substring(0, 30) + '...';
-            }
-          }
-        } 
-        // 处理 part0001 格式的文件名
-        else if (filename?.match(/^part\d+/)) {
-          title = `第 ${parseInt(filename.replace('part', ''))} 章`;
-        } else {
-          title = filename || `章节 ${chapters.length + 1}`;
-        }
-      }
-      
-      // 4. 清理标题中的特殊字符和多余空白
-      title = title
-        .replace(/\s+/g, ' ')          // 合并多个空白字符
-        .replace(/^\d+\.\s*/, '')      // 移除开头的数字和点
-        .replace(/^第\s*\d+\s*章\s*/, '') // 移除"第X章"格式
-        .trim();
-
       chapters.push({
-        title: title || `章节 ${chapters.length + 1}`,
+        title: tocItem.label.trim(),
         content: markdown
       });
     } catch (error) {
@@ -156,17 +276,42 @@ async function getChapters(book: EpubBook, baseUrl: string): Promise<Chapter[]> 
 
 async function getCoverUrl(book: EpubBook, buffer: ArrayBuffer): Promise<string | undefined> {
   try {
-    const coverPath = book.package.manifest.find(item => item.properties === 'cover-image')?.href;
-    if (!coverPath) return undefined;
+    const manifest = await book.loaded.manifest as Record<string, any>;
+    const coverId = await book.loaded.cover;
     
-    // 从ZIP包直接读取封面
+    // 优先使用封面ID查找
+    const coverItem = coverId ? manifest[coverId] : null;
+    const coverHref = coverItem?.href || Object.values(manifest).find((item: any) => 
+      item.href?.toLowerCase().includes('cover') &&
+      item['media-type']?.startsWith('image/')
+    )?.href;
+
+    if (!coverHref) return undefined;
+
+    // 规范化路径
+    const basePath = (book as any).loaded.package?.metadata?.path || 'OEBPS/';
+    const resolvePath = (href: string) => {
+      return new URL(href, `http://epub.container/${basePath}`).pathname.replace(/^\//, '');
+    };
+    const fullPath = resolvePath(coverHref).replace(/\\/g, '/');
+
     const zip = await JSZip.loadAsync(buffer);
-    const file = zip.file(coverPath);
-    if (!file) return undefined;
+    const file = zip.file(fullPath);
     
+    if (!file) {
+      console.warn('封面文件未找到:', fullPath);
+      // 尝试通过basename查找
+      const fileName = path.basename(fullPath);
+      const fallbackFile = zip.file(new RegExp(`${fileName}$`, 'i'))[0];
+      if (!fallbackFile) return undefined;
+      const blob = await fallbackFile.async('blob');
+      return URL.createObjectURL(blob);
+    }
+
     const blob = await file.async('blob');
     return URL.createObjectURL(blob);
-  } catch {
+  } catch (error) {
+    console.error('获取封面失败:', error);
     return undefined;
   }
 }

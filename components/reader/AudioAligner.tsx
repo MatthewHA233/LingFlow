@@ -43,7 +43,7 @@ export function AudioAligner({ bookContent }: AudioAlignerProps) {
       const uploadForm = new FormData()
       uploadForm.append('file', audioFile)
       
-      const uploadRes = await fetch('/api/upload', {
+      const uploadRes = await fetch('/api/audio/upload', {
         method: 'POST',
         body: uploadForm
       })
