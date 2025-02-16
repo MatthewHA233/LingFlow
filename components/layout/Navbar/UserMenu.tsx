@@ -1,5 +1,6 @@
 'use client';
 
+import { User } from '@supabase/supabase-js';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,36 +9,41 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { User } from '@/types/auth';
-import { useAuth } from '@/hooks/use-auth';
+import { Button } from '@/components/ui/button';
+import { useAuthStore } from '@/stores/auth';
+import { useRouter } from 'next/navigation';
 
 interface UserMenuProps {
   user: User;
 }
 
 export function UserMenu({ user }: UserMenuProps) {
-  const { signOut } = useAuth();
+  const signOut = useAuthStore(state => state.signOut);
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      router.push('/');
+    } catch (error) {
+      console.error('登出失败:', error);
+    }
+  };
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="focus:outline-none">
-        <Avatar>
-          <AvatarImage src={user.avatar} />
-          <AvatarFallback>{user.name?.[0] ?? '用户'}</AvatarFallback>
-        </Avatar>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost">
+          {user.email || '用户'}
+        </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent align="end">
         <DropdownMenuLabel>我的账户</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <a href="/profile">个人资料</a>
+        <DropdownMenuItem onClick={() => router.push('/bookshelf')}>
+          我的书架
         </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <a href="/settings">设置</a>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={signOut} className="text-red-500">
+        <DropdownMenuItem onClick={handleSignOut}>
           退出登录
         </DropdownMenuItem>
       </DropdownMenuContent>

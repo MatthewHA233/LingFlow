@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { EPub } from 'epub';
+import EPub from 'epub';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   try {
     const formData = await request.formData();
     const epubFile = formData.get('epub') as File;
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     // 解析 EPUB
     const epub = new EPub(tempPath);
 
-    return new Promise((resolve) => {
+    return new Promise<NextResponse>((resolve) => {
       epub.parse();
 
       epub.on('end', async () => {
