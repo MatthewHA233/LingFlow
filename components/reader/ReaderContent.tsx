@@ -61,14 +61,17 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
             />
           </div>
           <div>
-            <AudioAligner bookContent={JSON.stringify({
-              title: book.title,
-              author: book.author,
-              chapters: book.chapters.map(chapter => ({
-                title: chapter.title,
-                content: chapter.content
-              }))
-            })} />
+            <AudioAligner 
+              bookContent={JSON.stringify({
+                title: book.title,
+                author: book.author,
+                chapters: book.chapters.map(chapter => ({
+                  title: chapter.title,
+                  content: chapter.content
+                }))
+              })} 
+              bookId={book.id}
+            />
           </div>
         </div>
       </div>

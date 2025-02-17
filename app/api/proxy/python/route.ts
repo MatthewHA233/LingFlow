@@ -1,11 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import path from 'path';
+import { createClient } from '@supabase/supabase-js';
+
+// 初始化 Supabase 客户端
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const { audioUrl, storageFormat = 'json' } = await req.json();
-    console.log('收到请求参数:', { audioUrl, storageFormat });
+    // 验证用户身份
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return NextResponse.json({ error: '未授权访问' }, { status: 401 });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    
+    if (userError || !user) {
+      return NextResponse.json({ error: '用户验证失败' }, { status: 401 });
+    }
+
+    const { audioUrl, storageFormat = 'json', speechId } = await req.json();
+    
+    if (!speechId) {
+      return NextResponse.json({ error: '缺少speechId参数' }, { status: 400 });
+    }
+
+    console.log('收到请求参数:', { audioUrl, storageFormat, speechId });
+
+    // 更新任务状态为处理中
+    const { error: updateError } = await supabase
+      .from('speech_results')
+      .update({ 
+        status: 'processing',
+        error_message: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', speechId)
+      .eq('user_id', user.id);
+
+    if (updateError) {
+      console.error('更新任务状态失败:', updateError);
+      return NextResponse.json({ error: '更新任务状态失败' }, { status: 500 });
+    }
 
     // 获取Python脚本的绝对路径
     const scriptPath = path.join(process.cwd(), 'app', 'api', 'python', 'speech.py');
@@ -123,19 +170,41 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       });
 
       // 设置超时
-      const timeout = setTimeout(() => {
+      const timeout = setTimeout(async () => {
         pythonProcess.kill();
+        // 更新任务状态为错误
+        await supabase
+          .from('speech_results')
+          .update({ 
+            status: 'error',
+            error_message: 'Python脚本执行超时',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', speechId)
+          .eq('user_id', user.id);
+
         resolve(NextResponse.json(
           { error: 'Python脚本执行超时' },
           { status: 504 }
         ));
       }, 300000); // 5分钟超时
 
-      pythonProcess.on('close', (code) => {
+      pythonProcess.on('close', async (code) => {
         clearTimeout(timeout);
         console.log('Python进程退出码:', code);
         
         if (code !== 0) {
+          // 更新任务状态为错误
+          await supabase
+            .from('speech_results')
+            .update({ 
+              status: 'error',
+              error_message: `Python脚本执行失败 (${code}): ${error || '未知错误'}`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', speechId)
+            .eq('user_id', user.id);
+
           resolve(NextResponse.json(
             { error: `Python脚本执行失败 (${code}): ${error || '未知错误'}` },
             { status: 500 }
@@ -145,8 +214,30 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
         try {
           const jsonResult = JSON.parse(result);
+          // 更新任务状态为完成
+          await supabase
+            .from('speech_results')
+            .update({ 
+              status: 'completed',
+              error_message: null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', speechId)
+            .eq('user_id', user.id);
+
           resolve(NextResponse.json(jsonResult));
         } catch (e) {
+          // 更新任务状态为错误
+          await supabase
+            .from('speech_results')
+            .update({ 
+              status: 'error',
+              error_message: `无法解析Python输出: ${result}`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', speechId)
+            .eq('user_id', user.id);
+
           resolve(NextResponse.json(
             { error: `无法解析Python输出: ${result}` },
             { status: 500 }
@@ -154,9 +245,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
       });
 
-      pythonProcess.on('error', (err) => {
+      pythonProcess.on('error', async (err) => {
         clearTimeout(timeout);
         console.error('Python进程错误:', err);
+        
+        // 更新任务状态为错误
+        await supabase
+          .from('speech_results')
+          .update({ 
+            status: 'error',
+            error_message: `Python进程启动失败: ${err.message}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', speechId)
+          .eq('user_id', user.id);
+
         resolve(NextResponse.json(
           { error: `Python进程启动失败: ${err.message}` },
           { status: 500 }
@@ -166,6 +269,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   } catch (error: any) {
     console.error('API路由错误:', error);
+    
+    // 如果有speechId，更新任务状态为错误
+    if (error.speechId) {
+      await supabase
+        .from('speech_results')
+        .update({ 
+          status: 'error',
+          error_message: `处理请求时发生错误: ${error.message}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', error.speechId)
+        .eq('user_id', error.userId);
+    }
+
     return NextResponse.json(
       { error: `处理请求时发生错误: ${error.message}` },
       { status: 500 }
