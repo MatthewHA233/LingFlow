@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import path from 'path'
 import crypto from 'crypto'
 import JSZip from 'jszip'
+import { processChapterContent, normalizePath, getMimeType } from '@/lib/content-processor'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,6 +20,14 @@ interface Resource {
   href: string;
   'media-type'?: string;
   id?: string;
+}
+
+interface BookResource {
+  book_id: string;
+  original_path: string;
+  oss_path: string;
+  resource_type: string;
+  mime_type: string;
 }
 
 export async function POST(req: Request) {
@@ -96,6 +105,7 @@ export async function POST(req: Request) {
     // 4. 生成唯一的书籍ID和基础路径
     const bookId = crypto.randomUUID()
     const baseDir = `books/${user.id}/${bookId}`
+    const ossBaseUrl = `https://chango-url.oss-cn-beijing.aliyuncs.com/${baseDir}/resources`
     console.log('生成基础路径:', baseDir)
 
     // 5. 上传原始EPUB文件
@@ -110,71 +120,159 @@ export async function POST(req: Request) {
     })
     console.log('EPUB文件上传成功:', epubResult.url)
 
-    // 6. 准备章节数据（移除OSS上传）
-    console.log('开始准备章节数据')
-    const chaptersData = bookData.chapters.map((chapter: any, index: number) => ({
-      book_id: bookId,
-      title: chapter.title,
-      content: chapter.content,
-      order_index: index
-    }))
-    console.log('准备好的章节数据:', chaptersData.length, '条')
+    // 6. 准备章节数据和处理资源文件
+    console.log('开始准备章节数据和处理资源文件')
+    const resourceUploads: BookResource[] = []
+    const chapterResourceUploads = new Set<string>(); // 用于去重
 
-    // 7. 处理资源文件
-    console.log('开始处理资源文件')
-    const resourceUploads = []
+    // 处理章节内容和提取资源
+    const chaptersData = bookData.chapters.map((chapter: any, index: number) => {
+      // 处理章节内容
+      const { content } = processChapterContent(
+        chapter.content,
+        [] // 初始时没有资源，先传空数组
+      );
+
+      // 收集图片引用
+      const imageMatches = content.match(/!\[([^\]]*)\]\(([^)]+)\)/g) || [];
+      for (const match of imageMatches) {
+        const [, , src] = match.match(/!\[(.*?)\]\((.*?)\)/) || [];
+        if (src) {
+          const normalizedPath = normalizePath(src);
+          if (!chapterResourceUploads.has(normalizedPath)) {
+            chapterResourceUploads.add(normalizedPath);
+            resourceUploads.push({
+              book_id: bookId,
+              original_path: normalizedPath,
+              oss_path: `https://chango-url.oss-cn-beijing.aliyuncs.com/${baseDir}/resources/${path.basename(normalizedPath)}`,
+              resource_type: 'image',
+              mime_type: getMimeType(normalizedPath)
+            });
+          }
+        }
+      }
+
+      return {
+        book_id: bookId,
+        title: chapter.title,
+        content: content,
+        order_index: index
+      };
+    });
+
+    // 处理原始的图片资源
     if (bookData.resources?.imageFiles?.length > 0) {
-      console.log(`找到 ${bookData.resources.imageFiles.length} 个资源文件`)
-      
-      // 解压EPUB文件以获取图片
-      const epubZip = await JSZip.loadAsync(await file.arrayBuffer());
+      console.log(`找到 ${bookData.resources.imageFiles.length} 个原始资源文件`);
       
       for (const resource of bookData.resources.imageFiles) {
         if (resource.exists && resource.href) {
-          const resourcePath = `${baseDir}/resources/${path.basename(resource.href)}`
-          
-          try {
-            // 从EPUB中读取图片文件
-            const imageFile = epubZip.file(resource.href);
-            if (imageFile) {
-              // 获取图片数据
-              const imageBuffer = await imageFile.async('nodebuffer');
-              
-              // 上传到OSS
-              const imageResult = await client.put(resourcePath, imageBuffer, {
-                mime: resource.type || 'image/jpeg',
-                headers: {
-                  'Cache-Control': 'max-age=31536000'
-                }
-              });
-              
-              console.log('图片上传成功:', {
-                href: resource.href,
-                path: resourcePath,
-                size: imageBuffer.length,
-                url: imageResult.url
-              });
-              
-              resourceUploads.push({
-                book_id: bookId,
-                original_path: resource.href,
-                oss_path: imageResult.url.replace('http://', 'https://'),
-                resource_type: 'image',
-                mime_type: resource.type || 'image/jpeg'
-              });
-            } else {
-              console.warn('未找到图片文件:', resource.href);
-            }
-          } catch (error: any) {
-            console.error('处理图片失败:', {
-              href: resource.href,
-              error: error.message
+          const normalizedPath = normalizePath(resource.href);
+          // 检查是否已经在章节处理中添加过
+          if (!chapterResourceUploads.has(normalizedPath)) {
+            resourceUploads.push({
+              book_id: bookId,
+              original_path: normalizedPath,
+              oss_path: `https://chango-url.oss-cn-beijing.aliyuncs.com/${baseDir}/resources/${path.basename(normalizedPath)}`,
+              resource_type: 'image',
+              mime_type: resource.type || getMimeType(normalizedPath)
             });
           }
         }
       }
     }
-    console.log(`处理了 ${resourceUploads.length} 个资源文件`)
+
+    // 上传所有资源文件
+    if (resourceUploads.length > 0) {
+      console.log(`开始上传 ${resourceUploads.length} 个资源文件`);
+      
+      // 解压EPUB文件以获取图片
+      const epubZip = await JSZip.loadAsync(await file.arrayBuffer());
+      
+      // 列出所有文件用于调试
+      console.log('EPUB中的文件列表:', Object.keys(epubZip.files));
+      
+      for (const resource of resourceUploads) {
+        try {
+          // 尝试多种可能的路径
+          const possiblePaths = [
+            resource.original_path,
+            `OEBPS/${resource.original_path}`,
+            `OPS/${resource.original_path}`,
+            resource.original_path.replace(/^OEBPS\//, ''),
+            resource.original_path.replace(/^OPS\//, ''),
+            `OEBPS/images/${path.basename(resource.original_path)}`,
+            `OEBPS/image/${path.basename(resource.original_path)}`,
+            `OPS/images/${path.basename(resource.original_path)}`,
+            `OPS/image/${path.basename(resource.original_path)}`,
+            `images/${path.basename(resource.original_path)}`,
+            `image/${path.basename(resource.original_path)}`
+          ];
+
+          // 尝试找到图片文件
+          let imageFile = null;
+          let foundPath = '';
+          for (const testPath of possiblePaths) {
+            imageFile = epubZip.file(testPath);
+            if (imageFile) {
+              foundPath = testPath;
+              console.log(`找到图片文件: ${testPath} (原始路径: ${resource.original_path})`);
+              break;
+            }
+          }
+
+          if (!imageFile) {
+            // 如果还是找不到，尝试通过文件名在所有文件中搜索
+            const targetFileName = path.basename(resource.original_path).toLowerCase();
+            const matchingFile = Object.keys(epubZip.files).find(
+              filePath => path.basename(filePath).toLowerCase() === targetFileName
+            );
+
+            if (matchingFile) {
+              imageFile = epubZip.file(matchingFile);
+              foundPath = matchingFile;
+              console.log(`通过文件名找到图片: ${matchingFile} (原始路径: ${resource.original_path})`);
+            }
+          }
+
+          if (imageFile) {
+            // 获取图片数据
+            const imageBuffer = await imageFile.async('nodebuffer');
+            
+            // 从资源路径中提取实际的文件路径
+            const resourcePath = resource.oss_path.replace('https://chango-url.oss-cn-beijing.aliyuncs.com/', '');
+            
+            // 上传到OSS
+            const imageResult = await client.put(resourcePath, imageBuffer, {
+              mime: resource.mime_type,
+              headers: {
+                'Cache-Control': 'max-age=31536000'
+              }
+            });
+            
+            console.log('图片上传成功:', {
+              originalPath: resource.original_path,
+              foundPath: foundPath,
+              size: imageBuffer.length,
+              url: imageResult.url
+            });
+            
+            // 更新资源的OSS路径
+            resource.oss_path = imageResult.url.replace('http://', 'https://');
+          } else {
+            console.warn('未找到图片文件:', {
+              originalPath: resource.original_path,
+              triedPaths: possiblePaths
+            });
+          }
+        } catch (error: any) {
+          console.error('处理图片失败:', {
+            path: resource.original_path,
+            error: error.message
+          });
+        }
+      }
+    }
+    console.log(`处理了 ${resourceUploads.length} 个资源文件`);
 
     // 8. 保存书籍信息到数据库
     console.log('开始保存书籍信息')

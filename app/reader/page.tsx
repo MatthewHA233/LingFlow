@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import { FileUploader } from '@/components/reader/FileUploader';
-import { EbookViewer } from '@/components/reader/EbookViewer';
-import { AudioAligner } from '@/components/reader/AudioAligner';
+import { ReaderContent } from '@/components/reader/ReaderContent';
 import { Book } from '@/types/book';
 
 // 创建一个安全的序列化函数
@@ -35,14 +34,7 @@ export default function ReaderPage() {
         {!book ? (
           <FileUploader onBookLoaded={handleBookLoaded} />
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <EbookViewer book={book} arrayBuffer={arrayBuffer!} />
-            </div>
-            <div>
-              <AudioAligner bookContent={JSON.stringify(serializeBook(book))} />
-            </div>
-          </div>
+          <ReaderContent book={book} arrayBuffer={arrayBuffer!} />
         )}
       </div>
     </div>

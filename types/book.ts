@@ -7,8 +7,7 @@ export interface Resource {
   href: string;
   'media-type'?: string;
   id?: string;
-  exists?: boolean;
-  type?: string;
+  oss_url?: string;
 }
 
 export interface ResourceManifest {
