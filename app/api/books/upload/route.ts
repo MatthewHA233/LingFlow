@@ -29,14 +29,40 @@ export async function POST(req: Request) {
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       console.log('未找到授权头')
-      return NextResponse.json({ error: '未授权访问' }, { status: 401 })
+      return NextResponse.json({ error: '未授权访问', code: 'no_token' }, { status: 401 })
     }
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.split(' ')[1])
-    if (authError || !user) {
-      console.error('用户验证失败:', authError)
-      return NextResponse.json({ error: '未授权访问' }, { status: 401 })
+    const token = authHeader.split(' ')[1]
+    
+    // 直接使用传入的token验证用户
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token)
+    
+    if (userError) {
+      console.error('用户验证失败:', userError)
+      
+      // 如果是token过期错误，返回特定的错误码
+      if (userError.message?.includes('token is expired') || userError.message?.includes('invalid JWT')) {
+        return NextResponse.json({ 
+          error: '会话已过期，请重新登录', 
+          code: 'session_expired' 
+        }, { status: 401 })
+      }
+      
+      return NextResponse.json({ 
+        error: '用户验证失败', 
+        code: 'user_error',
+        message: userError.message 
+      }, { status: 401 })
     }
+
+    if (!user) {
+      console.error('未找到用户信息')
+      return NextResponse.json({ 
+        error: '未找到用户信息', 
+        code: 'user_not_found' 
+      }, { status: 401 })
+    }
+
     console.log('用户验证成功:', user.id)
 
     // 2. 获取上传的文件和数据
@@ -52,7 +78,8 @@ export async function POST(req: Request) {
     const bookData = JSON.parse(bookDataStr)
     console.log('接收到书籍数据:', {
       title: bookData.title,
-      chaptersCount: bookData.chapters.length
+      chaptersCount: bookData.chapters.length,
+      resourcesCount: bookData.resources?.imageFiles?.length || 0
     })
 
     // 3. 初始化OSS客户端
@@ -104,6 +131,62 @@ export async function POST(req: Request) {
     )
     console.log('章节文件上传完成')
 
+    // 7. 处理资源文件
+    console.log('开始处理资源文件')
+    const resourceUploads = []
+    if (bookData.resources?.imageFiles?.length > 0) {
+      console.log(`找到 ${bookData.resources.imageFiles.length} 个资源文件`)
+      
+      // 解压EPUB文件以获取图片
+      const epubZip = await JSZip.loadAsync(await file.arrayBuffer());
+      
+      for (const resource of bookData.resources.imageFiles) {
+        if (resource.exists && resource.href) {
+          const resourcePath = `${baseDir}/resources/${path.basename(resource.href)}`
+          
+          try {
+            // 从EPUB中读取图片文件
+            const imageFile = epubZip.file(resource.href);
+            if (imageFile) {
+              // 获取图片数据
+              const imageBuffer = await imageFile.async('nodebuffer');
+              
+              // 上传到OSS
+              const imageResult = await client.put(resourcePath, imageBuffer, {
+                mime: resource.type || 'image/jpeg',
+                headers: {
+                  'Cache-Control': 'max-age=31536000'
+                }
+              });
+              
+              console.log('图片上传成功:', {
+                href: resource.href,
+                path: resourcePath,
+                size: imageBuffer.length,
+                url: imageResult.url
+              });
+              
+              resourceUploads.push({
+                book_id: bookId,
+                original_path: resource.href,
+                oss_path: imageResult.url.replace('http://', 'https://'),
+                resource_type: 'image',
+                mime_type: resource.type || 'image/jpeg'
+              });
+            } else {
+              console.warn('未找到图片文件:', resource.href);
+            }
+          } catch (error: any) {
+            console.error('处理图片失败:', {
+              href: resource.href,
+              error: error.message
+            });
+          }
+        }
+      }
+    }
+    console.log(`处理了 ${resourceUploads.length} 个资源文件`)
+
     // 8. 保存书籍信息到数据库
     console.log('开始保存书籍信息')
     const bookInsertData = {
@@ -115,7 +198,7 @@ export async function POST(req: Request) {
       metadata: bookData.metadata || {},
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      cover_url: '',
+      cover_url: bookData.coverUrl || '',
       audio_path: '',
       description: bookData.metadata?.description || ''
     }
@@ -154,26 +237,7 @@ export async function POST(req: Request) {
     }
     console.log('章节信息保存成功')
 
-    // 10. 处理资源文件（如图片）
-    console.log('开始处理资源文件')
-    const resourceUploads = []
-    if (bookData.resources?.manifest) {
-      for (const [key, resource] of Object.entries(bookData.resources.manifest) as [string, Resource][]) {
-        if (resource['media-type']?.startsWith('image/')) {
-          const resourcePath = `${baseDir}/resources/${path.basename(resource.href)}`
-          resourceUploads.push({
-            book_id: bookId,
-            original_path: resource.href,
-            oss_path: resourcePath,
-            resource_type: 'image',
-            mime_type: resource['media-type']
-          })
-        }
-      }
-    }
-    console.log(`找到 ${resourceUploads.length} 个资源文件`)
-
-    // 11. 保存资源信息
+    // 10. 保存资源信息
     if (resourceUploads.length > 0) {
       console.log('开始保存资源信息')
       const { error: resourcesError } = await supabase
@@ -189,7 +253,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       message: '上传成功',
-      book: savedBook
+      book: savedBook,
+      resources: resourceUploads
     })
     
   } catch (error: any) {

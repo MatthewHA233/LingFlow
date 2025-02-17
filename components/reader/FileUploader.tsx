@@ -21,6 +21,11 @@ interface Resource {
   id?: string;
 }
 
+interface UploadedResource {
+  original_path: string;
+  oss_path: string;
+}
+
 export function FileUploader({ onBookLoaded }: FileUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -44,40 +49,139 @@ export function FileUploader({ onBookLoaded }: FileUploaderProps) {
       });
       
       // 2. 获取当前会话
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        console.error('获取会话失败:', sessionError);
+        throw new Error('获取会话失败');
+      }
+      
       if (!session) {
-        throw new Error('请先登录');
+        // 尝试刷新会话
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError) {
+          console.error('刷新会话失败:', refreshError);
+          throw new Error('请重新登录');
+        }
+        if (!refreshData.session) {
+          throw new Error('请先登录');
+        }
+      }
+
+      const currentSession = session || (await supabase.auth.getSession()).data.session;
+      if (!currentSession) {
+        throw new Error('无法获取有效会话');
       }
 
       // 3. 准备上传数据
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('bookData', JSON.stringify({
+      
+      // 确保资源数据被正确传递
+      const uploadData = {
         title: localBook.title,
         author: localBook.author,
         metadata: localBook.metadata,
-        chapters: localBook.chapters.map(chapter => ({
+        coverUrl: localBook.coverUrl,
+        chapters: localBook.chapters.map((chapter: { title: string; content: string }) => ({
           title: chapter.title,
           content: chapter.content
         })),
-        resources: localBook.resources
-      }));
+        resources: {
+          manifest: localBook.resources?.manifest || {},
+          imageFiles: Object.keys(localBook.resources?.manifest || {}).filter(key => {
+            const item = localBook.resources?.manifest[key];
+            return item.type?.startsWith('image/') || 
+                   ['.jpg', '.jpeg', '.png', '.gif', '.webp'].some(ext => 
+                     item.href?.toLowerCase().endsWith(ext)
+                   );
+          }).map(key => ({
+            id: key,
+            ...localBook.resources?.manifest[key]
+          }))
+        }
+      };
+
+      console.log('准备上传的数据:', {
+        title: uploadData.title,
+        chaptersCount: uploadData.chapters.length,
+        resourcesCount: uploadData.resources.imageFiles.length
+      });
+
+      formData.append('bookData', JSON.stringify(uploadData));
 
       // 4. 上传到服务器
       const response = await fetch('/api/books/upload', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${currentSession.access_token}`
         },
         body: formData
       });
 
       if (!response.ok) {
         const errorData = await response.json();
+        
+        // 处理认证错误
+        if (response.status === 401 && errorData.code === 'session_expired') {
+          // 刷新会话
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError) {
+            console.error('刷新会话失败:', refreshError);
+            throw new Error('会话已过期，请重新登录');
+          }
+          
+          if (!refreshData.session) {
+            throw new Error('无法获取新的会话，请重新登录');
+          }
+          
+          // 使用新的token重试上传
+          const retryResponse = await fetch('/api/books/upload', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${refreshData.session.access_token}`
+            },
+            body: formData
+          });
+          
+          if (!retryResponse.ok) {
+            const retryErrorData = await retryResponse.json();
+            throw new Error(retryErrorData.error || '上传失败');
+          }
+          
+          const { book: serverBook, resources: uploadedResources } = await retryResponse.json();
+          const resourceUploads = uploadedResources as UploadedResource[];
+          
+          // 5. 合并本地和服务器数据
+          const mergedBook = {
+            ...localBook,
+            id: serverBook.id,
+            user_id: serverBook.user_id,
+            epub_path: serverBook.epub_path,
+            cover_url: serverBook.cover_url,
+            created_at: serverBook.created_at,
+            updated_at: serverBook.updated_at,
+            resources: {
+              manifest: Object.fromEntries(
+                Object.entries(localBook.resources?.manifest || {}).map(([id, resource]) => {
+                  const uploadedResource = resourceUploads.find(r => r.original_path === (resource as Resource).href);
+                  return [id, {
+                    ...(resource as Resource),
+                    oss_url: uploadedResource?.oss_path
+                  }];
+                })
+              )
+            }
+          };
+
+          onBookLoaded(mergedBook, arrayBuffer);
+          return;
+        }
+        
         throw new Error(errorData.error || '上传失败');
       }
 
-      const { book: serverBook } = await response.json();
+      const { book: serverBook, resources: uploadedResources } = await response.json();
+      const resourceUploads = uploadedResources as UploadedResource[];
       
       // 5. 合并本地和服务器数据
       const mergedBook = {
@@ -87,7 +191,18 @@ export function FileUploader({ onBookLoaded }: FileUploaderProps) {
         epub_path: serverBook.epub_path,
         cover_url: serverBook.cover_url,
         created_at: serverBook.created_at,
-        updated_at: serverBook.updated_at
+        updated_at: serverBook.updated_at,
+        resources: {
+          manifest: Object.fromEntries(
+            Object.entries(localBook.resources?.manifest || {}).map(([id, resource]) => {
+              const uploadedResource = resourceUploads.find(r => r.original_path === (resource as Resource).href);
+              return [id, {
+                ...(resource as Resource),
+                oss_url: uploadedResource?.oss_path
+              }];
+            })
+          )
+        }
       };
 
       onBookLoaded(mergedBook, arrayBuffer);

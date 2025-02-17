@@ -44,7 +44,7 @@ export async function parseEpub(file: File): Promise<Book> {
         console.log('找到图片文件:', {
           path: file,
           extension: ext,
-          size: zipFile._data ? zipFile._data.uncompressedSize : 'unknown'
+          size: zipFile ? (zipFile as any)._data?.uncompressedSize || 'unknown' : 'unknown'
         });
       }
       return isImage;
@@ -65,7 +65,10 @@ export async function parseEpub(file: File): Promise<Book> {
 
     // 改进资源清单处理
     const imageResources = Object.entries(manifest).filter(([key, item]: [string, any]) => {
-      const isImage = item.type?.startsWith('image/');
+      const isImage = item.type?.startsWith('image/') || 
+                     ['.jpg', '.jpeg', '.png', '.gif', '.webp'].some(ext => 
+                       item.href?.toLowerCase().endsWith(ext)
+                     );
       if (isImage) {
         console.log('资源清单中的图片:', {
           key,
@@ -77,6 +80,18 @@ export async function parseEpub(file: File): Promise<Book> {
       return isImage;
     });
 
+    // 如果资源清单中没有图片，尝试从文件列表中添加
+    if (imageResources.length === 0) {
+      console.log('资源清单中没有图片，尝试从文件列表添加');
+      imageFiles.forEach((file, index) => {
+        const id = `image_${index}`;
+        const href = file;
+        const type = `image/${path.extname(file).slice(1)}`;
+        imageResources.push([id, { href, type, id }]);
+        console.log('添加图片资源:', { id, href, type });
+      });
+    }
+
     // 尝试读取每个图片资源的内容
     for (const [key, item] of imageResources) {
       try {
@@ -86,6 +101,9 @@ export async function parseEpub(file: File): Promise<Book> {
           item.href.replace(/^\//, ''), // 移除开头的斜杠
           `OEBPS/${item.href}`,        // OEBPS目录下
           `OPS/${item.href}`,          // OPS目录下
+          ...imageFiles.filter(file =>   // 从已找到的图片文件中匹配
+            path.basename(file).toLowerCase() === path.basename(item.href).toLowerCase()
+          )
         ];
 
         // 打印所有文件以便调试
@@ -93,10 +111,12 @@ export async function parseEpub(file: File): Promise<Book> {
         
         // 尝试所有可能的路径
         let imageFile = null;
+        let foundPath = '';
         for (const testPath of possiblePaths) {
           console.log(`尝试路径: ${testPath}`);
           imageFile = zip.file(testPath);
           if (imageFile) {
+            foundPath = testPath;
             console.log(`找到图片文件: ${testPath}`);
             break;
           }
@@ -105,7 +125,7 @@ export async function parseEpub(file: File): Promise<Book> {
         if (imageFile) {
           // 使用 async 方法获取文件大小
           const blob = await imageFile.async('blob');
-          console.log(`图片文件 ${item.href} 大小:`, blob.size, 'bytes');
+          console.log(`图片文件 ${foundPath} 大小:`, blob.size, 'bytes');
         } else {
           // 如果所有路径都失败，记录更详细的错误信息
           console.warn(`未找到图片文件: ${item.href}，尝试过的路径:`, possiblePaths);
@@ -118,7 +138,7 @@ export async function parseEpub(file: File): Promise<Book> {
     const now = new Date().toISOString();
     
     const processResources = async () => {
-      const resources: Record<string, any> = {};
+      const resources: Record<string, Resource> = {};
       const manifest = await book.loaded.manifest;
       
       // 获取基础路径
@@ -127,37 +147,120 @@ export async function parseEpub(file: File): Promise<Book> {
       console.log('OPF文件路径:', opfPath);
       console.log('基础路径:', basePath);
 
-      for (const [id, item] of Object.entries(manifest)) {
-        if (item.type?.startsWith('image/')) {
-          // 规范化图片路径
-          const href = item.href.replace(/\\/g, '/').replace(/^\//, '');
-          const absolutePath = path.join(basePath, href).replace(/\\/g, '/');
-          
-          console.log('处理图片资源:', {
-            id,
-            originalHref: item.href,
-            normalizedPath: absolutePath,
-            type: item.type
-          });
+      // 获取所有图片文件
+      const imageFiles = Object.keys(zip.files).filter(file => {
+        const ext = path.extname(file).toLowerCase();
+        const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'].includes(ext);
+        if (isImage) {
+          console.log('找到图片文件:', file);
+        }
+        return isImage;
+      });
+      console.log('找到的图片文件:', imageFiles);
 
-          // 验证文件是否存在
-          const imageFile = zip.file(absolutePath) || zip.file(href);
+      // 创建路径映射表
+      const pathMapping = new Map<string, string>();
+      imageFiles.forEach(file => {
+        const normalized = file.replace(/\\/g, '/').toLowerCase();
+        const basename = path.basename(normalized);
+        pathMapping.set(normalized, file);
+        pathMapping.set(basename, file);
+      });
+
+      // 从manifest中获取图片资源
+      const manifestImages = Object.entries(manifest).filter(([_, item]) => 
+        item.type?.startsWith('image/') || 
+        ['.jpg', '.jpeg', '.png', '.gif', '.webp'].some(ext => 
+          item.href?.toLowerCase().endsWith(ext)
+        )
+      );
+
+      // 合并manifest和文件系统中的图片资源
+      const allImages = new Map<string, Resource>();
+
+      // 先处理manifest中的图片
+      for (const [id, item] of manifestImages) {
+        if (!item.href) continue;
+        
+        const href = item.href.replace(/\\/g, '/').replace(/^\//, '');
+        const normalizedHref = href.toLowerCase();
+        const basename = path.basename(normalizedHref);
+        
+        // 尝试找到实际文件
+        let actualPath = '';
+        for (const testPath of [
+          href,
+          `${basePath}/${href}`,
+          pathMapping.get(normalizedHref),
+          pathMapping.get(basename),
+          ...imageFiles.filter(f => path.basename(f).toLowerCase() === basename)
+        ]) {
+          if (testPath && zip.files[testPath]) {
+            actualPath = testPath;
+            break;
+          }
+        }
+
+        if (actualPath) {
+          console.log(`找到manifest图片的实际路径: ${actualPath} (原始href: ${href})`);
+          allImages.set(id, {
+            href: actualPath,
+            'media-type': item.type,
+            type: item.type,
+            exists: true
+          });
+        }
+      }
+
+      // 添加未在manifest中但在文件系统中存在的图片
+      for (const file of imageFiles) {
+        const basename = path.basename(file);
+        const id = `img_${basename}`;
+        const type = `image/${path.extname(file).slice(1)}`;
+        
+        if (!Array.from(allImages.values()).some(img => img.href === file)) {
+          console.log(`添加文件系统中的图片: ${file}`);
+          allImages.set(id, {
+            href: file,
+            'media-type': type,
+            type: type,
+            exists: true
+          });
+        }
+      }
+
+      // 验证并处理所有图片资源
+      await Promise.all(Array.from(allImages).map(async ([id, item]) => {
+        try {
+          const imageFile = zip.file(item.href);
           if (imageFile) {
+            const blob = await imageFile.async('blob');
             resources[id] = {
-              ...item,
-              href: absolutePath,
+              href: item.href,
+              'media-type': item['media-type'],
+              type: item.type,
               exists: true
             };
+            console.log(`成功处理图片: ${item.href} (${blob.size} bytes)`);
           } else {
-            console.warn(`未找到图片文件: ${absolutePath}`);
+            console.warn(`图片文件不存在: ${item.href}`);
             resources[id] = {
-              ...item,
-              href: absolutePath,
+              href: item.href,
+              'media-type': item['media-type'],
+              type: item.type,
               exists: false
             };
           }
+        } catch (error: any) {
+          console.error(`处理图片失败: ${item.href}`, error);
+          resources[id] = {
+            href: item.href,
+            'media-type': item['media-type'],
+            type: item.type,
+            exists: false
+          };
         }
-      }
+      }));
 
       return resources;
     };
@@ -186,11 +289,11 @@ export async function parseEpub(file: File): Promise<Book> {
         published_date: metadata.pubdate,
       }
     };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('EPUB解析详细错误:', {
-      message: error.message,
-      stack: error.stack,
-      type: error.constructor.name
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      type: error instanceof Error ? error.constructor.name : typeof error
     });
     
     // 根据错误类型返回不同的错误信息
@@ -235,8 +338,8 @@ async function getChapters(book: EpubBook): Promise<Chapter[]> {
         normalized: absolutePath
       });
       
-      // 使用独立的 div 包装图片
-      return `\n\n<div class="book-image">![${alt}](${absolutePath})</div>\n\n`;
+      // 使用独立的 div 包装图片，保留原始路径以便后续替换为 OSS URL
+      return `\n\n<div class="book-image" data-original-path="${absolutePath}">![${alt}](${absolutePath})</div>\n\n`;
     }
   });
 
@@ -314,4 +417,13 @@ async function getCoverUrl(book: EpubBook, buffer: ArrayBuffer): Promise<string 
     console.error('获取封面失败:', error);
     return undefined;
   }
+}
+
+interface Resource {
+  href: string;
+  'media-type'?: string;
+  id?: string;
+  exists?: boolean;
+  type?: string;
+  oss_url?: string;  // 添加 OSS URL 字段
 }
