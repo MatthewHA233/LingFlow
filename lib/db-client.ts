@@ -60,10 +60,11 @@ export class DbManager {
       .from('books')
       .select(`
         *,
-        chapters (*),
+        chapters (*, order_index),
         book_resources (*)
       `)
       .eq('id', bookId)
+      .order('order_index', { foreignTable: 'chapters', ascending: true })
       .single();
 
     if (error) throw error;

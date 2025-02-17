@@ -110,26 +110,15 @@ export async function POST(req: Request) {
     })
     console.log('EPUB文件上传成功:', epubResult.url)
 
-    // 6. 上传章节Markdown文件
-    console.log('开始上传章节文件')
-    const chapterUploads = await Promise.all(
-      bookData.chapters.map(async (chapter: any, index: number) => {
-        const chapterPath = `${baseDir}/chapters/${(index + 1).toString().padStart(3, '0')}.md`
-        const chapterBuffer = Buffer.from(chapter.content)
-        const result = await client.put(chapterPath, chapterBuffer, {
-          mime: 'text/markdown',
-          headers: {
-            'Cache-Control': 'max-age=31536000'
-          }
-        })
-        return {
-          ...chapter,
-          order_index: index,
-          oss_path: result.url.replace('http://', 'https://')
-        }
-      })
-    )
-    console.log('章节文件上传完成')
+    // 6. 准备章节数据（移除OSS上传）
+    console.log('开始准备章节数据')
+    const chaptersData = bookData.chapters.map((chapter: any, index: number) => ({
+      book_id: bookId,
+      title: chapter.title,
+      content: chapter.content,
+      order_index: index
+    }))
+    console.log('准备好的章节数据:', chaptersData.length, '条')
 
     // 7. 处理资源文件
     console.log('开始处理资源文件')
@@ -218,15 +207,6 @@ export async function POST(req: Request) {
 
     // 9. 保存章节信息
     console.log('开始保存章节信息')
-    const chaptersData = chapterUploads.map(chapter => ({
-      book_id: bookId,
-      title: chapter.title,
-      content: chapter.content,
-      order_index: chapter.order_index,
-      oss_path: chapter.oss_path
-    }))
-    console.log('准备插入的章节数据:', chaptersData.length, '条')
-
     const { error: chaptersError } = await supabase
       .from('chapters')
       .insert(chaptersData)

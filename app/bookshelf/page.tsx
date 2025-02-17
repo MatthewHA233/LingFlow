@@ -116,15 +116,24 @@ export default function BookshelfPage() {
       try {
         const { data, error } = await supabase
           .from('books')
-          .select('*')
+          .select(`
+            *,
+            chapters (*, order_index)
+          `)
           .eq('user_id', user.id)
           .order('updated_at', { ascending: false });
 
         if (error) throw error;
 
+        // 确保章节按顺序排列
+        const booksWithSortedChapters = (data || []).map(book => ({
+          ...book,
+          chapters: book.chapters?.sort((a: { order_index: number }, b: { order_index: number }) => a.order_index - b.order_index) || []
+        }));
+
         // 检查并更新所有书籍的封面
         const updatedBooks = await Promise.all(
-          (data || []).map(async (book) => await checkAndUpdateCover(book))
+          booksWithSortedChapters.map(async (book) => await checkAndUpdateCover(book))
         );
         
         setBooks(updatedBooks);
