@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { EbookViewer } from './EbookViewer';
-import { AudioAligner } from './AudioAligner';
+import { AudioRecognizer } from './AudioRecognizer';
 import { Book } from '@/types/book';
 import { processChapterContent } from '@/lib/content-processor';
 import { supabase } from '@/lib/supabase-client';
@@ -61,15 +61,8 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
             />
           </div>
           <div>
-            <AudioAligner 
-              bookContent={JSON.stringify({
-                title: book.title,
-                author: book.author,
-                chapters: book.chapters.map(chapter => ({
-                  title: chapter.title,
-                  content: chapter.content
-                }))
-              })} 
+            <AudioRecognizer
+              bookContent={book.chapters[currentChapter]?.content || ''}
               bookId={book.id}
             />
           </div>
