@@ -8,6 +8,7 @@ import { AudioUploader } from './AudioUploader';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatDateTime } from '@/lib/utils/date';
 import { SpeechRecognitionService, AlignmentResult } from '@/lib/services/speech-recognition';
+import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
 
 interface AudioRecognizerProps {
   bookContent: string;
@@ -124,7 +125,16 @@ export function AudioRecognizer({
       .eq('status', 'completed')
       .order('created_at', { ascending: false });
       
-    setSpeechResults(newResults || []);
+    if (newResults) {
+      setSpeechResults(newResults);
+      // 自动选择最新上传的音频
+      const latestResult = newResults[0];
+      if (latestResult) {
+        setAudioUrl(latestResult.audio_url);
+        onAudioUrlChange?.(latestResult.audio_url);
+        setSpeechId(latestResult.id);
+      }
+    }
     
     // 自动开始识别
     handleRecognition(newAudioUrl, newSpeechId);
@@ -158,24 +168,25 @@ export function AudioRecognizer({
       {/* 音频记录选择器和上传按钮 */}
       <div className="flex flex-col gap-4">
         {/* 历史记录选择器 */}
-        {speechResults.length > 0 && (
+        {(speechResults.length > 0 || status === 'completed') && (
           <div className="w-full">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">历史记录</h3>
-              <button 
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg cursor-pointer hover:bg-primary/90 transition-colors"
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium">历史记录</h3>
+              <HoverBorderGradient
+                containerClassName="rounded-full"
                 onClick={() => setShowUploader(!showUploader)}
+                className="flex items-center gap-1 text-xs"
               >
-                <Upload className="h-4 w-4" />
-                <span>{showUploader ? '取消上传' : '上传新音频'}</span>
-              </button>
+                <Upload className="w-3 h-3" />
+                <span>上传新音频</span>
+              </HoverBorderGradient>
             </div>
             {!showUploader && (
               <Select
                 value={speechId}
                 onValueChange={handleAudioChange}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="选择历史音频记录" />
                 </SelectTrigger>
                 <SelectContent>
@@ -194,9 +205,9 @@ export function AudioRecognizer({
         )}
 
         {/* 上传组件 */}
-        {(showUploader || !speechResults.length) && (
+        {(showUploader || (!speechResults.length && status !== 'completed')) && (
           <div className="w-full">
-            {showUploader && <h3 className="text-lg font-semibold mb-4">上传音频</h3>}
+            {showUploader && <h3 className="text-sm font-medium mb-2">上传音频</h3>}
             <AudioUploader
               bookId={bookId}
               onUploadSuccess={handleUploadSuccess}
@@ -215,23 +226,25 @@ export function AudioRecognizer({
 
       {/* 音频处理区域 */}
       {audioUrl && (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* 智慧语音识别按钮 - 仅在未识别时显示 */}
           {status !== 'completed' && (
-            <button
-              className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-lg px-4 py-2"
-              onClick={() => handleRecognition()}
-              disabled={status === 'processing'}
+            <HoverBorderGradient
+              containerClassName="w-full rounded-lg"
+              onClick={() => status !== 'processing' && handleRecognition()}
+              className={`w-full flex items-center justify-center gap-2 ${
+                status === 'processing' ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
             >
               <Wand2 className="h-4 w-4" />
               {status === 'processing' ? '识别中...' : '智慧语音识别'}
-            </button>
+            </HoverBorderGradient>
           )}
 
           {/* 句子播放器 */}
           {speechId && status === 'completed' && (
-            <div className="border-t pt-6">
-              <h3 className="text-lg font-semibold mb-4">逐句点读</h3>
+            <div className="border-t pt-4">
+              <h3 className="text-sm font-medium mb-2">逐句点读</h3>
               <SentencePlayer
                 speechId={speechId}
                 onTimeChange={setCurrentTime}

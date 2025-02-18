@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AudioPlayer } from './AudioPlayer';
 import { GripVertical } from 'lucide-react';
 
@@ -35,14 +35,14 @@ export function DraggableAudioPlayer({
     });
   };
 
-  const handleMouseMove = (e: MouseEvent) => {
+  const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isDragging) return;
 
     const newX = Math.max(20, Math.min(window.innerWidth - 200, e.clientX - dragStart.x));
     const newY = Math.max(20, Math.min(window.innerHeight - 200, e.clientY - dragStart.y));
 
     setPosition({ x: newX, y: newY });
-  };
+  }, [isDragging, dragStart]);
 
   const handleMouseUp = () => {
     setIsDragging(false);
@@ -58,7 +58,7 @@ export function DraggableAudioPlayer({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragStart]);
+  }, [isDragging, handleMouseMove]);
 
   return (
     <div

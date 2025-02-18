@@ -10,6 +10,7 @@ import { Search, BookOpen, ChevronLeft, ChevronRight, X, Menu } from 'lucide-rea
 import JSZip from 'jszip';
 import Image from 'next/image';
 import path from 'path';
+import React from 'react';
 
 interface EbookViewerProps {
   book: Book;
@@ -17,6 +18,8 @@ interface EbookViewerProps {
   currentChapter: number;
   onChapterChange: (chapter: number) => void;
   processedContent?: string;
+  showToc: boolean;
+  onShowTocChange: (show: boolean) => void;
 }
 
 export function EbookViewer({ 
@@ -24,7 +27,9 @@ export function EbookViewer({
   arrayBuffer,
   currentChapter,
   onChapterChange,
-  processedContent
+  processedContent,
+  showToc,
+  onShowTocChange
 }: EbookViewerProps) {
   // 使用 useMemo 缓存章节数量
   const chaptersCount = useMemo(() => book.chapters.length, [book.chapters]);
@@ -53,10 +58,9 @@ export function EbookViewer({
         currentChapterData
       });
     }
-  }, []);
+  }, [chaptersCount, currentChapter, currentChapterData]);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [showToc, setShowToc] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   
   useEffect(() => {
@@ -89,45 +93,11 @@ export function EbookViewer({
 
   return (
     <div className="h-full flex flex-col">
-      {/* 顶部导航栏 */}
-      <div className="h-10 border-b bg-card/95 backdrop-blur flex items-center px-2 sticky top-0 z-40">
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setShowToc(!showToc)}
-            className={`p-1.5 hover:bg-accent rounded-md transition-colors ${
-              showToc ? 'bg-accent' : ''
-            }`}
-          >
-            <Menu className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => handleChapterChange(Math.max(0, currentChapter - 1))}
-            disabled={currentChapter === 0}
-            className="p-1.5 hover:bg-accent rounded-md disabled:opacity-50"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => handleChapterChange(Math.min(chaptersCount - 1, currentChapter + 1))}
-            disabled={currentChapter === chaptersCount - 1}
-            className="p-1.5 hover:bg-accent rounded-md disabled:opacity-50"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="flex-1 px-4">
-          <h2 className="text-sm font-medium truncate text-center">
-            {currentChapterData.title}
-          </h2>
-        </div>
-        <div className="w-[76px]" />
-      </div>
-
       {/* 内容区域 */}
       <div className="flex-1 relative">
         {/* 主要内容 */}
         <div className="h-full overflow-y-auto">
-          <div className="max-w-2xl mx-auto px-8 py-6">
+          <div className="max-w-3xl mx-auto px-8 py-6">
             <SearchBar />
             <div className="prose prose-sm dark:prose-invert mx-auto">
               <ReactMarkdown
@@ -135,9 +105,19 @@ export function EbookViewer({
                 remarkPlugins={[remarkGfm]}
                 remarkRehypeOptions={{ allowDangerousHtml: true }}
                 components={{
-                  p: ({ children }) => (
-                    <p className="text-base leading-7 tracking-normal mb-4">{children}</p>
-                  ),
+                  p: ({ children, ...props }) => {
+                    // 检查是否包含 Image 组件
+                    const hasImage = React.Children.toArray(children).some(
+                      child => React.isValidElement(child) && child.type === Image
+                    );
+                    
+                    // 如果包含图片，使用 div 而不是 p
+                    if (hasImage) {
+                      return <div className="text-base leading-7 tracking-normal mb-4">{children}</div>;
+                    }
+                    
+                    return <p className="text-base leading-7 tracking-normal mb-4" {...props}>{children}</p>;
+                  },
                   h1: ({ children }) => (
                     <h1 className="text-2xl font-semibold mb-6 mt-8">{children}</h1>
                   ),
@@ -163,16 +143,18 @@ export function EbookViewer({
                     const imgSrc = props.src || '';
                     const imgAlt = props.alt || '电子书插图';
                     
+                    // 只允许 OSS 链接
+                    if (!imgSrc.includes('oss-cn-beijing.aliyuncs.com')) {
+                      return (
+                        <div className="my-6 relative w-full h-[300px] bg-muted flex items-center justify-center">
+                          <span className="text-muted-foreground">图片未上传到 OSS</span>
+                        </div>
+                      );
+                    }
+                    
                     return (
-                      <figure className="my-6 relative w-full" style={{ minHeight: '300px' }}>
-                        {imgSrc.startsWith('blob:') ? (
-                          <img
-                            src={imgSrc}
-                            alt={imgAlt}
-                            className="object-contain w-full h-full"
-                            style={{ maxWidth: '100%', height: 'auto' }}
-                          />
-                        ) : (
+                      <div className="my-6">
+                        <div className="relative w-full" style={{ minHeight: '300px' }}>
                           <Image
                             src={imgSrc}
                             alt={imgAlt}
@@ -180,8 +162,8 @@ export function EbookViewer({
                             className="object-contain"
                             unoptimized
                           />
-                        )}
-                      </figure>
+                        </div>
+                      </div>
                     );
                   },
                   div: ({ node, className, children, ...props }) => {
@@ -196,16 +178,29 @@ export function EbookViewer({
 
                       if (imgElement && typeof imgElement === 'object' && 'props' in imgElement) {
                         const imgProps = imgElement.props;
+                        const imgSrc = imgProps.src || '';
+                        
+                        // 只允许 OSS 链接
+                        if (!imgSrc.includes('oss-cn-beijing.aliyuncs.com')) {
+                          return (
+                            <div className="my-6 relative w-full h-[300px] bg-muted flex items-center justify-center">
+                              <span className="text-muted-foreground">图片未上传到 OSS</span>
+                            </div>
+                          );
+                        }
+                        
                         return (
-                          <figure className="my-6 relative w-full" style={{ minHeight: '300px' }}>
-                            <Image
-                              src={imgProps.src || ''}
-                              alt={imgProps.alt || '电子书插图'}
-                              fill
-                              className="object-contain"
-                              unoptimized
-                            />
-                          </figure>
+                          <div className="my-6">
+                            <div className="relative w-full" style={{ minHeight: '300px' }}>
+                              <Image
+                                src={imgSrc}
+                                alt={imgProps.alt || '电子书插图'}
+                                fill
+                                className="object-contain"
+                                unoptimized
+                              />
+                            </div>
+                          </div>
                         );
                       }
                     }
@@ -221,7 +216,7 @@ export function EbookViewer({
 
         {/* 目录 */}
         <div className={`
-          fixed left-0 top-[5.5rem] w-64 h-[calc(100vh-5.5rem)] bg-card
+          fixed left-0 top-24 w-64 h-[calc(100vh-6rem)] bg-card
           transform transition-transform duration-300 ease-in-out border-r shadow-lg z-30
           ${showToc ? 'translate-x-0' : '-translate-x-full'}
         `}>
@@ -238,7 +233,7 @@ export function EbookViewer({
                     key={index}
                     onClick={() => {
                       handleChapterChange(index);
-                      setShowToc(false);
+                      onShowTocChange(false);
                     }}
                     className={`block w-full text-left px-2 py-1.5 rounded-md text-sm ${
                       currentChapter === index 

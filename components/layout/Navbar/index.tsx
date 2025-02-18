@@ -7,10 +7,16 @@ import { AuthDialog } from '@/components/auth/AuthDialog';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
+import { Menu, X } from 'lucide-react';
 
 export function Navbar() {
   const { user, loading } = useAuthStore();
   const [showAuthDialog, setShowAuthDialog] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const toggleMenu = () => {
+    setIsMenuOpen(!isMenuOpen);
+  };
 
   return (
     <nav className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-sm border-b">
@@ -31,11 +37,8 @@ export function Navbar() {
           </span>
         </Link>
 
-        {/* Navigation Links */}
+        {/* Desktop Navigation Links */}
         <div className="hidden md:flex items-center space-x-6">
-          <Link href="/reader" className="text-foreground/80 hover:text-foreground">
-            有声书导入
-          </Link>
           <Link href="/bookshelf" className="text-foreground/80 hover:text-foreground">
             我的书架
           </Link>
@@ -58,6 +61,7 @@ export function Navbar() {
               <Button
                 variant="ghost"
                 onClick={() => setShowAuthDialog(true)}
+                className="hidden md:inline-flex"
               >
                 登录
               </Button>
@@ -69,10 +73,79 @@ export function Navbar() {
                     if (registerTab) registerTab.click();
                   }, 100);
                 }}
+                className="hidden md:inline-flex"
               >
                 注册
               </Button>
             </>
+          )}
+          
+          {/* Mobile Menu Button */}
+          <button
+            className="md:hidden p-2 hover:bg-accent rounded-lg"
+            onClick={toggleMenu}
+          >
+            {isMenuOpen ? (
+              <X className="h-6 w-6" />
+            ) : (
+              <Menu className="h-6 w-6" />
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Navigation Menu */}
+      <div className={`md:hidden ${isMenuOpen ? 'block' : 'hidden'} border-t bg-background/95 backdrop-blur-sm`}>
+        <div className="container mx-auto px-4 py-4 space-y-4">
+          <Link 
+            href="/bookshelf" 
+            className="block py-2 text-foreground/80 hover:text-foreground"
+            onClick={() => setIsMenuOpen(false)}
+          >
+            我的书架
+          </Link>
+          <Link 
+            href="/courses" 
+            className="block py-2 text-foreground/80 hover:text-foreground"
+            onClick={() => setIsMenuOpen(false)}
+          >
+            课程
+          </Link>
+          <Link 
+            href="/community" 
+            className="block py-2 text-foreground/80 hover:text-foreground"
+            onClick={() => setIsMenuOpen(false)}
+          >
+            社区
+          </Link>
+          
+          {/* Mobile Auth Buttons */}
+          {!user && !loading && (
+            <div className="pt-4 border-t space-y-2">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  setShowAuthDialog(true);
+                }}
+                className="w-full justify-center"
+              >
+                登录
+              </Button>
+              <Button
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  setShowAuthDialog(true);
+                  setTimeout(() => {
+                    const registerTab = document.querySelector('[value="register"]') as HTMLElement;
+                    if (registerTab) registerTab.click();
+                  }, 100);
+                }}
+                className="w-full justify-center"
+              >
+                注册
+              </Button>
+            </div>
           )}
         </div>
       </div>

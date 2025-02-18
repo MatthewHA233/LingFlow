@@ -90,9 +90,11 @@ export function FileUploader({ onBookLoaded }: FileUploaderProps) {
           manifest: localBook.resources?.manifest || {},
           imageFiles: Object.keys(localBook.resources?.manifest || {}).filter(key => {
             const item = localBook.resources?.manifest[key];
-            return item.type?.startsWith('image/') || 
+            if (!item) return false;
+            
+            return item['media-type']?.startsWith('image/') || 
                    ['.jpg', '.jpeg', '.png', '.gif', '.webp'].some(ext => 
-                     item.href?.toLowerCase().endsWith(ext)
+                     item.href.toLowerCase().endsWith(ext)
                    );
           }).map(key => ({
             id: key,

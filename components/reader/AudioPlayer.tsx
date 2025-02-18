@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Volume2, ChevronDown, ChevronUp } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { supabase } from '@/lib/supabase-client';
+import Image from 'next/image';
 
 interface AudioPlayerProps {
   bookId: string;
@@ -56,15 +57,21 @@ export function AudioPlayer({
 
     const handleTimeUpdate = () => {
       if (!isSeekingRef.current) {
-        const time = Math.floor(audio.currentTime * 1000);
-        setCurrentTime(time);
-        onTimeUpdate?.(time);
+        // 使用 requestAnimationFrame 限制更新频率
+        requestAnimationFrame(() => {
+          const time = Math.floor(audio.currentTime * 1000);
+          // 只有当时间差异超过 100ms 时才更新
+          if (Math.abs(time - currentTime) > 100) {
+            setCurrentTime(time);
+            onTimeUpdate?.(time);
+          }
+        });
       }
     };
 
     audio.addEventListener('timeupdate', handleTimeUpdate);
     return () => audio.removeEventListener('timeupdate', handleTimeUpdate);
-  }, [onTimeUpdate]);
+  }, [onTimeUpdate, currentTime]);
 
   // 获取书籍封面
   useEffect(() => {
@@ -96,13 +103,13 @@ export function AudioPlayer({
     }
   }, [volume]);
 
-  const handleLoadedMetadata = () => {
+  const handleLoadedMetadata = useCallback(() => {
     if (audioRef.current) {
       const audioDuration = audioRef.current.duration * 1000;
       setDuration(audioDuration);
       onDurationChange?.(audioDuration);
     }
-  };
+  }, [onDurationChange]);
 
   const handlePlayPause = async () => {
     if (audioRef.current) {
@@ -154,19 +161,17 @@ export function AudioPlayer({
   useEffect(() => {
     const audio = audioRef.current;
     if (audio) {
+      const handleEnded = () => setIsPlaying(false);
+      
       audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.addEventListener('ended', () => {
-        setIsPlaying(false);
-      });
+      audio.addEventListener('ended', handleEnded);
       
       return () => {
         audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-        audio.removeEventListener('ended', () => {
-          setIsPlaying(false);
-        });
+        audio.removeEventListener('ended', handleEnded);
       };
     }
-  }, []);
+  }, [handleLoadedMetadata]);
 
   return (
     <div className={`bg-card rounded-lg ${compact ? 'p-4' : 'p-6'} space-y-4`}>
@@ -199,10 +204,12 @@ export function AudioPlayer({
           onClick={handlePlayPause}
         >
           {coverUrl ? (
-            <img 
+            <Image 
               src={coverUrl} 
               alt="Book Cover" 
               className="w-full h-full object-cover"
+              width={500}
+              height={500}
             />
           ) : (
             <div className="w-full h-full bg-primary/10 flex items-center justify-center">

@@ -29,10 +29,11 @@ export default function ReaderPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-2xl font-bold mb-8">有声书导入</h1>
-        
         {!book ? (
-          <FileUploader onBookLoaded={handleBookLoaded} />
+          <>
+            <h1 className="text-2xl font-bold mb-8">有声书导入</h1>
+            <FileUploader onBookLoaded={handleBookLoaded} />
+          </>
         ) : (
           <ReaderContent book={book} arrayBuffer={arrayBuffer!} />
         )}

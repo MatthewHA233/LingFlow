@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { supabase } from '@/lib/supabase-client';
 import { DragHandleDots2Icon } from '@radix-ui/react-icons';
 import {
@@ -50,10 +50,14 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0 }: Sent
   const lastClickTimeRef = useRef<number>(0);
   const MIN_CLICK_INTERVAL = 200;
   const loadingRef = useRef(false);  // 添加加载状态的 ref
+  const speechIdRef = useRef(speechId); // 添加 speechId 的 ref
 
-  // 重置状态
+  // 重置状态 - 仅在 speechId 变化时执行一次
   useEffect(() => {
+    if (speechIdRef.current === speechId) return;
+    
     console.log('speechId 变化，重置状态');
+    speechIdRef.current = speechId;
     setSentences([]);
     setHasMore(true);
     setPage(1);
@@ -67,45 +71,50 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0 }: Sent
     if (scrollContainer) {
       scrollContainer.scrollTop = 0;
     }
-  }, [speechId]);
+  }, [speechId, scrollContainer]);
 
   // 计算当前播放的句子索引
   useEffect(() => {
     if (sentences.length === 0 || !currentTime) return;
 
-    const index = sentences.findIndex(
-      sentence => currentTime >= sentence.begin_time && currentTime <= sentence.end_time
-    );
-    
-    if (index !== -1) {
-      setActiveSentenceIndex(index);
-      // 确保当前播放的句子在可视范围内
-      if (index < visibleRange.start || index > visibleRange.end) {
-        setVisibleRange({
-          start: Math.max(0, index - 5),
-          end: Math.min(sentences.length - 1, index + 5)
-        });
+    // 使用 requestAnimationFrame 限制更新频率
+    const rafId = requestAnimationFrame(() => {
+      const index = sentences.findIndex(
+        sentence => currentTime >= sentence.begin_time && currentTime <= sentence.end_time
+      );
+      
+      if (index !== -1 && index !== activeSentenceIndex) {
+        setActiveSentenceIndex(index);
+        // 只在句子变化时更新可视范围
+        if (index < visibleRange.start || index > visibleRange.end) {
+          setVisibleRange({
+            start: Math.max(0, index - 5),
+            end: Math.min(sentences.length - 1, index + 5)
+          });
+        }
       }
-    }
-  }, [currentTime, sentences]);
+    });
+
+    return () => cancelAnimationFrame(rafId);
+  }, [currentTime, sentences, activeSentenceIndex, visibleRange.start, visibleRange.end, sentences.length]);
 
   // 计算单词的播放进度
-  const getWordProgress = (word: Word) => {
+  const getWordProgress = useCallback((word: Word, currentTime: number) => {
     if (!currentTime) return 0;
     if (currentTime < word.begin_time) return 0;
     if (currentTime > word.end_time) return 100;
     return ((currentTime - word.begin_time) / (word.end_time - word.begin_time)) * 100;
-  };
+  }, []);
 
   const fetchSentencesAndWords = useCallback(async (currentPage: number) => {
-    if (!speechId) {
-      console.log('没有 speechId，跳过加载');
-      setLoading(false);
+    if (!speechId || loadingRef.current) {
+      console.log('跳过加载：speechId 无效或正在加载中');
       return;
     }
 
     console.log('加载句子数据, speechId:', speechId, '页码:', currentPage);
     try {
+      loadingRef.current = true;
       setLoading(true);
       // 获取分页的句子数据
       const from = (currentPage - 1) * pageSize;
@@ -167,6 +176,8 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0 }: Sent
     if (!scrollContainer) return;
 
     const handleScroll = debounce(() => {
+      if (loadingRef.current || !hasMore) return;
+
       const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
       
       // 估算每个句子的平均高度
@@ -187,11 +198,8 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0 }: Sent
       // 检查是否需要加载更多
       // 当滚动到距离底部 200px 时就开始加载
       if (scrollHeight - scrollTop - clientHeight < 200) {
-        if (!loadingRef.current && hasMore) {
-          console.log('触发加载更多, 当前页码:', page);
-          loadingRef.current = true;  // 设置加载状态
-          setPage(prev => prev + 1);
-        }
+        console.log('触发加载更多, 当前页码:', page);
+        setPage(prev => prev + 1);
       }
     }, 100);
 
@@ -200,45 +208,15 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0 }: Sent
       handleScroll.cancel();
       scrollContainer.removeEventListener('scroll', handleScroll);
     };
-  }, [loading, hasMore, scrollContainer, sentences.length, page]);
+  }, [scrollContainer, sentences.length, page, hasMore]);
 
   // 初始加载和页码变化时加载数据
   useEffect(() => {
-    if (speechId && hasMore) {
-      console.log('开始加载数据, 页码:', page);
-      fetchSentencesAndWords(page);
-    }
-  }, [speechId, page, fetchSentencesAndWords]);
-
-  const handleDragEnd = async (result: DropResult) => {
-    if (!result.destination) return;
-
-    const items = Array.from(sentences);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
-
-    // 更新本地状态
-    setSentences(items);
-
-    // 计算新的顺序
-    const updates = items.map((sentence, index) => ({
-      id: sentence.id,
-      order: index + 1
-    }));
-
-    // 批量更新数据库
-    try {
-      const { error } = await supabase
-        .from('sentences')
-        .upsert(updates, { onConflict: 'id' });
-
-      if (error) throw error;
-    } catch (err) {
-      console.error('更新句子顺序失败:', err);
-      // 如果失败，重新加载数据
-      fetchSentencesAndWords(page);
-    }
-  };
+    if (!speechId || !hasMore || loadingRef.current) return;
+    
+    console.log('开始加载数据, 页码:', page);
+    fetchSentencesAndWords(page);
+  }, [speechId, page, hasMore, fetchSentencesAndWords]);
 
   // 优化单词点击处理
   const handleWordClick = useCallback((word: Word, e: React.MouseEvent) => {
@@ -285,30 +263,101 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0 }: Sent
   }, [onTimeChange]);
 
   // 处理句子文本，提取标点符号
-  const renderSentenceContent = useCallback((sentence: Sentence) => {
+  const renderSentenceContent = useCallback((sentence: Sentence, currentTime: number) => {
     const textContent = sentence.text_content;
     const words = sentence.words;
     const result: (Word | string)[] = [];
     
     let currentPosition = 0;
     words.forEach(word => {
-      // 查找当前单词在文本中的位置
       const wordIndex = textContent.indexOf(word.word, currentPosition);
       if (wordIndex > currentPosition) {
-        // 添加单词前的标点符号和空格
         result.push(textContent.slice(currentPosition, wordIndex));
       }
       result.push(word);
       currentPosition = wordIndex + word.word.length;
     });
     
-    // 添加最后剩余的标点符号
     if (currentPosition < textContent.length) {
       result.push(textContent.slice(currentPosition));
     }
     
     return result;
   }, []);
+
+  // 使用 memo 优化句子渲染
+  const SentenceItem = memo(({ 
+    sentence, 
+    isActive, 
+    currentTime,
+    onSentenceClick,
+    onWordClick 
+  }: { 
+    sentence: Sentence;
+    isActive: boolean;
+    currentTime: number;
+    onSentenceClick: (sentence: Sentence) => void;
+    onWordClick: (word: Word, e: React.MouseEvent) => void;
+  }) => {
+    const sentenceContent = useMemo(() => 
+      renderSentenceContent(sentence, currentTime),
+      [sentence, currentTime, renderSentenceContent]
+    );
+
+    return (
+      <div
+        className={`p-2 rounded-lg transition-colors ${
+          isActive ? 'bg-accent/30' : 'hover:bg-accent/20'
+        }`}
+        onClick={() => onSentenceClick(sentence)}
+      >
+        <div className="pl-4">
+          {isActive && (
+            <div className="mb-1 text-xs text-muted-foreground space-y-1">
+              <div className="flex items-center justify-between">
+                <span>{formatTime(sentence.begin_time)} - {formatTime(sentence.end_time)}</span>
+                <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center">
+                  {sentence.speech_rate && (
+                    <span>语速: {Math.round(sentence.speech_rate)}字/分钟</span>
+                  )}
+                  {sentence.emotion_value && (
+                    <span className="ml-2">情感值: {sentence.emotion_value.toFixed(1)}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="leading-relaxed">
+            {sentenceContent.map((item, idx) => {
+              if (typeof item === 'string') {
+                return <span key={idx} className="text-muted-foreground">{item}</span>;
+              } else {
+                const progress = getWordProgress(item, currentTime);
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="inline-block px-1 rounded hover:bg-primary/10 cursor-pointer transition-colors relative focus:outline-none focus:ring-1 focus:ring-primary active:bg-primary/20"
+                    onClick={(e) => onWordClick(item, e)}
+                    title={`点击播放: ${item.word}`}
+                  >
+                    <span className="relative z-10">{item.word}</span>
+                    <span 
+                      className="absolute inset-0 bg-primary/20 rounded transition-all duration-100"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </button>
+                );
+              }
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  });
+
+  // 添加 displayName
+  SentenceItem.displayName = 'SentenceItem';
 
   if (loading && page === 1) {
     return <div className="p-4 text-center">加载中...</div>;
@@ -319,121 +368,27 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0 }: Sent
   }
 
   return (
-    <DragDropContext onDragEnd={handleDragEnd}>
-      <Droppable droppableId="sentences">
-        {(provided) => (
-          <div
-            className="max-h-[600px] overflow-y-auto pr-2 relative scroll-smooth"
-            {...provided.droppableProps}
-            ref={(el) => {
-              provided.innerRef(el);
-              setScrollContainer(el);
-            }}
-          >
-            {/* 添加占位元素以保持滚动位置 */}
-            <div style={{ height: `${visibleRange.start * 35}px` }} />
-            
-            {sentences.slice(visibleRange.start, visibleRange.end + 1).map((sentence, index) => {
-              const actualIndex = index + visibleRange.start;
-              const isActive = actualIndex === activeSentenceIndex;
-              const sentenceContent = renderSentenceContent(sentence);
-              
-              return (
-                <Draggable
-                  key={sentence.id}
-                  draggableId={sentence.id}
-                  index={actualIndex}
-                >
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      className={`group relative bg-card rounded-lg transition-all duration-300 text-sm 
-                        ${isActive ? 'scale-[1.02] shadow-lg bg-primary/5 my-2 p-2' : 'p-1.5 my-0.5'} 
-                        ${snapshot.isDragging ? 'shadow-lg' : ''}`}
-                      onClick={() => handleSentenceClick(sentence)}
-                    >
-                      {/* 拖拽手柄 */}
-                      <div
-                        {...provided.dragHandleProps}
-                        className="absolute left-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
-                      >
-                        <DragHandleDots2Icon className="w-3 h-3 text-muted-foreground" />
-                      </div>
-                      
-                      {/* 句子内容 */}
-                      <div className="pl-4">
-                        {/* 时间戳 - 只在激活时显示 */}
-                        {isActive && (
-                          <div className="mb-1 text-xs text-muted-foreground">
-                            <span>{formatTime(sentence.begin_time)} - {formatTime(sentence.end_time)}</span>
-                          </div>
-                        )}
-
-                        {/* 单词和标点符号 */}
-                        <div className="leading-relaxed">
-                          {sentenceContent.map((item, idx) => {
-                            if (typeof item === 'string') {
-                              // 渲染标点符号和空格
-                              return <span key={idx} className="text-muted-foreground">{item}</span>;
-                            } else {
-                              // 渲染单词
-                              const progress = getWordProgress(item);
-                              return (
-                                <button
-                                  key={item.id}
-                                  type="button"
-                                  className="inline-block px-1 rounded hover:bg-primary/10 cursor-pointer transition-colors relative focus:outline-none focus:ring-1 focus:ring-primary active:bg-primary/20"
-                                  onClick={(e) => handleWordClick(item, e)}
-                                  title={`点击播放: ${item.word}`}
-                                >
-                                  <span className="relative z-10">{item.word}</span>
-                                  <span 
-                                    className="absolute inset-0 bg-primary/20 rounded transition-all duration-100"
-                                    style={{ width: `${progress}%` }}
-                                  />
-                                </button>
-                              );
-                            }
-                          })}
-                        </div>
-
-                        {/* 语速和情感值 - 只在激活时显示 */}
-                        {isActive && (sentence.speech_rate || sentence.emotion_value) && (
-                          <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
-                            {sentence.speech_rate && (
-                              <span>语速: {sentence.speech_rate}字/分钟</span>
-                            )}
-                            {sentence.emotion_value && (
-                              <span>情感值: {sentence.emotion_value}</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </Draggable>
-              );
-            })}
-            
-            {/* 添加占位元素以保持滚动位置 */}
-            <div style={{ height: `${(sentences.length - visibleRange.end - 1) * 35}px` }} />
-            
-            {provided.placeholder}
-            {loading && (
-              <div className="p-2 text-center text-muted-foreground text-xs">
-                加载更多...
-              </div>
-            )}
-            {!loading && !hasMore && sentences.length > 0 && (
-              <div className="p-2 text-center text-muted-foreground text-xs">
-                没有更多数据了
-              </div>
-            )}
-          </div>
-        )}
-      </Droppable>
-    </DragDropContext>
+    <div
+      ref={setScrollContainer}
+      className="h-[calc(100vh-20rem)] overflow-y-auto"
+    >
+      <div className="space-y-2 p-4">
+        {sentences.slice(visibleRange.start, visibleRange.end + 1).map((sentence, index) => {
+          const actualIndex = index + visibleRange.start;
+          return (
+            <div key={sentence.id || actualIndex}>
+              <SentenceItem
+                sentence={sentence}
+                isActive={actualIndex === activeSentenceIndex}
+                currentTime={currentTime}
+                onSentenceClick={handleSentenceClick}
+                onWordClick={handleWordClick}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
