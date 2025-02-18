@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2 } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, ChevronDown, ChevronUp } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { supabase } from '@/lib/supabase-client';
 
@@ -11,6 +11,7 @@ interface AudioPlayerProps {
   currentTime?: number;
   onTimeUpdate?: (currentTime: number) => void;
   onDurationChange?: (duration: number) => void;
+  compact?: boolean;
 }
 
 export function AudioPlayer({ 
@@ -18,27 +19,26 @@ export function AudioPlayer({
   audioUrl,
   currentTime: externalTime,
   onTimeUpdate,
-  onDurationChange 
+  onDurationChange,
+  compact = false
 }: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [coverUrl, setCoverUrl] = useState<string>('');
+  const [isExpanded, setIsExpanded] = useState(true);
   const audioRef = useRef<HTMLAudioElement>(null);
   const isSeekingRef = useRef(false);
 
   // 处理外部时间更新
   useEffect(() => {
-    if (!audioRef.current || isSeekingRef.current || externalTime === undefined) return;
-    
+    if (!audioRef.current || externalTime === undefined) return;
+
     const currentTimeMs = audioRef.current.currentTime * 1000;
-    if (Math.abs(externalTime - currentTimeMs) > 100) {  // 减小时间差异阈值
-      console.log('跳转到时间:', externalTime);
-      isSeekingRef.current = true;
+    if (Math.abs(externalTime - currentTimeMs) > 100) {
       audioRef.current.currentTime = externalTime / 1000;
       setCurrentTime(externalTime);
-      isSeekingRef.current = false;
       
       // 确保音频播放
       if (!isPlaying) {
@@ -47,7 +47,24 @@ export function AudioPlayer({
           .catch(console.error);
       }
     }
-  }, [externalTime]);
+  }, [externalTime, isPlaying]);
+
+  // 监听音频时间更新
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleTimeUpdate = () => {
+      if (!isSeekingRef.current) {
+        const time = Math.floor(audio.currentTime * 1000);
+        setCurrentTime(time);
+        onTimeUpdate?.(time);
+      }
+    };
+
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    return () => audio.removeEventListener('timeupdate', handleTimeUpdate);
+  }, [onTimeUpdate]);
 
   // 获取书籍封面
   useEffect(() => {
@@ -79,30 +96,26 @@ export function AudioPlayer({
     }
   }, [volume]);
 
-  const handleTimeUpdate = () => {
-    if (audioRef.current && !isSeekingRef.current) {
-      const time = Math.floor(audioRef.current.currentTime * 1000);
-      setCurrentTime(time);
-      onTimeUpdate?.(time);
-    }
-  };
-
   const handleLoadedMetadata = () => {
     if (audioRef.current) {
-      const audioDuration = audioRef.current.duration * 1000; // 转换为毫秒
+      const audioDuration = audioRef.current.duration * 1000;
       setDuration(audioDuration);
       onDurationChange?.(audioDuration);
     }
   };
 
-  const handlePlayPause = () => {
+  const handlePlayPause = async () => {
     if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.play().catch(console.error);
+      try {
+        if (isPlaying) {
+          audioRef.current.pause();
+        } else {
+          await audioRef.current.play();
+        }
+        setIsPlaying(!isPlaying);
+      } catch (error) {
+        console.error('播放控制失败:', error);
       }
-      setIsPlaying(!isPlaying);
     }
   };
 
@@ -119,36 +132,44 @@ export function AudioPlayer({
 
   const handleSkipBack = () => {
     if (audioRef.current) {
-      audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10);
+      const newTime = Math.max(0, audioRef.current.currentTime - 10);
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime * 1000);
+      onTimeUpdate?.(newTime * 1000);
     }
   };
 
   const handleSkipForward = () => {
     if (audioRef.current) {
-      audioRef.current.currentTime = Math.min(
+      const newTime = Math.min(
         audioRef.current.duration,
         audioRef.current.currentTime + 10
       );
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime * 1000);
+      onTimeUpdate?.(newTime * 1000);
     }
   };
 
   useEffect(() => {
     const audio = audioRef.current;
     if (audio) {
-      audio.addEventListener('timeupdate', handleTimeUpdate);
       audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.addEventListener('ended', () => setIsPlaying(false));
+      audio.addEventListener('ended', () => {
+        setIsPlaying(false);
+      });
       
       return () => {
-        audio.removeEventListener('timeupdate', handleTimeUpdate);
         audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-        audio.removeEventListener('ended', () => setIsPlaying(false));
+        audio.removeEventListener('ended', () => {
+          setIsPlaying(false);
+        });
       };
     }
   }, []);
 
   return (
-    <div className="bg-card rounded-lg p-6 space-y-4">
+    <div className={`bg-card rounded-lg ${compact ? 'p-4' : 'p-6'} space-y-4`}>
       {/* 音频元素 */}
       <audio 
         ref={audioRef}
@@ -156,13 +177,26 @@ export function AudioPlayer({
         preload="metadata"
       />
       
+      {/* 展开/收起按钮 */}
+      <div className="flex justify-between items-center">
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="p-1 hover:bg-accent rounded-md text-muted-foreground"
+        >
+          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+        </button>
+      </div>
+
       {/* 圆形封面 */}
-      <div className="relative w-48 h-48 mx-auto">
-        <div 
+      <div className={`relative mx-auto transition-all duration-300 ${
+        compact ? 'w-32 h-32' : 'w-48 h-48'
+      }`}>
+        <button 
           className={`absolute inset-0 rounded-full overflow-hidden ${
             isPlaying ? 'animate-spin' : ''
           }`} 
           style={{ animationDuration: '3s' }}
+          onClick={handlePlayPause}
         >
           {coverUrl ? (
             <img 
@@ -175,63 +209,67 @@ export function AudioPlayer({
               <span className="text-primary/40">No Cover</span>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* 进度条 */}
-      <div className="space-y-2">
-        <Slider
-          value={[currentTime]}
-          min={0}
-          max={duration}
-          step={1}
-          onValueChange={handleSeek}
-          className="w-full"
-        />
-        <div className="flex justify-between text-sm text-muted-foreground">
-          <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(duration)}</span>
-        </div>
-      </div>
-
-      {/* 控制按钮 */}
-      <div className="flex items-center justify-center gap-4">
-        <button 
-          className="p-2 hover:bg-primary/10 rounded-full"
-          onClick={handleSkipBack}
-        >
-          <SkipBack className="w-5 h-5" />
-        </button>
-        <button 
-          className="p-4 bg-primary text-primary-foreground rounded-full hover:bg-primary/90"
-          onClick={handlePlayPause}
-        >
-          {isPlaying ? (
-            <Pause className="w-6 h-6" />
-          ) : (
-            <Play className="w-6 h-6" />
-          )}
-        </button>
-        <button 
-          className="p-2 hover:bg-primary/10 rounded-full"
-          onClick={handleSkipForward}
-        >
-          <SkipForward className="w-5 h-5" />
         </button>
       </div>
 
-      {/* 音量控制 */}
-      <div className="flex items-center gap-2">
-        <Volume2 className="w-4 h-4" />
-        <Slider
-          value={[volume * 100]}
-          min={0}
-          max={100}
-          step={1}
-          onValueChange={(value) => setVolume(value[0] / 100)}
-          className="w-24"
-        />
-      </div>
+      {isExpanded && (
+        <>
+          {/* 进度条 */}
+          <div className="space-y-2">
+            <Slider
+              value={[currentTime]}
+              min={0}
+              max={duration}
+              step={1}
+              onValueChange={handleSeek}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(duration)}</span>
+            </div>
+          </div>
+
+          {/* 控制按钮 */}
+          <div className="flex items-center justify-center gap-2">
+            <button 
+              className="p-1.5 hover:bg-accent rounded-full"
+              onClick={handleSkipBack}
+            >
+              <SkipBack className="w-4 h-4" />
+            </button>
+            <button 
+              className="p-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90"
+              onClick={handlePlayPause}
+            >
+              {isPlaying ? (
+                <Pause className="w-4 h-4" />
+              ) : (
+                <Play className="w-4 h-4" />
+              )}
+            </button>
+            <button 
+              className="p-1.5 hover:bg-accent rounded-full"
+              onClick={handleSkipForward}
+            >
+              <SkipForward className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* 音量控制 */}
+          <div className="flex items-center gap-2">
+            <Volume2 className="w-3 h-3" />
+            <Slider
+              value={[volume * 100]}
+              min={0}
+              max={100}
+              step={1}
+              onValueChange={(value) => setVolume(value[0] / 100)}
+              className="w-20"
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }
