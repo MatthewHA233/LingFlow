@@ -9,7 +9,7 @@ export function AnimatedButton() {
   const router = useRouter();
 
   const handleClick = () => {
-    router.push('/bookshelf');
+    router.push('/context-library/bookshelf');
   };
 
   return (
@@ -20,7 +20,7 @@ export function AnimatedButton() {
         onClick={handleClick}
       >
         <div className="overlay" ref={overlayRef} />
-        <h1 className="gradient-text">开始阅读</h1>
+        <h1 className="gradient-text">开始构建</h1>
       </div>
     </div>
   );

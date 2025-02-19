@@ -9,13 +9,39 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
-import { Upload, BookOpen } from 'lucide-react';
+import { Upload, BookOpen, Mail, Lock } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { useRouter } from 'next/navigation';
+import { UnauthorizedTip } from '@/components/auth/UnauthorizedTip';
 
 export default function BookshelfPage() {
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [placeholderStates, setPlaceholderStates] = useState<Record<string, boolean>>({});
+  const [showLoginForm, setShowLoginForm] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
   const { user } = useAuthStore();
+  const router = useRouter();
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) throw error;
+      
+      router.refresh();
+    } catch (error: any) {
+      setLoginError(error.message || '登录失败，请重试');
+    }
+  };
 
   // 添加检查和更新封面的函数
   const checkAndUpdateCover = async (book: Book) => {
@@ -151,14 +177,7 @@ export default function BookshelfPage() {
   }, [user]);
 
   if (!user) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">请先登录</h1>
-          <p className="text-muted-foreground">登录后即可查看您的书架</p>
-        </div>
-      </div>
-    );
+    return <UnauthorizedTip />;
   }
 
   return (

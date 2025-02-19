@@ -3,7 +3,7 @@
 ```json
 {
   "scripts": {
-    "start": "set PORT=4000 && next start"
+    "start": "set PORT=4000&& next start"
   }
 }
 ```
@@ -11,7 +11,7 @@
 ```json
 {
   "scripts": {
-    "start": "next start -p 4000"
+    "start": "PORT=4000 next start"
   }
 }
 ```

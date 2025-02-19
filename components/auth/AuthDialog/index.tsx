@@ -15,27 +15,54 @@ interface AuthDialogProps {
 export function AuthDialog({ open, onOpenChange, defaultTab = 'login' }: AuthDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogTitle className="text-center text-lg font-semibold">
-          登录/注册
+      <DialogContent className="bg-gray-900 border-gray-800 text-white sm:max-w-[425px]">
+        <DialogTitle className="text-center text-xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-primary via-purple-500 to-blue-500">
+          欢迎使用洪流二语习得
         </DialogTitle>
-        <DialogDescription className="text-center text-sm text-muted-foreground">
-          请选择登录方式
+        <DialogDescription className="text-center text-sm text-gray-400">
+          登录后即可访问您的专属语境库和锚点域
         </DialogDescription>
         <Tabs defaultValue={defaultTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="login">邮箱登录</TabsTrigger>
-            <TabsTrigger value="register">注册</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 bg-gray-800/50 p-1">
+            <TabsTrigger 
+              value="register" 
+              className="data-[state=active]:bg-gray-700/50 data-[state=active]:text-primary"
+            >
+              注册账号
+            </TabsTrigger>
+            <TabsTrigger 
+              value="login"
+              className="data-[state=active]:bg-gray-700/50 data-[state=active]:text-primary"
+            >
+              登录账号
+            </TabsTrigger>
           </TabsList>
-          <TabsContent value="login">
-            <EmailLoginForm onSuccess={() => onOpenChange(false)} />
-            <div className="mt-4">
+          <div className="mt-6 space-y-4">
+            <TabsContent value="login" className="space-y-4 m-0">
+              <EmailLoginForm onSuccess={() => onOpenChange(false)} />
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-gray-700" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-gray-900 px-2 text-gray-400">或</span>
+                </div>
+              </div>
               <WechatLogin onSuccess={() => onOpenChange(false)} />
-            </div>
-          </TabsContent>
-          <TabsContent value="register">
-            <EmailRegisterForm onSuccess={() => onOpenChange(false)} />
-          </TabsContent>
+            </TabsContent>
+            <TabsContent value="register" className="space-y-4 m-0">
+              <EmailRegisterForm onSuccess={() => onOpenChange(false)} />
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-gray-700" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-gray-900 px-2 text-gray-400">或</span>
+                </div>
+              </div>
+              <WechatLogin onSuccess={() => onOpenChange(false)} />
+            </TabsContent>
+          </div>
         </Tabs>
       </DialogContent>
     </Dialog>
