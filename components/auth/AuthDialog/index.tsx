@@ -9,9 +9,10 @@ import { WechatLogin } from './WechatLogin';
 interface AuthDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  defaultTab?: 'login' | 'register';
 }
 
-export function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
+export function AuthDialog({ open, onOpenChange, defaultTab = 'login' }: AuthDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
@@ -21,7 +22,7 @@ export function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
         <DialogDescription className="text-center text-sm text-muted-foreground">
           请选择登录方式
         </DialogDescription>
-        <Tabs defaultValue="login" className="w-full">
+        <Tabs defaultValue={defaultTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login">邮箱登录</TabsTrigger>
             <TabsTrigger value="register">注册</TabsTrigger>

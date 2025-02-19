@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth';
 import { User } from '@supabase/supabase-js';
 import { toast } from 'sonner';
-import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
 import { LogOut, Settings, User as LucideUser } from 'lucide-react';
 
 interface UserMenuProps {
@@ -47,33 +46,37 @@ export function UserMenu({ user }: UserMenuProps) {
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>我的账户</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem>
-          <HoverBorderGradient
-            containerClassName="rounded-md w-full"
-            className="flex items-center gap-2 text-sm"
+        <DropdownMenuItem asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start gap-2 text-foreground/80 hover:text-foreground"
           >
             <LucideUser className="w-4 h-4" />
             <span>个人资料</span>
-          </HoverBorderGradient>
+          </Button>
         </DropdownMenuItem>
-        <DropdownMenuItem>
-          <HoverBorderGradient
-            containerClassName="rounded-md w-full"
-            className="flex items-center gap-2 text-sm"
+        <DropdownMenuItem asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start gap-2 text-foreground/80 hover:text-foreground"
           >
             <Settings className="w-4 h-4" />
             <span>设置</span>
-          </HoverBorderGradient>
+          </Button>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleSignOut}>
-          <HoverBorderGradient
-            containerClassName="rounded-md w-full"
-            className="flex items-center gap-2 text-sm text-red-500"
+        <DropdownMenuItem asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleSignOut}
+            className="w-full justify-start gap-2 text-destructive hover:text-destructive"
           >
             <LogOut className="w-4 h-4" />
             <span>退出登录</span>
-          </HoverBorderGradient>
+          </Button>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

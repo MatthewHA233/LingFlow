@@ -5,6 +5,11 @@ import crypto from 'crypto'
 import JSZip from 'jszip'
 import { processChapterContent, normalizePath, getMimeType } from '@/lib/content-processor'
 
+// 使用新的配置方式
+export const runtime = 'nodejs'
+export const maxDuration = 60
+export const dynamic = 'force-dynamic'
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,

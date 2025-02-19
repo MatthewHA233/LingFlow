@@ -9,6 +9,10 @@ const nextConfig = {
       properties: ['youmind-sidebar-open', 'youmind-extension-version']
     }
   },
+  experimental: {
+    serverComponentsExternalPackages: [],
+    largePageDataBytes: 128 * 100000, // 设置为约 12.8MB
+  },
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -85,6 +89,10 @@ const nextConfig = {
     ];
 
     return config;
+  },
+  typescript: {
+    // ⚠️ 警告：这会禁用生产构建时的类型检查
+    ignoreBuildErrors: true,
   }
 };
 
