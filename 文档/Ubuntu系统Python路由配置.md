@@ -76,35 +76,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // 尝试获取系统Python路径
     let pythonPath = '';
     try {
-      // 在Ubuntu系统中查找Python路径
-      const { execSync } = require('child_process');
+      // 使用虚拟环境中的Python
+      pythonPath = path.join(process.cwd(), 'app', 'api', 'python', 'venv', 'bin', 'python');
       
-      // 首先尝试python3命令
-      try {
-        pythonPath = execSync('which python3', { encoding: 'utf8' }).trim();
-      } catch (e) {
-        // 如果python3不存在，尝试python命令
-        try {
-          pythonPath = execSync('which python', { encoding: 'utf8' }).trim();
-        } catch (e) {
-          throw new Error('未找到Python安装');
-        }
-      }
-
       // 验证Python是否可用
-      const versionOutput = execSync(`${pythonPath} --version`, { encoding: 'utf8' });
+      const { execSync } = require('child_process');
+      const versionOutput = execSync(`"${pythonPath}" --version`, { encoding: 'utf8' });
       console.log('找到Python路径:', pythonPath);
       console.log('Python版本:', versionOutput.trim());
 
     } catch (error) {
       console.error('获取Python路径失败:', error);
       return NextResponse.json(
-        { error: '未找到可用的Python安装，请确保Python已正确安装' },
+        { error: '未找到可用的Python安装，请确保Python虚拟环境已正确安装' },
         { status: 500 }
       );
     }
 
-    // 设置Python环境变量
+    // 确保虚拟环境的bin目录存在于PATH中
     const pythonDir = path.dirname(pythonPath);
     const currentPath = process.env.PATH || '';
     const newPath = `${pythonDir}:${currentPath}`;
@@ -275,23 +264,52 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 ```
 
 ## 主要更改说明
+1. **Python 路径检测**
+   - Windows 版本中检查多个可能的 Python 安装路径
+   - Ubuntu 版本直接使用项目虚拟环境中的 Python
 
-1. Python路径检测
-   - 移除了Windows特定的路径检测逻辑
-   - 使用 `which` 命令查找Python可执行文件
-   - 优先尝试 `python3`，失败后尝试 `python`
+2. **路径分隔符**
+   - Windows 使用分号 (`;`) 分隔 PATH 环境变量
+   - Ubuntu 使用冒号 (`:`) 分隔 PATH 环境变量
 
-2. 环境变量设置
-   - 路径分隔符从 `;` 改为 `:`
-   - 移除了Windows特定的Scripts目录
-   - 移除了shell选项
+3. **目录结构**
+   - Windows: `Scripts` 目录
+   - Ubuntu: `bin` 目录
 
-3. 进程启动
-   - 移除了Windows特定的shell选项
-   - 使用Unix风格的路径分隔符
+4. **进程启动选项**
+   - Windows 需要 `shell: true`
+   - Ubuntu 不需要这个选项
 
-4. 文件路径处理
-   - 使用path.join确保跨平台兼容性
-   - 保持使用正斜杠(/)作为路径分隔符
+5. **路径格式**
+   - Windows 使用反斜杠 (`\`)
+   - Ubuntu 使用正斜杠 (`/`)，但 Node.js 的 `path` 模块会自动处理这个差异
 
-这些修改确保了代码在Ubuntu系统上能够正常运行，同时保持了主要功能的完整性。 
+## 环境变量设置
+
+在 Ubuntu 系统中，确保以下环境变量正确设置：
+
+```bash
+export ALIYUN_AK_ID='你的阿里云访问密钥ID'
+export ALIYUN_AK_SECRET='你的阿里云访问密钥密码'
+export NLS_APP_KEY='你的阿里云语音服务AppKey'
+```
+
+## 注意事项
+
+1. **权限设置**
+   - 确保 Python 虚拟环境目录具有正确的执行权限
+   ```bash
+   chmod -R 755 app/api/python/venv
+   ```
+
+2. **文件路径**
+   - 使用 `path.join()` 而不是手动拼接路径，以确保跨平台兼容性
+
+3. **Python 虚拟环境**
+   - 确保虚拟环境已正确创建并安装了所需依赖
+   - 虚拟环境应该位于 `app/api/python/venv` 目录
+
+4. **错误处理**
+   - 添加了更详细的错误信息，特别是关于虚拟环境的检查
+
+这些修改确保了在 Ubuntu 系统上能够正确找到和使用 Python 虚拟环境，同时保持了与 Windows 版本相同的功能。
