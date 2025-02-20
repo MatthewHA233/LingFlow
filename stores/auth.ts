@@ -46,6 +46,20 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       // 检查注册是否成功
       if (data?.user) {
+        // 创建用户 profile
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: data.user.id,
+            email: data.user.email,
+            role: 'user'
+          });
+
+        if (profileError) {
+          console.error('创建用户 profile 失败:', profileError);
+          return { error: new Error('创建用户 profile 失败') };
+        }
+
         console.log('用户创建成功:', data.user);
         return { data };
       } else {
@@ -82,19 +96,52 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   initialize: async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      set({ user: session?.user ?? null, session });
-    } finally {
-      set({ loading: false });
-    }
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_, session) => {
-        set({ user: session?.user ?? null, session });
+      // 获取初始会话
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        console.error('初始化会话失败:', error);
+        set({ user: null, session: null, loading: false });
+        return () => {}; // 返回空的清理函数
       }
-    );
 
-    return () => subscription.unsubscribe();
+      // 设置初始状态
+      set({ user: session?.user ?? null, session, loading: false });
+
+      // 监听认证状态变化
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          console.log('认证状态变化:', event, session?.user?.id);
+          
+          if (event === 'SIGNED_IN') {
+            // 确保 profile 记录存在
+            if (session?.user) {
+              const { error: profileError } = await supabase
+                .from('profiles')
+                .upsert({
+                  id: session.user.id,
+                  email: session.user.email,
+                  role: 'user'
+                }, {
+                  onConflict: 'id'
+                });
+
+              if (profileError) {
+                console.error('更新用户 profile 失败:', profileError);
+              }
+            }
+          }
+
+          set({ user: session?.user ?? null, session });
+        }
+      );
+
+      return () => subscription.unsubscribe();
+    } catch (error) {
+      console.error('认证状态初始化失败:', error);
+      set({ user: null, session: null, loading: false });
+      return () => {}; // 返回空的清理函数
+    }
   },
 
   sendPhoneVerification: async (phone: string) => {

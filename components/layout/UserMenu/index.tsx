@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { LogOut, Settings, BookOpen } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { NotificationsMenu } from './NotificationsMenu';
 
 interface UserMenuProps {
   user: User;
@@ -44,54 +45,57 @@ export function UserMenu({ user }: UserMenuProps) {
   const userInitial = user.email?.[0].toUpperCase() || 'U';
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
-          <Avatar>
-            <AvatarFallback className="bg-primary/10 text-primary">
-              {userInitial}
-            </AvatarFallback>
-          </Avatar>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>
-          <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">我的账号</p>
-            <p className="text-xs leading-none text-muted-foreground">
-              {user.email}
-            </p>
-          </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link 
-            href="/context-library/bookshelf"
-            className="w-full flex items-center cursor-pointer"
+    <div className="flex items-center gap-2">
+      <NotificationsMenu />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
+            <Avatar>
+              <AvatarFallback className="bg-primary/10 text-primary">
+                {userInitial}
+              </AvatarFallback>
+            </Avatar>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel>
+            <div className="flex flex-col space-y-1">
+              <p className="text-sm font-medium leading-none">我的账号</p>
+              <p className="text-xs leading-none text-muted-foreground">
+                {user.email}
+              </p>
+            </div>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link 
+              href="/context-library/bookshelf"
+              className="w-full flex items-center cursor-pointer"
+            >
+              <BookOpen className="w-4 h-4 mr-2" />
+              <span>我的书架</span>
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link 
+              href="/settings"
+              className="w-full flex items-center cursor-pointer"
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              <span>账号设置</span>
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={handleSignOut}
+            disabled={isLoading}
+            className="text-red-500 focus:text-red-500 cursor-pointer"
           >
-            <BookOpen className="w-4 h-4 mr-2" />
-            <span>我的书架</span>
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link 
-            href="/settings"
-            className="w-full flex items-center cursor-pointer"
-          >
-            <Settings className="w-4 h-4 mr-2" />
-            <span>账号设置</span>
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={handleSignOut}
-          disabled={isLoading}
-          className="text-red-500 focus:text-red-500 cursor-pointer"
-        >
-          <LogOut className="w-4 h-4 mr-2" />
-          <span>{isLoading ? '退出中...' : '退出登录'}</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+            <LogOut className="w-4 h-4 mr-2" />
+            <span>{isLoading ? '退出中...' : '退出登录'}</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 } 

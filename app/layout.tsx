@@ -3,10 +3,12 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { cn } from '@/lib/utils';
 import { AuthProvider } from '@/components/auth/AuthProvider';
+import { ClientLayout } from '@/components/layout/ClientLayout';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://lf.cc-ty.net.cn'),
   title: '洪流二语习得 - 革新性语言学习平台',
   description: '借助智能化"词锚点域"与大语言模型，构建属于你自己习得语料的宇宙！',
   icons: {
@@ -66,7 +68,9 @@ export default function RootLayout({
       </head>
       <body className={cn(inter.className, 'min-h-screen bg-background')}>
         <AuthProvider>
-          {children}
+          <ClientLayout>
+            {children}
+          </ClientLayout>
         </AuthProvider>
       </body>
     </html>

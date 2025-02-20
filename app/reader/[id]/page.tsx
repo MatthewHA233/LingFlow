@@ -6,6 +6,7 @@ import { Book } from '@/types/book';
 import { supabase } from '@/lib/supabase-client';
 import { useAuthStore } from '@/stores/auth';
 import { useRouter } from 'next/navigation';
+import { useLoginDialog } from '@/hooks/use-login-dialog';
 
 interface ReaderPageProps {
   params: {
@@ -20,11 +21,12 @@ export default function ReaderPage({ params }: ReaderPageProps) {
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuthStore();
   const router = useRouter();
+  const { openLoginDialog } = useLoginDialog();
 
   useEffect(() => {
     async function loadBook() {
       if (!user) {
-        router.push('/login');
+        openLoginDialog();
         return;
       }
 
@@ -93,7 +95,7 @@ export default function ReaderPage({ params }: ReaderPageProps) {
     }
 
     loadBook();
-  }, [params.id, user, router]);
+  }, [params.id, user, router, openLoginDialog]);
 
   if (!user) {
     return null; // 等待路由跳转
