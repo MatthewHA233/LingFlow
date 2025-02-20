@@ -16,39 +16,75 @@ export default function ConfirmPage() {
   useEffect(() => {
     const confirmEmail = async () => {
       try {
-        const token_hash = searchParams.get('token_hash');
-        const type = searchParams.get('type');
-        const next = searchParams.get('next') || '/';
+        // 检查URL hash中的参数
+        const hashParams = new URLSearchParams(window.location.hash.slice(1));
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        const type = hashParams.get('type');
 
-        if (token_hash && type) {
-          const { error } = await supabase.auth.verifyOtp({
-            token_hash,
-            type: type as any,
-          });
+        // 检查URL中的错误信息
+        const hashError = hashParams.get('error');
+        const hashErrorCode = hashParams.get('error_code');
+        const hashErrorDescription = hashParams.get('error_description');
 
-          if (error) {
-            setErrorMessage(error.message);
-            setVerificationState('error');
-          } else {
-            setVerificationState('success');
-            // 3秒后自动跳转
-            setTimeout(() => {
-              router.push(next);
-            }, 3000);
+        if (hashError || hashErrorCode) {
+          let errorMsg = '验证失败';
+          if (hashErrorCode === 'otp_expired') {
+            errorMsg = '验证链接已过期，请重新发送验证邮件';
+          } else if (hashErrorDescription) {
+            errorMsg = decodeURIComponent(hashErrorDescription).replace(/\+/g, ' ');
           }
-        } else {
+          setErrorMessage(errorMsg);
+          setVerificationState('error');
+          return;
+        }
+
+        if (!accessToken || !refreshToken || type !== 'signup') {
           setErrorMessage('无效的验证链接');
           setVerificationState('error');
+          return;
         }
+
+        // 设置session
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken
+        });
+
+        if (sessionError) {
+          throw sessionError;
+        }
+
+        setVerificationState('success');
+        setTimeout(() => {
+          router.push('/');
+        }, 3000);
+
       } catch (error) {
         console.error('验证失败:', error);
-        setErrorMessage('验证过程发生错误');
+        setErrorMessage(error instanceof Error ? error.message : '验证过程发生错误，请重试');
         setVerificationState('error');
       }
     };
 
     confirmEmail();
   }, [searchParams, router]);
+
+  const handleResendVerification = async () => {
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: localStorage.getItem('pendingVerificationEmail') || '',
+      });
+
+      if (error) throw error;
+      
+      setErrorMessage('新的验证邮件已发送，请查收');
+    } catch (error) {
+      console.error('重发验证邮件失败:', error);
+      setErrorMessage('重发验证邮件失败，请稍后重试');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-800 to-black flex items-center justify-center p-4">
@@ -97,18 +133,30 @@ export default function ConfirmPage() {
               <div className="space-y-2">
                 <h3 className="text-xl font-semibold text-white">验证失败</h3>
                 <p className="text-gray-400 text-sm">
-                  {errorMessage || '验证链接可能已过期或无效'}
-                  <br />请重新注册或联系客服获取帮助
+                  {errorMessage}
                 </p>
               </div>
-              <Link href="/auth/register" className="inline-block w-full">
-                <HoverBorderGradient
-                  containerClassName="w-full rounded-full"
-                  className="w-full py-2"
+              <div className="space-y-4">
+                <button
+                  onClick={handleResendVerification}
+                  className="w-full"
                 >
-                  <span className="text-white">重新注册</span>
-                </HoverBorderGradient>
-              </Link>
+                  <HoverBorderGradient
+                    containerClassName="w-full rounded-full"
+                    className="w-full py-2"
+                  >
+                    <span className="text-white">重新发送验证邮件</span>
+                  </HoverBorderGradient>
+                </button>
+                <Link href="/auth/login" className="inline-block w-full">
+                  <HoverBorderGradient
+                    containerClassName="w-full rounded-full"
+                    className="w-full py-2"
+                  >
+                    <span className="text-white">返回登录</span>
+                  </HoverBorderGradient>
+                </Link>
+              </div>
             </>
           )}
         </div>
