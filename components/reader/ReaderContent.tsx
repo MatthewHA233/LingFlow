@@ -6,65 +6,12 @@ import { DraggableAudioPlayer } from './DraggableAudioPlayer';
 import { Book } from '@/types/book';
 import { supabase } from '@/lib/supabase-client';
 import { X, Mic, Menu, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ContentBlock } from './ContentBlock';
+import { toast } from 'sonner';
 
 interface ReaderContentProps {
   book: Book;
   arrayBuffer: ArrayBuffer;
-}
-
-// 语境块组件
-function ContextBlock({ block, resources }: { block: any; resources: Array<{ original_path: string; oss_path: string }> }) {
-  const getOssUrl = (originalPath: string) => {
-    const resource = resources.find(r => r.original_path === originalPath);
-    return resource?.oss_path || originalPath;
-  };
-
-  const renderContent = () => {
-    switch (block.block_type) {
-      case 'heading_1':
-        return <h1 className="text-4xl font-bold my-6">{block.content}</h1>;
-      case 'heading_2':
-        return <h2 className="text-3xl font-bold my-5">{block.content}</h2>;
-      case 'heading_3':
-        return <h3 className="text-2xl font-bold my-4">{block.content}</h3>;
-      case 'heading_4':
-        return <h4 className="text-xl font-bold my-3">{block.content}</h4>;
-      case 'heading_5':
-        return <h5 className="text-lg font-bold my-2">{block.content}</h5>;
-      case 'heading_6':
-        return <h6 className="text-base font-bold my-2">{block.content}</h6>;
-      case 'image':
-        const imageUrl = getOssUrl(block.content);
-        return (
-          <div className="my-4">
-            <img 
-              src={imageUrl}
-              alt={block.metadata?.alt || ''}
-              className="max-w-full rounded-lg shadow-md"
-              onError={(e) => {
-                console.error('图片加载失败:', {
-                  originalUrl: block.content,
-                  ossUrl: imageUrl
-                });
-                e.currentTarget.src = '/placeholder-image.png'; // 添加一个占位图
-              }}
-            />
-          </div>
-        );
-      default:
-        return (
-          <p className="text-base leading-relaxed my-3 whitespace-pre-wrap">
-            {block.content}
-          </p>
-        );
-    }
-  };
-
-  return (
-    <div className="hover:bg-accent/5 px-4 -mx-4 rounded transition-colors">
-      {renderContent()}
-    </div>
-  );
 }
 
 export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
@@ -77,6 +24,131 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
   const [contextBlocks, setContextBlocks] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(false);
   const [parentIds, setParentIds] = useState<Record<number, string>>({});
+  const [selectedBlocks, setSelectedBlocks] = useState<Set<string>>(new Set());
+
+  // 添加块更新处理函数
+  const handleBlockUpdate = async (blockId: string, newType: string, content: string) => {
+    try {
+      const { error } = await supabase
+        .from('context_blocks')
+        .update({
+          block_type: newType,
+          content: content
+        })
+        .eq('id', blockId);
+
+      if (error) throw error;
+
+      // 更新本地状态
+      setContextBlocks(prev => ({
+        ...prev,
+        [currentChapter]: prev[currentChapter].map(block =>
+          block.id === blockId
+            ? { ...block, block_type: newType, content }
+            : block
+        )
+      }));
+    } catch (error) {
+      console.error('更新块失败:', error);
+      toast.error('更新失败');
+    }
+  };
+
+  // 添加块选择处理函数
+  const handleBlockSelect = (blockId: string, event: React.MouseEvent) => {
+    if (event.shiftKey) {
+      // 范围选择
+      const blocks = contextBlocks[currentChapter];
+      const lastSelectedBlock = Array.from(selectedBlocks).pop();
+      if (lastSelectedBlock) {
+        const startIdx = blocks.findIndex(b => b.id === lastSelectedBlock);
+        const endIdx = blocks.findIndex(b => b.id === blockId);
+        if (startIdx !== -1 && endIdx !== -1) {
+          const start = Math.min(startIdx, endIdx);
+          const end = Math.max(startIdx, endIdx);
+          const newSelection = new Set(selectedBlocks);
+          for (let i = start; i <= end; i++) {
+            newSelection.add(blocks[i].id);
+          }
+          setSelectedBlocks(newSelection);
+          return;
+        }
+      }
+    }
+
+    setSelectedBlocks(prev => {
+      const newSelection = new Set(prev);
+      if (event.metaKey || event.ctrlKey) {
+        // 多选
+        if (newSelection.has(blockId)) {
+          newSelection.delete(blockId);
+        } else {
+          newSelection.add(blockId);
+        }
+      } else {
+        // 单选
+        newSelection.clear();
+        newSelection.add(blockId);
+      }
+      return newSelection;
+    });
+  };
+
+  // 更新块排序处理函数
+  const handleBlockOrderChange = async (draggedId: string, droppedId: string, position: 'before' | 'after') => {
+    const blocks = contextBlocks[currentChapter];
+    try {
+      const draggedIndex = blocks.findIndex(b => b.id === draggedId);
+      const droppedIndex = blocks.findIndex(b => b.id === droppedId);
+      
+      if (draggedIndex === -1 || droppedIndex === -1) return;
+
+      // 创建新的排序
+      const newBlocks = [...blocks];
+      const [draggedBlock] = newBlocks.splice(draggedIndex, 1);
+      const targetIndex = position === 'before' ? droppedIndex : droppedIndex + 1;
+      newBlocks.splice(targetIndex, 0, draggedBlock);
+
+      // 先更新本地状态，提供即时反馈
+      setContextBlocks(prev => ({
+        ...prev,
+        [currentChapter]: newBlocks
+      }));
+
+      // 构建单次批量更新
+      const { data, error } = await supabase.rpc('update_block_order', {
+        block_ids: newBlocks.map(block => block.id),
+        new_order_indices: newBlocks.map((_, index) => index),
+        p_parent_id: newBlocks[0].parent_id
+      });
+
+      console.log('更新排序响应:', { data, error });
+
+      if (error || (data && !data.success)) {
+        const errorMessage = error?.message || (data && data.error) || '未知错误';
+        console.error('更新排序失败:', { error, data });
+        // 如果更新失败，回滚本地状态
+        setContextBlocks(prev => ({
+          ...prev,
+          [currentChapter]: blocks
+        }));
+        toast.error(`更新顺序失败: ${errorMessage}`);
+        return;
+      }
+
+      // 更新成功
+      toast.success(`成功更新 ${data.updated_count} 个块的顺序`);
+
+    } catch (error) {
+      console.error('排序更新失败:', error);
+      // 回滚本地状态
+      setContextBlocks(prev => ({
+        ...prev,
+        [currentChapter]: blocks
+      }));
+      toast.error('更新顺序失败，请重试');
+    }
+  };
 
   // 预加载相邻章节的数据
   const preloadAdjacentChapters = async (currentIndex: number) => {
@@ -277,11 +349,15 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : (
-            contextBlocks[currentChapter]?.map((block, index) => (
-              <ContextBlock 
-                key={block.id || index} 
+            contextBlocks[currentChapter]?.map((block) => (
+              <ContentBlock
+                key={block.id}
                 block={block}
                 resources={resources}
+                onBlockUpdate={handleBlockUpdate}
+                onOrderChange={handleBlockOrderChange}
+                isSelected={selectedBlocks.has(block.id)}
+                onSelect={handleBlockSelect}
               />
             ))
           )}

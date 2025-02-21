@@ -325,13 +325,8 @@ async function getChapters(book: EpubBook): Promise<UploadChapter[]> {
       const basePath = path.dirname(opfPath) || 'OEBPS';
       const absolutePath = path.join(basePath, src).replace(/\\/g, '/');
       
-      console.log('处理章节中的图片:', {
-        original: src,
-        normalized: absolutePath
-      });
-      
-      // 使用独立的 div 包装图片，保留原始路径以便后续替换为 OSS URL
-      return `\n\n<div class="book-image" data-original-path="${absolutePath}">![${alt}](${absolutePath})</div>\n\n`;
+      // 直接返回Markdown图片语法
+      return `\n\n![${alt}](${absolutePath})\n\n`;
     }
   });
 

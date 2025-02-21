@@ -50,26 +50,23 @@ function parseChapterContent(content: string): ContentBlock[] {
       continue;
     }
 
-    // 处理图片
-    if (line.startsWith('![') && line.includes('](') && line.endsWith(')')) {
+    // 处理图片 - 修改图片处理逻辑
+    const imageMatch = line.match(/^!\[(.*?)\]\((.*?)\)$/);
+    if (imageMatch) {
       if (currentBlock) {
         blocks.push(currentBlock);
+        currentBlock = null;
       }
       
-      const altMatch = line.match(/!\[(.*?)\]/);
-      const srcMatch = line.match(/\((.*?)\)/);
-      
-      if (srcMatch) {
-        blocks.push({
-          type: 'image',
-          content: srcMatch[1],
-          metadata: {
-            alt: altMatch ? altMatch[1] : '',
-            originalSrc: srcMatch[1]
-          }
-        });
-      }
-      currentBlock = null;
+      const [_, alt, src] = imageMatch;
+      blocks.push({
+        type: 'image',
+        content: src,
+        metadata: {
+          alt: alt || '',
+          originalSrc: src
+        }
+      });
       continue;
     }
 
