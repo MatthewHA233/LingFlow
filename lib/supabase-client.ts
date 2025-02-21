@@ -19,7 +19,13 @@ export const supabase = createClient(
       detectSessionInUrl: true,
       flowType: 'pkce',
       storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      storageKey: 'supabase-auth',
       debug: true
+    },
+    global: {
+      headers: {
+        'x-client-info': 'supabase-js-web'
+      }
     }
   }
 )

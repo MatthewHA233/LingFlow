@@ -44,7 +44,7 @@ export default function AdminNotificationsPage() {
   const { notifications, addNotification, removeNotification, clearAll } = useNotificationStore();
   const router = useRouter();
   const { openLoginDialog } = useLoginDialog();
-  const { user } = useAuthStore();
+  const { user, checkRole } = useAuthStore();
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -54,7 +54,7 @@ export default function AdminNotificationsPage() {
       console.log('开始检查权限，当前用户:', user?.id);
       
       if (!user) {
-        console.log('用户未登录');
+        console.log('用户未登录，显示登录对话框');
         setIsLoading(false);
         setIsAuthorized(false);
         openLoginDialog();
@@ -62,49 +62,18 @@ export default function AdminNotificationsPage() {
       }
 
       try {
-        console.log('发送权限检查请求');
-        const session = await supabase.auth.getSession();
-        const accessToken = session.data.session?.access_token;
-
-        if (!accessToken) {
-          console.log('未找到访问令牌');
+        console.log('检查用户角色');
+        const role = await checkRole();
+        console.log('获取到用户角色:', role);
+        
+        if (role !== 'admin') {
+          console.log('用户不是管理员，重定向到首页');
+          toast.error('您没有管理员权限');
+          router.push('/');
           setIsAuthorized(false);
-          openLoginDialog();
-          return;
-        }
-
-        const response = await fetch('/admin/notifications/auth-check', {
-          method: 'HEAD',
-          credentials: 'include',
-          cache: 'no-store',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        });
-        
-        const authStatus = response.headers.get('x-auth-status');
-        console.log('收到权限状态:', authStatus);
-        
-        switch (authStatus) {
-          case 'unauthorized':
-            console.log('用户未登录');
-            openLoginDialog();
-            setIsAuthorized(false);
-            break;
-          case 'forbidden':
-            console.log('用户无权限');
-            toast.error('您没有管理员权限');
-            router.push('/');
-            setIsAuthorized(false);
-            break;
-          case 'authorized':
-            console.log('用户已授权');
-            setIsAuthorized(true);
-            break;
-          default:
-            console.log('权限状态异常:', authStatus);
-            toast.error('验证权限时出错');
-            setIsAuthorized(false);
+        } else {
+          console.log('用户是管理员，授权访问');
+          setIsAuthorized(true);
         }
       } catch (error) {
         console.error('检查权限失败:', error);
@@ -116,36 +85,45 @@ export default function AdminNotificationsPage() {
     };
 
     checkAuth();
-  }, [user, openLoginDialog, router]);
+  }, [user, checkRole, openLoginDialog, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('提交通知:', { title, message, type });
+    
     if (!title.trim() || !message.trim()) {
+      console.log('消息内容不完整');
       toast.error('请填写完整的消息内容');
       return;
     }
 
     try {
+      console.log('开始添加通知');
       await addNotification({
         title: title.trim(),
         message: message.trim(),
         type,
       });
 
+      console.log('通知发送成功');
       toast.success('消息发送成功');
       setTitle('');
       setMessage('');
     } catch (error) {
+      console.error('发送失败:', error);
       toast.error('发送失败: ' + (error instanceof Error ? error.message : String(error)));
     }
   };
 
   const handleClearAll = async () => {
     try {
+      console.log('开始清空所有消息');
       await clearAll();
+      console.log('消息清空成功');
       toast.success('已清空所有消息');
       setShowClearConfirm(false);
     } catch (error) {
+      console.error('清空消息失败:', error);
       toast.error('清空消息失败: ' + (error instanceof Error ? error.message : String(error)));
     }
   };
@@ -249,39 +227,24 @@ export default function AdminNotificationsPage() {
                   key={notification.id}
                   className="flex items-start justify-between border-b pb-4"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{notification.title}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        notification.type === 'error' ? 'bg-red-100 text-red-700' :
-                        notification.type === 'warning' ? 'bg-yellow-100 text-yellow-700' :
-                        notification.type === 'success' ? 'bg-green-100 text-green-700' :
-                        'bg-blue-100 text-blue-700'
-                      }`}>
-                        {
-                          notification.type === 'error' ? '错误' :
-                          notification.type === 'warning' ? '警告' :
-                          notification.type === 'success' ? '成功' : '消息'
-                        }
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
+                  <div>
+                    <h3 className="font-medium">{notification.title}</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
                       {notification.message}
                     </p>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(notification.created_at, {
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {formatDistanceToNow(new Date(notification.created_at), {
                         addSuffix: true,
-                        locale: zhCN,
+                        locale: zhCN
                       })}
-                    </span>
+                    </p>
                   </div>
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="sm"
                     onClick={() => removeNotification(notification.id)}
                   >
-                    <span className="sr-only">删除消息</span>
-                    <span className="text-lg leading-none">&times;</span>
+                    删除
                   </Button>
                 </div>
               ))}
@@ -295,7 +258,7 @@ export default function AdminNotificationsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>确认清空所有消息？</AlertDialogTitle>
             <AlertDialogDescription>
-              此操作将清空所有系统通知，所有用户都将无法看到这些消息。此操作不可撤销。
+              此操作将删除所有历史消息，且无法恢复。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
