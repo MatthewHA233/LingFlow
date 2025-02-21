@@ -20,7 +20,44 @@ async function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
   }
 }
 
-export async function parseEpub(file: File): Promise<Book> {
+interface UploadChapter {
+  title: string;
+  content: string;
+}
+
+interface ResourceItem {
+  href: string;
+  type?: string;
+  id?: string;
+  'media-type'?: string;
+  exists?: boolean;
+  properties?: string[];
+}
+
+interface LocalBook {
+  id?: string;
+  title: string;
+  author: string;
+  cover_url?: string;
+  epub_path?: string;
+  audio_path?: string;
+  user_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  metadata?: {
+    language?: string;
+    publisher?: string;
+    published_date?: string;
+    [key: string]: any;
+  };
+  chapters: UploadChapter[];
+  coverUrl?: string;
+  resources?: {
+    manifest: Record<string, ResourceItem>;
+  };
+}
+
+export async function parseEpub(file: File): Promise<LocalBook> {
   try {
     // 验证文件类型
     if (!file.type.includes('epub')) {
@@ -63,82 +100,58 @@ export async function parseEpub(file: File): Promise<Book> {
     const manifest = await book.loaded.manifest;
     console.log('资源清单:', manifest);
 
-    // 改进资源清单处理
-    const imageResources = Object.entries(manifest).filter(([key, item]: [string, any]) => {
-      const isImage = item.type?.startsWith('image/') || 
-                     ['.jpg', '.jpeg', '.png', '.gif', '.webp'].some(ext => 
-                       item.href?.toLowerCase().endsWith(ext)
-                     );
-      if (isImage) {
-        console.log('资源清单中的图片:', {
-          key,
-          href: item.href,
-          type: item.type,
-          id: item.id
-        });
-      }
-      return isImage;
-    });
+    // 改变imageResources的类型
+    const imageResources: Array<[string, ResourceItem]> = [];
 
-    // 如果资源清单中没有图片，尝试从文件列表中添加
+    // 从manifest中获取图片资源
+    const manifestImages = Object.entries(manifest).filter(([_, item]) => 
+      item.type?.startsWith('image/') || 
+      ['.jpg', '.jpeg', '.png', '.gif', '.webp'].some(ext => 
+        item.href?.toLowerCase().endsWith(ext)
+      )
+    );
+
+    // 处理manifest中的图片
+    for (const [id, item] of manifestImages) {
+      if (!item.href) continue;
+      
+      const href = item.href.replace(/\\/g, '/').replace(/^\//, '');
+      imageResources.push([id, {
+        href,
+        type: item.type,
+        id,
+        'media-type': item.type,
+        properties: [],
+        exists: true
+      }]);
+    }
+
+    // 如果没有找到图片，从文件列表添加
     if (imageResources.length === 0) {
       console.log('资源清单中没有图片，尝试从文件列表添加');
       imageFiles.forEach((file, index) => {
         const id = `image_${index}`;
         const href = file;
         const type = `image/${path.extname(file).slice(1)}`;
-        imageResources.push([id, { href, type, id }]);
+        imageResources.push([id, {
+          href,
+          type,
+          id,
+          'media-type': type,
+          properties: [],
+          exists: true
+        }]);
         console.log('添加图片资源:', { id, href, type });
       });
     }
 
-    // 尝试读取每个图片资源的内容
-    for (const [key, item] of imageResources) {
-      try {
-        // 尝试不同的路径组合来查找图片
-        const possiblePaths = [
-          item.href,                    // 原始路径
-          item.href.replace(/^\//, ''), // 移除开头的斜杠
-          `OEBPS/${item.href}`,        // OEBPS目录下
-          `OPS/${item.href}`,          // OPS目录下
-          ...imageFiles.filter(file =>   // 从已找到的图片文件中匹配
-            path.basename(file).toLowerCase() === path.basename(item.href).toLowerCase()
-          )
-        ];
-
-        // 打印所有文件以便调试
-        console.log('ZIP中的所有文件:', Object.keys(zip.files));
-        
-        // 尝试所有可能的路径
-        let imageFile = null;
-        let foundPath = '';
-        for (const testPath of possiblePaths) {
-          console.log(`尝试路径: ${testPath}`);
-          imageFile = zip.file(testPath);
-          if (imageFile) {
-            foundPath = testPath;
-            console.log(`找到图片文件: ${testPath}`);
-            break;
-          }
-        }
-
-        if (imageFile) {
-          // 使用 async 方法获取文件大小
-          const blob = await imageFile.async('blob');
-          console.log(`图片文件 ${foundPath} 大小:`, blob.size, 'bytes');
-        } else {
-          // 如果所有路径都失败，记录更详细的错误信息
-          console.warn(`未找到图片文件: ${item.href}，尝试过的路径:`, possiblePaths);
-        }
-      } catch (error) {
-        console.error(`读取图片 ${item.href} 失败:`, error);
-      }
-    }
+    // 转换为对象格式
+    const processedResources = Object.fromEntries(imageResources);
 
     const now = new Date().toISOString();
     
     const processResources = async () => {
-      const resources: Record<string, Resource> = {};
+      const resources: Record<string, ResourceItem> = {};
       const manifest = await book.loaded.manifest;
       
       // 获取基础路径
@@ -167,19 +180,11 @@ export async function parseEpub(file: File): Promise<Book> {
         pathMapping.set(basename, file);
       });
 
-      // 从manifest中获取图片资源
-      const manifestImages = Object.entries(manifest).filter(([_, item]) => 
-        item.type?.startsWith('image/') || 
-        ['.jpg', '.jpeg', '.png', '.gif', '.webp'].some(ext => 
-          item.href?.toLowerCase().endsWith(ext)
-        )
-      );
-
       // 合并manifest和文件系统中的图片资源
-      const allImages = new Map<string, Resource>();
+      const allImages = new Map<string, ResourceItem>();
 
-      // 先处理manifest中的图片
-      for (const [id, item] of manifestImages) {
+      // 处理所有图片资源
+      for (const [id, item] of imageResources) {
         if (!item.href) continue;
         
         const href = item.href.replace(/\\/g, '/').replace(/^\//, '');
@@ -202,29 +207,13 @@ export async function parseEpub(file: File): Promise<Book> {
         }
 
         if (actualPath) {
-          console.log(`找到manifest图片的实际路径: ${actualPath} (原始href: ${href})`);
+          console.log(`找到图片的实际路径: ${actualPath} (原始href: ${href})`);
           allImages.set(id, {
             href: actualPath,
             'media-type': item.type,
             type: item.type,
-            exists: true
-          });
-        }
-      }
-
-      // 添加未在manifest中但在文件系统中存在的图片
-      for (const file of imageFiles) {
-        const basename = path.basename(file);
-        const id = `img_${basename}`;
-        const type = `image/${path.extname(file).slice(1)}`;
-        
-        if (!Array.from(allImages.values()).some(img => img.href === file)) {
-          console.log(`添加文件系统中的图片: ${file}`);
-          allImages.set(id, {
-            href: file,
-            'media-type': type,
-            type: type,
-            exists: true
+            exists: true,
+            properties: []
           });
         }
       }
@@ -239,7 +228,8 @@ export async function parseEpub(file: File): Promise<Book> {
               href: item.href,
               'media-type': item['media-type'],
               type: item.type,
-              exists: true
+              exists: true,
+              properties: []
             };
             console.log(`成功处理图片: ${item.href} (${blob.size} bytes)`);
           } else {
@@ -248,7 +238,8 @@ export async function parseEpub(file: File): Promise<Book> {
               href: item.href,
               'media-type': item['media-type'],
               type: item.type,
-              exists: false
+              exists: false,
+              properties: []
             };
           }
         } catch (error: any) {
@@ -257,7 +248,8 @@ export async function parseEpub(file: File): Promise<Book> {
             href: item.href,
             'media-type': item['media-type'],
             type: item.type,
-            exists: false
+            exists: false,
+            properties: []
           };
         }
       }));
@@ -265,8 +257,8 @@ export async function parseEpub(file: File): Promise<Book> {
       return resources;
     };
 
-    const processedResources = await processResources();
-    console.log('处理后的资源:', processedResources);
+    const finalResources = await processResources();
+    console.log('处理后的资源:', finalResources);
 
     return {
       id: crypto.randomUUID(),
@@ -281,7 +273,7 @@ export async function parseEpub(file: File): Promise<Book> {
       chapters: await getChapters(book),
       coverUrl: await getCoverUrl(book, arrayBuffer),
       resources: {
-        manifest: processedResources
+        manifest: finalResources
       },
       metadata: {
         language: metadata.language,
@@ -309,8 +301,8 @@ export async function parseEpub(file: File): Promise<Book> {
   }
 }
 
-async function getChapters(book: EpubBook): Promise<Chapter[]> {
-  const chapters: Chapter[] = [];
+async function getChapters(book: EpubBook): Promise<UploadChapter[]> {
+  const chapters: UploadChapter[] = [];
   const turndownService = new TurndownService({
     headingStyle: 'atx',
     codeBlockStyle: 'fenced',

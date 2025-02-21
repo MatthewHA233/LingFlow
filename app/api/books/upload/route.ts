@@ -5,6 +5,93 @@ import crypto from 'crypto'
 import JSZip from 'jszip'
 import { processChapterContent, normalizePath, getMimeType } from '@/lib/content-processor'
 
+// 语境块类型定义
+interface ContentBlock {
+  type: 'text' | 'heading_1' | 'heading_2' | 'heading_3' | 'heading_4' | 'heading_5' | 'heading_6' | 'image';
+  content: string;
+  metadata?: Record<string, any>;
+}
+
+// 解析章节内容为语境块
+function parseChapterContent(content: string): ContentBlock[] {
+  const blocks: ContentBlock[] = [];
+  const lines = content.split('\n');
+  let currentBlock: ContentBlock | null = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // 跳过空行
+    if (!line) {
+      if (currentBlock) {
+        blocks.push(currentBlock);
+        currentBlock = null;
+      }
+      continue;
+    }
+
+    // 处理标题
+    if (line.startsWith('#')) {
+      if (currentBlock) {
+        blocks.push(currentBlock);
+      }
+      
+      const headingMatch = line.match(/^#+/);
+      if (headingMatch) {
+        const level = headingMatch[0].length;
+        if (level <= 6) {
+          blocks.push({
+            type: `heading_${level}` as ContentBlock['type'],
+            content: line.replace(/^#+\s*/, '').trim()
+          });
+        }
+      }
+      currentBlock = null;
+      continue;
+    }
+
+    // 处理图片
+    if (line.startsWith('![') && line.includes('](') && line.endsWith(')')) {
+      if (currentBlock) {
+        blocks.push(currentBlock);
+      }
+      
+      const altMatch = line.match(/!\[(.*?)\]/);
+      const srcMatch = line.match(/\((.*?)\)/);
+      
+      if (srcMatch) {
+        blocks.push({
+          type: 'image',
+          content: srcMatch[1],
+          metadata: {
+            alt: altMatch ? altMatch[1] : '',
+            originalSrc: srcMatch[1]
+          }
+        });
+      }
+      currentBlock = null;
+      continue;
+    }
+
+    // 处理普通文本
+    if (!currentBlock) {
+      currentBlock = {
+        type: 'text',
+        content: line
+      };
+    } else if (currentBlock.type === 'text') {
+      currentBlock.content += '\n' + line;
+    }
+  }
+
+  // 添加最后一个块
+  if (currentBlock) {
+    blocks.push(currentBlock);
+  }
+
+  return blocks;
+}
+
 // 使用新的配置方式
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -35,316 +122,247 @@ interface BookResource {
   mime_type: string;
 }
 
+interface ImageResource {
+  href: string;
+  'media-type'?: string;
+  type?: string;
+  id?: string;
+}
+
+interface UploadChapter {
+  title: string;
+  content: string;
+}
+
+// 添加新的接口来处理不同阶段
+interface UploadStage {
+  stage: number;
+  bookId?: string;
+  userId: string;
+  file?: File;
+  bookData?: any;
+  arrayBuffer?: ArrayBuffer;
+}
+
 export async function POST(req: Request) {
   try {
-    console.log('开始处理上传请求')
+    const formData = await req.formData();
+    const stage = Number(formData.get('stage'));
+    const userId = formData.get('userId') as string;
+    const bookId = formData.get('bookId') as string;
     
-    // 1. 验证用户身份
-    const authHeader = req.headers.get('Authorization')
+    // 第一阶段：验证用户和初始化 (0-30%)
+    if (stage === 1) {
+      const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      console.log('未找到授权头')
-      return NextResponse.json({ error: '未授权访问', code: 'no_token' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
-    
-    // 直接使用传入的token验证用户
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token)
-    
-    if (userError) {
-      console.error('用户验证失败:', userError)
-      
-      // 如果是token过期错误，返回特定的错误码
-      if (userError.message?.includes('token is expired') || userError.message?.includes('invalid JWT')) {
-        return NextResponse.json({ 
-          error: '会话已过期，请重新登录', 
-          code: 'session_expired' 
-        }, { status: 401 })
+        return NextResponse.json({ error: '未授权访问' }, { status: 401 });
       }
+
+      const token = authHeader.split(' ')[1];
+      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
       
-      return NextResponse.json({ 
-        error: '用户验证失败', 
-        code: 'user_error',
-        message: userError.message 
-      }, { status: 401 })
+      if (userError || !user) {
+        return NextResponse.json({ error: '用户验证失败' }, { status: 401 });
+      }
+
+      const file = formData.get('file') as File;
+      const bookDataStr = formData.get('bookData') as string;
+      
+      if (!file || !bookDataStr) {
+        return NextResponse.json({ error: '缺少必要的上传数据' }, { status: 400 });
+      }
+
+      const bookData = JSON.parse(bookDataStr);
+      const newBookId = crypto.randomUUID();
+
+      return NextResponse.json({
+        progress: 30,
+        bookId: newBookId,
+        userId: user.id
+      });
     }
 
-    if (!user) {
-      console.error('未找到用户信息')
-      return NextResponse.json({ 
-        error: '未找到用户信息', 
-        code: 'user_not_found' 
-      }, { status: 401 })
-    }
-
-    console.log('用户验证成功:', user.id)
-
-    // 2. 获取上传的文件和数据
-    const formData = await req.formData()
-    const file = formData.get('file') as File
-    const bookDataStr = formData.get('bookData') as string
-    
-    if (!file || !bookDataStr) {
-      console.log('缺少必要的上传数据')
-      return NextResponse.json({ error: '缺少必要的上传数据' }, { status: 400 })
-    }
-
-    const bookData = JSON.parse(bookDataStr)
-    console.log('接收到书籍数据:', {
-      title: bookData.title,
-      chaptersCount: bookData.chapters.length,
-      resourcesCount: bookData.resources?.imageFiles?.length || 0
-    })
-
-    // 3. 初始化OSS客户端
-    console.log('初始化OSS客户端')
-    const { default: OSS } = await import('ali-oss')
+    // 第二阶段：上传EPUB文件和基本信息 (30-50%)
+    if (stage === 2) {
+      const file = formData.get('file') as File;
+      const bookData = JSON.parse(formData.get('bookData') as string);
+      
+      const { default: OSS } = await import('ali-oss');
     const client = new OSS({
       region: 'oss-cn-beijing',
-      accessKeyId: process.env.ALIYUN_AK_ID || '', // 确保有默认值
-      accessKeySecret: process.env.ALIYUN_AK_SECRET || '', // 确保有默认值
+        accessKeyId: process.env.ALIYUN_AK_ID || '',
+        accessKeySecret: process.env.ALIYUN_AK_SECRET || '',
       bucket: 'chango-url',
       secure: true
-    })
+      });
 
-    // 4. 生成唯一的书籍ID和基础路径
-    const bookId = crypto.randomUUID()
-    const baseDir = `books/${user.id}/${bookId}`
-    const ossBaseUrl = `https://chango-url.oss-cn-beijing.aliyuncs.com/${baseDir}/resources`
-    console.log('生成基础路径:', baseDir)
-
-    // 5. 上传原始EPUB文件
-    console.log('开始上传EPUB文件')
-    const epubPath = `${baseDir}/${path.basename(file.name)}`
-    const epubBuffer = Buffer.from(await file.arrayBuffer())
+      const baseDir = `books/${userId}/${bookId}`;
+      const epubPath = `${baseDir}/${path.basename(file.name)}`;
+      const arrayBuffer = await file.arrayBuffer();
+      const epubBuffer = Buffer.from(arrayBuffer);
     const epubResult = await client.put(epubPath, epubBuffer, {
       mime: 'application/epub+zip',
-      headers: {
-        'Cache-Control': 'max-age=31536000'
-      }
-    })
-    console.log('EPUB文件上传成功:', epubResult.url)
+        headers: { 'Cache-Control': 'max-age=31536000' }
+      });
 
-    // 6. 准备章节数据和处理资源文件
-    console.log('开始准备章节数据和处理资源文件')
-    const resourceUploads: BookResource[] = []
-    const chapterResourceUploads = new Set<string>(); // 用于去重
+      const { data: savedBook, error: bookError } = await supabase
+        .from('books')
+        .insert([{
+          id: bookId,
+          title: bookData.title,
+          author: bookData.author,
+          epub_path: epubResult.url.replace('http://', 'https://'),
+          user_id: userId,
+          metadata: bookData.metadata || {},
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          cover_url: bookData.coverUrl || '',
+          audio_path: '',
+          description: bookData.metadata?.description || ''
+        }])
+        .select()
+        .single();
 
-    // 处理章节内容和提取资源
-    const chaptersData = bookData.chapters.map((chapter: any, index: number) => {
-      // 处理章节内容
-      const { content } = processChapterContent(
-        chapter.content,
-        [] // 初始时没有资源，先传空数组
-      );
+      if (bookError) throw bookError;
 
-      // 收集图片引用
-      const imageMatches = content.match(/!\[([^\]]*)\]\(([^)]+)\)/g) || [];
-      for (const match of imageMatches) {
-        const [, , src] = match.match(/!\[(.*?)\]\((.*?)\)/) || [];
-        if (src) {
-          const normalizedPath = normalizePath(src);
-          if (!chapterResourceUploads.has(normalizedPath)) {
-            chapterResourceUploads.add(normalizedPath);
-            resourceUploads.push({
-              book_id: bookId,
-              original_path: normalizedPath,
-              oss_path: `https://chango-url.oss-cn-beijing.aliyuncs.com/${baseDir}/resources/${path.basename(normalizedPath)}`,
-              resource_type: 'image',
-              mime_type: getMimeType(normalizedPath)
-            });
-          }
-        }
-      }
+      return NextResponse.json({
+        progress: 50,
+        book: savedBook
+      });
+    }
 
-      return {
-        book_id: bookId,
-        title: chapter.title,
-        content: content,
-        order_index: index
-      };
-    });
+    // 第三阶段：处理资源文件 (50-70%)
+    if (stage === 3) {
+      const file = formData.get('file') as File;
+      const bookData = JSON.parse(formData.get('bookData') as string);
+      const arrayBuffer = await file.arrayBuffer();
+      
+      const { default: OSS } = await import('ali-oss');
+      const client = new OSS({
+        region: 'oss-cn-beijing',
+        accessKeyId: process.env.ALIYUN_AK_ID || '',
+        accessKeySecret: process.env.ALIYUN_AK_SECRET || '',
+        bucket: 'chango-url',
+        secure: true
+      });
 
-    // 处理原始的图片资源
-    if (bookData.resources?.imageFiles?.length > 0) {
-      console.log(`找到 ${bookData.resources.imageFiles.length} 个原始资源文件`);
+      const baseDir = `books/${userId}/${bookId}`;
+      const resourceUploads: BookResource[] = [];
+      const zip = await JSZip.loadAsync(arrayBuffer);
       
       for (const resource of bookData.resources.imageFiles) {
-        if (resource.exists && resource.href) {
+        try {
           const normalizedPath = normalizePath(resource.href);
-          // 检查是否已经在章节处理中添加过
-          if (!chapterResourceUploads.has(normalizedPath)) {
+          const imageFile = zip.file(normalizedPath) || 
+                           zip.file(`OEBPS/${normalizedPath}`) || 
+                           zip.file(`OPS/${normalizedPath}`);
+
+          if (imageFile) {
+            const imageBuffer = Buffer.from(await imageFile.async('arraybuffer'));
+            const resourcePath = `${baseDir}/resources/${path.basename(normalizedPath)}`;
+            
+            await client.put(resourcePath, imageBuffer, {
+              mime: resource['media-type'] || getMimeType(normalizedPath),
+              headers: { 'Cache-Control': 'max-age=31536000' }
+            });
+
             resourceUploads.push({
               book_id: bookId,
               original_path: normalizedPath,
-              oss_path: `https://chango-url.oss-cn-beijing.aliyuncs.com/${baseDir}/resources/${path.basename(normalizedPath)}`,
+              oss_path: `https://chango-url.oss-cn-beijing.aliyuncs.com/${resourcePath}`,
               resource_type: 'image',
-              mime_type: resource.type || getMimeType(normalizedPath)
+              mime_type: resource['media-type'] || getMimeType(normalizedPath)
             });
           }
+        } catch (error) {
+          console.error('处理资源失败:', error);
         }
       }
+
+      if (resourceUploads.length > 0) {
+        await supabase.from('book_resources').insert(resourceUploads);
+      }
+
+      return NextResponse.json({
+        progress: 70,
+        resources: resourceUploads
+      });
     }
 
-    // 上传所有资源文件
-    if (resourceUploads.length > 0) {
-      console.log(`开始上传 ${resourceUploads.length} 个资源文件`);
-      
-      // 解压EPUB文件以获取图片
-      const epubZip = await JSZip.loadAsync(await file.arrayBuffer());
-      
-      // 列出所有文件用于调试
-      console.log('EPUB中的文件列表:', Object.keys(epubZip.files));
-      
-      for (const resource of resourceUploads) {
+    // 第四阶段：处理章节内容 (70-100%)
+    if (stage === 4) {
+      const bookData = JSON.parse(formData.get('bookData') as string);
+      const chapterPromises = bookData.chapters.map(async (chapter: UploadChapter, i: number) => {
         try {
-          // 尝试多种可能的路径
-          const possiblePaths = [
-            resource.original_path,
-            `OEBPS/${resource.original_path}`,
-            `OPS/${resource.original_path}`,
-            resource.original_path.replace(/^OEBPS\//, ''),
-            resource.original_path.replace(/^OPS\//, ''),
-            `OEBPS/images/${path.basename(resource.original_path)}`,
-            `OEBPS/image/${path.basename(resource.original_path)}`,
-            `OPS/images/${path.basename(resource.original_path)}`,
-            `OPS/image/${path.basename(resource.original_path)}`,
-            `images/${path.basename(resource.original_path)}`,
-            `image/${path.basename(resource.original_path)}`
-          ];
-
-          // 尝试找到图片文件
-          let imageFile = null;
-          let foundPath = '';
-          for (const testPath of possiblePaths) {
-            imageFile = epubZip.file(testPath);
-            if (imageFile) {
-              foundPath = testPath;
-              console.log(`找到图片文件: ${testPath} (原始路径: ${resource.original_path})`);
-              break;
-            }
-          }
-
-          if (!imageFile) {
-            // 如果还是找不到，尝试通过文件名在所有文件中搜索
-            const targetFileName = path.basename(resource.original_path).toLowerCase();
-            const matchingFile = Object.keys(epubZip.files).find(
-              filePath => path.basename(filePath).toLowerCase() === targetFileName
-            );
-
-            if (matchingFile) {
-              imageFile = epubZip.file(matchingFile);
-              foundPath = matchingFile;
-              console.log(`通过文件名找到图片: ${matchingFile} (原始路径: ${resource.original_path})`);
-            }
-          }
-
-          if (imageFile) {
-            // 获取图片数据
-            const imageBuffer = await imageFile.async('nodebuffer');
-            
-            // 从资源路径中提取实际的文件路径
-            const resourcePath = resource.oss_path.replace('https://chango-url.oss-cn-beijing.aliyuncs.com/', '');
-            
-            // 上传到OSS
-            const imageResult = await client.put(resourcePath, imageBuffer, {
-              mime: resource.mime_type,
-              headers: {
-                'Cache-Control': 'max-age=31536000'
+          const { data: contentParent } = await supabase
+            .from('content_parents')
+            .insert({
+              content_type: 'chapter',
+              title: chapter.title,
+              user_id: userId,
+              metadata: {
+                book_id: bookId,
+                chapter_index: i
               }
-            });
-            
-            console.log('图片上传成功:', {
-              originalPath: resource.original_path,
-              foundPath: foundPath,
-              size: imageBuffer.length,
-              url: imageResult.url
-            });
-            
-            // 更新资源的OSS路径
-            resource.oss_path = imageResult.url.replace('http://', 'https://');
-          } else {
-            console.warn('未找到图片文件:', {
-              originalPath: resource.original_path,
-              triedPaths: possiblePaths
-            });
+            })
+            .select('id')
+            .single();
+
+          if (!contentParent) throw new Error('创建 content_parent 失败');
+
+          const { data: savedChapter } = await supabase
+            .from('chapters')
+            .insert({
+              book_id: bookId,
+              title: chapter.title,
+              order_index: i,
+              parent_id: contentParent.id
+            })
+            .select()
+            .single();
+
+          if (!savedChapter) throw new Error('创建 chapter 失败');
+
+          const blocks = parseChapterContent(chapter.content);
+          const batchSize = 50;
+          const blockPromises = [];
+          
+          for (let j = 0; j < blocks.length; j += batchSize) {
+            const batch = blocks.slice(j, j + batchSize).map((block, index) => ({
+              parent_id: contentParent.id,
+              block_type: block.type,
+              content: block.content,
+              order_index: j + index,
+              metadata: block.metadata || {}
+            }));
+
+            blockPromises.push(
+              supabase.from('context_blocks').insert(batch)
+            );
           }
-        } catch (error: any) {
-          console.error('处理图片失败:', {
-            path: resource.original_path,
-            error: error.message
-          });
+
+          await Promise.all(blockPromises);
+          return savedChapter;
+        } catch (error) {
+          console.error(`处理第 ${i + 1} 章时出错:`, error);
+          throw error;
         }
-      }
-    }
-    console.log(`处理了 ${resourceUploads.length} 个资源文件`);
+      });
 
-    // 8. 保存书籍信息到数据库
-    console.log('开始保存书籍信息')
-    const bookInsertData = {
-      id: bookId,
-      title: bookData.title,
-      author: bookData.author,
-      epub_path: epubResult.url.replace('http://', 'https://'),
-      user_id: user.id,
-      metadata: bookData.metadata || {},
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      cover_url: bookData.coverUrl || '',
-      audio_path: '',
-      description: bookData.metadata?.description || ''
-    }
-    console.log('准备插入的书籍数据:', bookInsertData)
+      const savedChapters = await Promise.all(chapterPromises);
 
-    const { data: savedBook, error: bookError } = await supabase
-      .from('books')
-      .insert([bookInsertData])
-      .select('id, title, author, epub_path, user_id, created_at, updated_at, cover_url, audio_path, metadata')
-      .single()
-
-    if (bookError) {
-      console.error('保存书籍信息失败:', bookError)
-      throw bookError
-    }
-    console.log('书籍信息保存成功:', savedBook.id)
-
-    // 9. 保存章节信息
-    console.log('开始保存章节信息')
-    const { error: chaptersError } = await supabase
-      .from('chapters')
-      .insert(chaptersData)
-
-    if (chaptersError) {
-      console.error('保存章节信息失败:', chaptersError)
-      throw chaptersError
-    }
-    console.log('章节信息保存成功')
-
-    // 10. 保存资源信息
-    if (resourceUploads.length > 0) {
-      console.log('开始保存资源信息')
-      const { error: resourcesError } = await supabase
-        .from('book_resources')
-        .insert(resourceUploads)
-
-      if (resourcesError) {
-        console.error('保存资源信息失败:', resourcesError)
-        throw resourcesError
-      }
-      console.log('资源信息保存成功')
+      return NextResponse.json({
+        progress: 100,
+        chapters: savedChapters
+      });
     }
 
-    return NextResponse.json({
-      message: '上传成功',
-      book: savedBook,
-      resources: resourceUploads
-    })
-    
+    return NextResponse.json({ error: '无效的处理阶段' }, { status: 400 });
   } catch (error: any) {
-    console.error('上传处理失败:', error)
+    console.error('上传处理失败:', error);
     return NextResponse.json(
       { error: error.message || '上传失败' },
       { status: 500 }
-    )
+    );
   }
 } 

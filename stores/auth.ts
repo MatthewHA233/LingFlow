@@ -23,6 +23,9 @@ interface AuthState {
   checkRole: () => Promise<string | null>;
 }
 
+// 缓存用户角色
+const roleCache = new Map<string, string>();
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   session: null,
@@ -83,31 +86,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signInWithEmail: async (email: string, password: string) => {
-    console.log('开始邮箱登录:', email);
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (error) {
-      console.error('登录失败:', error);
-      throw new Error(error.message);
-    }
+    if (error) throw new Error(error.message);
     
-    console.log('登录成功，获取用户角色');
-    // 获取用户角色
+    // 检查角色缓存
+    const cachedRole = roleCache.get(data.user.id);
+    if (cachedRole) {
+      set({ user: data.user, session: data.session, role: cachedRole });
+      return;
+    }
+
+    // 获取并缓存角色
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', data.user.id)
       .single();
 
-    console.log('用户角色:', profile?.role);
-    set({ 
-      user: data.user, 
-      session: data.session,
-      role: profile?.role || 'user'
-    });
+    const role = profile?.role || 'user';
+    roleCache.set(data.user.id, role);
+    set({ user: data.user, session: data.session, role });
   },
 
   signInWithWechat: async () => {
@@ -115,81 +117,81 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
-    console.log('开始登出');
+    const userId = get().user?.id;
+    if (userId) roleCache.delete(userId);
     await supabase.auth.signOut();
-    console.log('登出成功');
     set({ user: null, session: null, role: null });
   },
 
   initialize: async () => {
     try {
-      console.log('开始初始化认证状态');
-      // 获取初始会话
-      const { data: { session }, error } = await supabase.auth.getSession();
+      // 1. 获取初始会话，不立即查询角色
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (error) {
-        console.error('初始化会话失败:', error);
+      if (!session?.user) {
         set({ user: null, session: null, role: null, loading: false });
         return () => {};
       }
 
-      let role = null;
-      if (session?.user) {
-        console.log('找到会话，获取用户角色:', session.user.id);
-        // 获取用户角色
+      // 2. 如果角色已缓存，直接使用缓存
+      const cachedRole = roleCache.get(session.user.id);
+      if (cachedRole) {
+        set({ 
+          user: session.user, 
+          session, 
+          role: cachedRole,
+          loading: false 
+        });
+      } else {
+        // 3. 否则设置基本状态，异步加载角色
+        set({ 
+          user: session.user, 
+          session,
+          loading: true 
+        });
+
+        // 异步获取角色
         const { data: profile } = await supabase
           .from('profiles')
           .select('role')
           .eq('id', session.user.id)
           .single();
-        role = profile?.role || 'user';
-        console.log('用户角色:', role);
+
+        const role = profile?.role || 'user';
+        roleCache.set(session.user.id, role);
+        set({ role, loading: false });
       }
 
-      // 设置初始状态
-      console.log('设置初始状态:', {
-        userId: session?.user?.id,
-        role,
-      });
-      set({ 
-        user: session?.user ?? null, 
-        session, 
-        role,
-        loading: false 
-      });
-
-      // 监听认证状态变化
-      console.log('开始监听认证状态变化');
+      // 4. 监听认证状态变化
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
-          console.log('认证状态变化:', event, session?.user?.id);
           if (event === 'SIGNED_IN' && session?.user) {
-            console.log('用户登录，获取角色');
-            // 获取用户角色
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('role')
-              .eq('id', session.user.id)
-              .single();
+            const cachedRole = roleCache.get(session.user.id);
+            if (cachedRole) {
+              // 使用缓存的角色
+              set({ user: session.user, session, role: cachedRole });
+            } else {
+              // 先设置基本状态
+              set({ user: session.user, session, loading: true });
+              
+              // 异步获取角色
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', session.user.id)
+                .single();
 
-            console.log('设置新状态:', {
-              userId: session.user.id,
-              role: profile?.role,
-            });
-            set({ 
-              user: session.user, 
-              session,
-              role: profile?.role || 'user'
-            });
+              const role = profile?.role || 'user';
+              roleCache.set(session.user.id, role);
+              set({ role, loading: false });
+            }
           } else if (event === 'SIGNED_OUT') {
-            console.log('用户登出，清除状态');
-            set({ user: null, session: null, role: null });
+            set({ user: null, session: null, role: null, loading: false });
           }
         }
       );
 
       return () => {
-        console.log('清理认证状态监听器');
         subscription.unsubscribe();
       };
     } catch (error) {

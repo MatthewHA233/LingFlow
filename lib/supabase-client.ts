@@ -1,34 +1,30 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, AuthChangeEvent, Session } from '@supabase/supabase-js'
 
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-  throw new Error('缺少环境变量: NEXT_PUBLIC_SUPABASE_URL')
-}
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-  throw new Error('缺少环境变量: NEXT_PUBLIC_SUPABASE_ANON_KEY')
-}
-
-// 创建单例 Supabase 客户端
-export const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      flowType: 'pkce',
-      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-      storageKey: 'supabase-auth',
-      debug: true
-    },
-    global: {
-      headers: {
-        'x-client-info': 'supabase-js-web'
-      }
+// 创建一个单例客户端
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+    storageKey: 'supabase.auth.token',
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    flowType: 'pkce',
+  },
+  global: {
+    headers: { 'x-application-name': 'lingflow' },
+  },
+  db: {
+    schema: 'public'
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 2
     }
   }
-)
+})
 
 // 导出类型
 export type SupabaseClient = typeof supabase
