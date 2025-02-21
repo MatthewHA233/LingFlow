@@ -1,3 +1,32 @@
+/*
+文件说明：初始化系统通知功能和管理员角色的数据库结构
+
+主要功能：
+1. 创建必要的枚举类型：
+   - message_type: 消息类型（info/success/warning/error）
+   - user_role: 用户角色（user/admin）
+
+2. 创建核心数据表：
+   - profiles: 用户档案表，包含用户角色信息
+   - system_notifications: 系统通知表
+   - user_notification_status: 用户通知状态表
+
+3. 设置数据库触发器：
+   - 自动更新记录的 updated_at 时间戳
+
+4. 创建辅助函数：
+   - is_admin: 检查用户是否为管理员
+   - get_unread_notifications_count: 获取未读消息数
+   - mark_notification_as_read: 标记单条消息为已读
+   - mark_all_notifications_as_read: 标记所有消息为已读
+
+5. 配置行级安全策略(RLS)：
+   - 用户只能访问自己的档案
+   - 普通用户只能查看系统消息
+   - 管理员可以管理系统消息
+   - 用户只能管理自己的消息状态
+*/
+
 -- 检查并创建消息类型枚举
 DO $$ 
 BEGIN

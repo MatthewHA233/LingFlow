@@ -1,3 +1,27 @@
+/*
+文件说明：初始化系统中现有用户的档案数据
+
+主要功能：
+1. 数据初始化
+   - 为系统中的现有用户创建对应的profiles记录
+   - 设置用户基本信息：id、email、role
+   - 设置时间戳：created_at、updated_at
+
+2. 用户角色分配
+   - 设置特定用户(1528919811@qq.com)为管理员(admin)角色
+   - 其他用户默认设置为普通用户(user)角色
+
+3. 冲突处理
+   - 使用ON CONFLICT (id)处理可能的重复插入
+   - 遇到冲突时更新email、role和updated_at
+   - 保证数据一致性
+
+使用场景：
+- 系统初始化时的用户数据迁移
+- 确保所有用户都有对应的档案记录
+- 建立基本的用户权限体系
+*/
+
 -- 为现有用户创建profiles记录
 INSERT INTO profiles (id, email, role, created_at, updated_at)
 VALUES 
