@@ -72,3 +72,75 @@ deactivate
 ````
 即可
 
+## PM2自动化管理
+
+### 1. 创建启动脚本
+
+创建一个名为 `start-python-env.sh` 的脚本文件：
+
+```bash
+#!/bin/bash
+
+# 设置错误时退出
+set -e
+
+# 构建前端
+npm run build
+
+# 进入项目目录
+cd /app/api/python || exit 1
+
+# 确保虚拟环境存在
+if [ ! -d "venv" ]; then
+    echo "错误: 虚拟环境不存在"
+    exit 1
+fi
+
+# 激活虚拟环境
+source venv/bin/activate
+
+# 确保激活成功
+if [ -z "$VIRTUAL_ENV" ]; then
+    echo "错误: 虚拟环境激活失败"
+    exit 1
+fi
+
+# 保持脚本运行
+exec "$@"
+```
+
+### 2. 配置PM2
+
+使用PM2配置文件管理Python应用。创建 `ecosystem.config.js`：
+
+```javascript
+module.exports = {
+  apps: [{
+    name: "python-app",
+    script: "./start-python-env.sh",
+    interpreter: "bash",
+    autorestart: true,
+    watch: false,
+    env: {
+      NODE_ENV: "production",
+    }
+  }]
+}
+```
+
+### 3. 启动服务
+
+```bash
+pm2 start ecosystem.config.js
+```
+
+设置PM2开机自启：
+```bash
+pm2 startup
+pm2 save
+```
+
+// ... existing code ...
+```
+
+这样设置后，每次系统重启，PM2都会自动启动你的Python虚拟环境和应用。记住要将脚本中的路径替换为你实际的项目路径。
