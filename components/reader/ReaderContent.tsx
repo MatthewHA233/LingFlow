@@ -106,7 +106,14 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
       // 创建新的排序
       const newBlocks = [...blocks];
       const [draggedBlock] = newBlocks.splice(draggedIndex, 1);
-      const targetIndex = position === 'before' ? droppedIndex : droppedIndex + 1;
+      
+      // 修改这里：根据拖拽方向调整目标位置
+      let targetIndex = position === 'before' ? droppedIndex : droppedIndex + 1;
+      // 如果是向下拖拽，需要减1来补偿splice操作导致的索引偏移
+      if (draggedIndex < droppedIndex) {
+        targetIndex--;
+      }
+      
       newBlocks.splice(targetIndex, 0, draggedBlock);
 
       // 先更新本地状态，提供即时反馈
@@ -178,6 +185,9 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
   useEffect(() => {
     async function loadAllParentIds() {
       try {
+        console.log('当前book对象:', book);
+        console.log('正在加载章节，book.id:', book.id);
+        
         const { data, error } = await supabase
           .from('chapters')
           .select('order_index, parent_id')
@@ -189,12 +199,20 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
           return;
         }
 
-        const idMap = data.reduce((acc, chapter) => {
+        if (!data || data.length === 0) {
+          console.error('未找到任何章节数据，book.id:', book.id);
+          return;
+        }
+
+        console.log('加载到的章节数据:', data);
+
+        const idMap = data.reduce((acc: Record<number, string>, chapter: { order_index: number; parent_id: string }) => {
           acc[chapter.order_index] = chapter.parent_id;
           return acc;
-        }, {} as Record<number, string>);
+        }, {});
 
         setParentIds(idMap);
+        console.log('设置的parentIds:', idMap);
       } catch (err) {
         console.error('加载章节父级ID失败:', err);
       }
@@ -238,7 +256,6 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
   // 加载当前章节的语境块
   useEffect(() => {
     async function loadContextBlocks() {
-      // 如果已经有缓存数据,直接使用
       if (contextBlocks[currentChapter]) {
         return;
       }
@@ -248,9 +265,11 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
         
         const parentId = parentIds[currentChapter];
         if (!parentId) {
-          console.error('未找到章节对应的parent_id');
+          console.error('未找到章节对应的parent_id:', currentChapter);
           return;
         }
+
+        console.log('正在加载章节内容，parentId:', parentId);
 
         const { data: blocks, error: blocksError } = await supabase
           .from('context_blocks')
@@ -262,6 +281,8 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
           console.error('加载语境块失败:', blocksError);
           return;
         }
+
+        console.log('加载到的blocks:', blocks);
 
         setContextBlocks(prev => ({
           ...prev,

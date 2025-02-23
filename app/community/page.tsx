@@ -1,30 +1,8 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { MessageCircle, ThumbsUp, Share2, BookOpen, PlusCircle } from 'lucide-react';
+import { PlusCircle } from 'lucide-react';
 import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
-import Image from 'next/image';
+import { ShareCard } from '@/components/community/ShareCard';
 
-interface ContextShare {
-  id: string;
-  title: string;
-  content: string;
-  tags: string[];
-  author: {
-    name: string;
-    avatar: string;
-  };
-  likes: number;
-  comments: number;
-  shares: number;
-  bookTitle: string;
-  imageUrl: string;
-}
-
-const MOCK_SHARES: ContextShare[] = [
+const MOCK_SHARES = [
   {
     id: '1',
     title: '《挪威的森林》中的绝妙比喻',
@@ -72,17 +50,18 @@ const MOCK_SHARES: ContextShare[] = [
   }
 ];
 
-export default function CommunityPage() {
-  const [shares, setShares] = useState<ContextShare[]>([]);
-
-  useEffect(() => {
-    setShares(MOCK_SHARES);
-  }, []);
+export default async function CommunityPage() {
+  const shares = MOCK_SHARES;
 
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">语境分享</h1>
+        <div>
+          <h1 className="text-2xl font-bold">语境分享</h1>
+          <p className="text-sm text-muted-foreground mt-2">
+            在这里分享你的语言学习语境，将兴趣与情感传达给其他学习者
+          </p>
+        </div>
         <HoverBorderGradient
           containerClassName="rounded-full"
           className="flex items-center gap-2 text-sm"
@@ -94,56 +73,7 @@ export default function CommunityPage() {
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {shares.map((share) => (
-          <Card key={share.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-            <div className="aspect-video relative overflow-hidden">
-              <img
-                src={share.imageUrl}
-                alt={share.title}
-                className="object-cover w-full h-full transform hover:scale-105 transition-transform duration-300"
-              />
-            </div>
-            
-            <CardHeader>
-              <div className="flex items-center gap-2 mb-2">
-                <img
-                  src={share.author.avatar}
-                  alt={share.author.name}
-                  className="w-6 h-6 rounded-full"
-                />
-                <span className="text-sm font-medium">{share.author.name}</span>
-              </div>
-              <CardTitle className="text-lg">{share.title}</CardTitle>
-              <CardDescription className="line-clamp-2">{share.content}</CardDescription>
-            </CardHeader>
-            
-            <CardContent>
-              <div className="flex flex-wrap gap-2 mb-4">
-                {share.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary">{tag}</Badge>
-                ))}
-              </div>
-              
-              <div className="flex items-center text-sm text-muted-foreground mb-4">
-                <BookOpen className="w-4 h-4 mr-1" />
-                <span>来自《{share.bookTitle}》</span>
-              </div>
-              
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <Button variant="ghost" size="sm" className="gap-1">
-                  <ThumbsUp className="w-4 h-4" />
-                  <span>{share.likes}</span>
-                </Button>
-                <Button variant="ghost" size="sm" className="gap-1">
-                  <MessageCircle className="w-4 h-4" />
-                  <span>{share.comments}</span>
-                </Button>
-                <Button variant="ghost" size="sm" className="gap-1">
-                  <Share2 className="w-4 h-4" />
-                  <span>{share.shares}</span>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <ShareCard key={share.id} share={share} />
         ))}
       </div>
     </div>

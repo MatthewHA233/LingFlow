@@ -43,11 +43,21 @@ export function ContentBlock({
   // 处理快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && blockRef.current?.contains(document.activeElement)) {
-        const key = e.key;
+      // 添加日志来调试
+      console.log('Key pressed:', {
+        key: e.key,
+        ctrlKey: e.ctrlKey,
+        shiftKey: e.shiftKey,
+        target: document.activeElement,
+        contains: blockRef.current?.contains(document.activeElement)
+      });
+
+      // 修改判断条件，确保在编辑状态下也能响应快捷键
+      if (e.ctrlKey && e.shiftKey && 
+          (blockRef.current?.contains(document.activeElement) || isSelected)) {
         let newType = block.block_type;
 
-        switch (key) {
+        switch (e.key) {
           case '1':
             newType = 'heading_1';
             break;
@@ -68,20 +78,19 @@ export function ContentBlock({
         }
 
         e.preventDefault();
+        if (isEditing) {
+          setIsEditing(false);
+        }
         onBlockUpdate?.(block.id, newType, block.content);
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [block, onBlockUpdate]);
+  }, [block, onBlockUpdate, isSelected, isEditing]);
 
   // 处理拖拽
   const handleDragStart = (e: React.DragEvent) => {
-    if (block.block_type === 'image') {
-      e.preventDefault();
-      return;
-    }
     setIsDragging(true);
     e.dataTransfer.setData('text/plain', block.id);
     e.dataTransfer.effectAllowed = 'move';
@@ -99,7 +108,7 @@ export function ContentBlock({
     const rect = blockRef.current?.getBoundingClientRect();
     if (rect) {
       const mouseY = e.clientY;
-      const threshold = rect.top + (rect.height / 2);
+      const threshold = rect.top + (rect.height / 3);
       setDropPosition(mouseY < threshold ? 'before' : 'after');
     }
   };
@@ -118,9 +127,7 @@ export function ContentBlock({
   };
 
   const handleClick = (e: React.MouseEvent) => {
-    if (block.block_type !== 'image') {
-      onSelect?.(block.id, e);
-    }
+    onSelect?.(block.id, e);
   };
 
   const handleDoubleClick = () => {
@@ -210,7 +217,7 @@ export function ContentBlock({
           'hover:bg-accent/5': !isSelected
         }
       )}
-      draggable={block.block_type !== 'image'}
+      draggable={true}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragOver={handleDragOver}
@@ -221,18 +228,20 @@ export function ContentBlock({
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
     >
-      {/* 拖拽插入线指示器 - 允许在图片块前后插入 */}
-      {dropPosition === 'before' && (
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary -translate-y-0.5" />
-      )}
-      {dropPosition === 'after' && (
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary translate-y-0.5" />
+      {dropPosition && (
+        <div 
+          className={cn(
+            "absolute left-0 right-0 h-0.5 bg-primary",
+            dropPosition === 'before' ? '-top-px' : '-bottom-px'
+          )}
+        />
       )}
       
-      {/* 只为非图片块显示拖拽手柄 */}
-      {showDragHandle && block.block_type !== 'image' && (
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full px-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab">
-          <DragHandleDots2Icon className="w-4 h-4 text-muted-foreground" />
+      {showDragHandle && (
+        <div className="absolute left+1 top-3 -translate-y-1/2 -translate-x-full px-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab">
+          <div className="p-2 hover:bg-accent/10 rounded-md">
+            <DragHandleDots2Icon className="w-5 h-5 text-muted-foreground" />
+          </div>
         </div>
       )}
       {renderContent()}
