@@ -4,6 +4,8 @@ import path from 'path'
 import crypto from 'crypto'
 import JSZip from 'jszip'
 import { processChapterContent, normalizePath, getMimeType } from '@/lib/content-processor'
+import { NextRequest } from 'next/server'
+import fs from 'fs'
 
 // 语境块类型定义
 interface ContentBlock {
@@ -89,10 +91,12 @@ function parseChapterContent(content: string): ContentBlock[] {
   return blocks;
 }
 
-// 使用新的配置方式
-export const runtime = 'nodejs'
-export const maxDuration = 60
+// 使用新的路由段配置
 export const dynamic = 'force-dynamic'
+export const revalidate = false
+export const fetchCache = 'force-no-store'
+export const maxDuration = 300
+export const runtime = 'nodejs'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -141,7 +145,66 @@ interface UploadStage {
   arrayBuffer?: ArrayBuffer;
 }
 
-export async function POST(req: Request) {
+// 流式处理中间件
+const streamHandler = async (req: NextRequest) => {
+  try {
+    const body = req.body;
+    if (!body) {
+      return NextResponse.json({ error: '空请求体' }, { status: 400 });
+    }
+
+    const reader = body.getReader();
+    const tempFilePath = `/tmp/upload-${Date.now()}.tmp`;
+    const writeStream = fs.createWriteStream(tempFilePath);
+
+    let isDone = false;
+    while (!isDone) {
+      const { done, value } = await reader.read();
+      isDone = !!done;
+      if (value) {
+        await new Promise((resolve, reject) => {
+          writeStream.write(value, (err) => {
+            err ? reject(err) : resolve(true);
+          });
+        });
+      }
+    }
+
+    writeStream.end();
+
+    return NextResponse.json({ 
+      success: true,
+      tempFilePath
+    });
+
+  } catch (error: any) {
+    console.error('流处理失败:', error);
+    return NextResponse.json(
+      { error: error.message || '流处理失败' },
+      { status: 500 }
+    );
+  }
+}
+
+// 修改POST处理函数
+export async function POST(req: NextRequest) {
+  try {
+    const contentType = req.headers.get('content-type') || '';
+    if (contentType.includes('multipart/form-data')) {
+      return await handleFormUpload(req);
+    }
+    return await streamHandler(req);
+  } catch (error: any) {
+    console.error('上传处理失败:', error);
+    return NextResponse.json(
+      { error: error.message || '上传失败' },
+      { status: 500 }
+    );
+  }
+}
+
+// 原有的表单处理函数
+async function handleFormUpload(req: NextRequest) {
   try {
     const formData = await req.formData();
     const stage = Number(formData.get('stage'));
