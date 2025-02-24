@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const webpack = require('webpack');
+const TerserPlugin = require('terser-webpack-plugin');
 
 const nextConfig = {
   reactStrictMode: true,
@@ -12,6 +13,9 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: [],
     largePageDataBytes: 128 * 100000, // 设置为约 12.8MB
+    serverActions: {
+      bodySizeLimit: '50mb',
+    },
   },
   eslint: {
     ignoreDuringBuilds: true,
@@ -87,6 +91,24 @@ const nextConfig = {
       { module: /node_modules\/vm2/ },
       { module: /node_modules\/ws/ }
     ];
+
+    if (isServer) {
+      config.optimization = {
+        ...config.optimization,
+        minimize: true,
+        minimizer: [
+          new TerserPlugin({
+            terserOptions: {
+              compress: {
+                reduce_vars: true,
+                inline: true
+              },
+              mangle: true
+            }
+          })
+        ]
+      };
+    }
 
     return config;
   },
