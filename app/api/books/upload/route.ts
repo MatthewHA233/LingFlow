@@ -230,9 +230,62 @@ interface UploadStage {
 const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
 const GC_INTERVAL = 50; // 每处理50个项目后触发GC
 
+// 添加 processChapter 函数定义
+async function processChapter(chapter: UploadChapter, index: number, userId: string, bookId: string) {
+  const { data: contentParent } = await getSupabaseClient()
+    .from('content_parents')
+    .insert({
+      content_type: 'chapter',
+      title: chapter.title,
+      user_id: userId,
+      metadata: {
+        book_id: bookId,
+        chapter_index: index
+      }
+    })
+    .select('id')
+    .single();
+
+  if (!contentParent) throw new Error('创建 content_parent 失败');
+
+  const { data: savedChapter } = await getSupabaseClient()
+    .from('chapters')
+    .insert({
+      book_id: bookId,
+      title: chapter.title,
+      order_index: index,
+      parent_id: contentParent.id
+    })
+    .select()
+    .single();
+
+  if (!savedChapter) throw new Error('创建 chapter 失败');
+
+  const blocks = parseChapterContent(chapter.content);
+  const batchSize = 50;
+  const blockPromises = [];
+  
+  for (let j = 0; j < blocks.length; j += batchSize) {
+    const batch = blocks.slice(j, j + batchSize).map((block, idx) => ({
+      parent_id: contentParent.id,
+      block_type: block.type,
+      content: block.content,
+      order_index: j + idx,
+      metadata: block.metadata || {}
+    }));
+
+    blockPromises.push(
+      getSupabaseClient().from('context_blocks').insert(batch)
+    );
+  }
+
+  await Promise.all(blockPromises);
+  return savedChapter;
+}
+
 // 修改文件处理逻辑
 async function processFileInChunks(file: File) {
-  const chunks: Buffer[] = [];
+  const chunks: Uint8Array[] = [];
   const fileStream = file.stream();
   const reader = fileStream.getReader();
 
@@ -240,21 +293,37 @@ async function processFileInChunks(file: File) {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      chunks.push(Buffer.from(value));
+      if (value) {
+        chunks.push(new Uint8Array(value));
+      }
       
-      // 主动释放内存
       if (chunks.length % GC_INTERVAL === 0) {
         global.gc && global.gc();
       }
     }
-    return Buffer.concat(chunks);
+    // 修改这里的类型转换
+    const concatenatedArray = new Uint8Array(
+      chunks.reduce((acc, chunk) => acc + chunk.length, 0)
+    );
+    let offset = 0;
+    for (const chunk of chunks) {
+      concatenatedArray.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return Buffer.from(concatenatedArray);
   } finally {
     reader.releaseLock();
   }
 }
 
 // 修改资源处理逻辑
-async function processResources(zip: JSZip, resources: ImageResource[], baseDir: string, client: any) {
+async function processResources(
+  zip: JSZip, 
+  resources: ImageResource[], 
+  baseDir: string, 
+  client: any,
+  bookId: string
+) {
   const resourceUploads: BookResource[] = [];
   let processedCount = 0;
 
@@ -266,18 +335,26 @@ async function processResources(zip: JSZip, resources: ImageResource[], baseDir:
                        zip.file(`OPS/${normalizedPath}`);
 
       if (imageFile) {
-        // 流式处理图片数据
         const imageStream = await imageFile.nodeStream();
-        const chunks: Buffer[] = [];
+        const chunks: Uint8Array[] = [];
         
         for await (const chunk of imageStream) {
-          chunks.push(chunk);
+          chunks.push(Buffer.isBuffer(chunk) ? new Uint8Array(chunk) : new TextEncoder().encode(chunk));
           if (chunks.length % GC_INTERVAL === 0) {
             global.gc && global.gc();
           }
         }
 
-        const imageBuffer = Buffer.concat(chunks);
+        // 修改这里的类型转换
+        const concatenatedArray = new Uint8Array(
+          chunks.reduce((acc, chunk) => acc + chunk.length, 0)
+        );
+        let offset = 0;
+        for (const chunk of chunks) {
+          concatenatedArray.set(chunk, offset);
+          offset += chunk.length;
+        }
+        const imageBuffer = Buffer.from(concatenatedArray);
         const resourcePath = `${baseDir}/resources/${path.basename(normalizedPath)}`;
         
         await client.put(resourcePath, imageBuffer, {
@@ -588,11 +665,11 @@ async function handleFormUpload(req: NextRequest) {
             const blockPromises = [];
             
             for (let j = 0; j < blocks.length; j += batchSize) {
-              const batch = blocks.slice(j, j + batchSize).map((block, index) => ({
+              const batch = blocks.slice(j, j + batchSize).map((block, idx) => ({
                 parent_id: contentParent.id,
                 block_type: block.type,
                 content: block.content,
-                order_index: j + index,
+                order_index: j + idx,
                 metadata: block.metadata || {}
               }));
 

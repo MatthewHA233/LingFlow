@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const webpack = require('webpack');
-const TerserPlugin = require('terser-webpack-plugin');
 
 const nextConfig = {
   reactStrictMode: true,
@@ -96,17 +95,6 @@ const nextConfig = {
       config.optimization = {
         ...config.optimization,
         minimize: true,
-        minimizer: [
-          new TerserPlugin({
-            terserOptions: {
-              compress: {
-                reduce_vars: true,
-                inline: true
-              },
-              mangle: true
-            }
-          })
-        ]
       };
     }
 
