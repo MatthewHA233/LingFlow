@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '@/lib/supabase-client';
 import { User, Session } from '@supabase/supabase-js';
 import { toast } from 'sonner';
+import { createClient } from '@supabase/supabase-js';
 
 interface AuthState {
   user: User | null;
@@ -26,6 +27,11 @@ interface AuthState {
 // 缓存用户角色
 const roleCache = new Map<string, string>();
 
+const serviceRoleClient = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   session: null,
@@ -46,6 +52,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
       });
 
+      // 存储待验证的邮箱，用于重发验证邮件
+      if (data?.user) {
+        localStorage.setItem('pendingVerificationEmail', email);
+      }
+
       if (error) {
         console.error('注册错误:', error);
         return { error: new Error(error.message) };
@@ -54,18 +65,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // 检查注册是否成功
       if (data?.user) {
         console.log('用户创建成功，开始创建 profile:', data.user.id);
-        // 创建用户 profile
-        const { error: profileError } = await supabase
+        
+        // 使用 service role client 创建 profile
+        const { error: profileError } = await serviceRoleClient
           .from('profiles')
-          .insert({
+          .upsert({
             id: data.user.id,
             email: data.user.email,
-            role: 'user'
+            role: 'user',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'id'
           });
 
         if (profileError) {
           console.error('创建用户 profile 失败:', profileError);
-          return { error: new Error('创建用户 profile 失败') };
+          console.error('Profile Error Details:', {
+            code: profileError.code,
+            details: profileError.details,
+            hint: profileError.hint,
+            message: profileError.message
+          });
+          return { error: new Error(`创建用户 profile 失败: ${profileError.message}`) };
         }
 
         console.log('用户 profile 创建成功');
@@ -73,15 +95,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return { data };
       } else {
         console.error('注册失败：未能创建用户');
-        return { 
-          error: new Error('注册失败：未能创建用户') 
-        };
+        return { error: new Error('注册失败：未能创建用户') };
       }
     } catch (error) {
       console.error('注册过程出错:', error);
-      return { 
-        error: error instanceof Error ? error : new Error('未知错误') 
-      };
+      return { error: error instanceof Error ? error : new Error('未知错误') };
     }
   },
 
@@ -316,31 +334,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         throw new Error('用户未登录');
       }
 
-      console.log('删除用户数据');
-      // 删除用户相关的所有数据
-      const { error: deleteDataError } = await supabase
-        .from('books')
-        .delete()
-        .eq('user_id', user.id);
+      // 调用数据库函数删除用户
+      const { error } = await supabase
+        .rpc('delete_user');  // 不需要传递user_id参数，函数会自动获取当前用户ID
 
-      if (deleteDataError) {
-        console.error('删除用户数据失败:', deleteDataError);
-        throw deleteDataError;
-      }
-
-      console.log('删除用户账号');
-      // 删除用户账号
-      const { error: deleteUserError } = await supabase.auth.admin.deleteUser(
-        user.id
-      );
-
-      if (deleteUserError) {
-        console.error('删除用户账号失败:', deleteUserError);
-        throw deleteUserError;
+      if (error) {
+        console.error('删除用户失败:', error);
+        throw error;
       }
 
       console.log('注销成功，执行登出');
-      // 登出
       await supabase.auth.signOut();
       set({ user: null, session: null, role: null });
     } catch (error) {

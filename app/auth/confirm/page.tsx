@@ -6,54 +6,55 @@ import { supabase } from '@/lib/supabase-client';
 import { Mail, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
 import Link from 'next/link';
+import { useAuthStore } from '@/stores/auth';
 
 export default function ConfirmPage() {
   const [verificationState, setVerificationState] = useState<'verifying' | 'success' | 'error'>('verifying');
   const [errorMessage, setErrorMessage] = useState('');
   const router = useRouter();
   const searchParams = useSearchParams();
+  const initialize = useAuthStore(state => state.initialize);
 
   useEffect(() => {
     const confirmEmail = async () => {
       try {
-        // 检查URL hash中的参数
-        const hashParams = new URLSearchParams(window.location.hash.slice(1));
-        const accessToken = hashParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token');
-        const type = hashParams.get('type');
-
-        // 检查URL中的错误信息
-        const hashError = hashParams.get('error');
-        const hashErrorCode = hashParams.get('error_code');
-        const hashErrorDescription = hashParams.get('error_description');
-
-        if (hashError || hashErrorCode) {
-          let errorMsg = '验证失败';
-          if (hashErrorCode === 'otp_expired') {
-            errorMsg = '验证链接已过期，请重新发送验证邮件';
-          } else if (hashErrorDescription) {
-            errorMsg = decodeURIComponent(hashErrorDescription).replace(/\+/g, ' ');
-          }
-          setErrorMessage(errorMsg);
-          setVerificationState('error');
-          return;
-        }
-
-        if (!accessToken || !refreshToken || type !== 'signup') {
+        // 检查 code 参数
+        const code = searchParams.get('code');
+        
+        if (!code) {
           setErrorMessage('无效的验证链接');
           setVerificationState('error');
           return;
         }
 
-        // 设置session
-        const { error: sessionError } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken
+        // 先检查当前登录状态
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          // 如果已经登录，先登出
+          await supabase.auth.signOut();
+        }
+
+        // 使用 code 交换 session
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+        
+        if (error) {
+          throw error;
+        }
+
+        if (!data.session || !data.user) {
+          throw new Error('验证成功但未能获取会话信息');
+        }
+
+        // 更新用户的 email_confirmed 状态
+        await supabase.auth.updateUser({
+          data: { email_confirmed: true }
         });
 
-        if (sessionError) {
-          throw sessionError;
-        }
+        // 等待一小段时间确保状态更新
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // 初始化登录状态
+        await initialize();
 
         setVerificationState('success');
         setTimeout(() => {
@@ -62,13 +63,20 @@ export default function ConfirmPage() {
 
       } catch (error) {
         console.error('验证失败:', error);
+        // 确保错误状态下用户已登出
+        await supabase.auth.signOut();
         setErrorMessage(error instanceof Error ? error.message : '验证过程发生错误，请重试');
         setVerificationState('error');
       }
     };
 
-    confirmEmail();
-  }, [searchParams, router]);
+    // 使用 setTimeout 避免立即执行导致的闪烁
+    const timer = setTimeout(() => {
+      confirmEmail();
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [searchParams, router, initialize]);
 
   const handleResendVerification = async () => {
     try {

@@ -19,8 +19,12 @@ source venv/bin/activate
 cd /var/www/html/LingFlow
 
 # 删除旧的构建文件
-echo "清理旧的构建文件..."
-rm -rf build/*
+echo "清理旧的构建文件和缓存..."
+rm -rf .next
+npm cache clean --force
+
+# 验证缓存是否已清除
+npm cache verify
 
 # 重新构建前端
 echo "开始重新构建前端..."
