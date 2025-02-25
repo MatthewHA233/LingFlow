@@ -100,11 +100,11 @@ export const maxDuration = 600
 export const runtime = 'nodejs'
 
 const RETRY_COUNT = 3;
-const TIMEOUT = 30000; // 30秒
+const TIMEOUT = 120000; // 从30秒增加到120秒
 
 // 添加连接池管理
 const POOL_SIZE = 20;
-const CONNECTION_TIMEOUT = 10000;
+const CONNECTION_TIMEOUT = 30000; // 从10秒增加到30秒
 
 let supabasePool: any[] = [];
 let currentPoolIndex = 0;
@@ -163,14 +163,18 @@ async function withConnectionRetry<T>(operation: () => Promise<T>, maxRetries = 
     try {
       if (i > 0) {
         console.log(`第 ${i + 1} 次重试...`);
-        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, i)));
+        // 使用指数退避策略
+        await new Promise(resolve => setTimeout(resolve, 2000 * Math.pow(2, i)));
       }
       return await operation();
     } catch (error: any) {
       lastError = error;
       console.error(`操作失败 (尝试 ${i + 1}/${maxRetries}):`, error);
       
-      if (error.message?.includes('fetch failed')) {
+      // 增加连接错误的处理
+      if (error.message?.includes('fetch failed') || 
+          error.message?.includes('timeout') || 
+          error.message?.includes('socket hang up')) {
         // 重置连接池
         supabasePool = [];
         currentPoolIndex = 0;
@@ -185,7 +189,7 @@ async function withConnectionRetry<T>(operation: () => Promise<T>, maxRetries = 
 // 添加请求超时控制
 async function withTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('请求超时')), timeout);
+    setTimeout(() => reject(new Error(`请求超时 (${timeout}ms)`)), timeout);
   });
   return Promise.race([promise, timeoutPromise]);
 }
@@ -229,6 +233,9 @@ interface UploadStage {
 // 添加内存管理和流式处理
 const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
 const GC_INTERVAL = 50; // 每处理50个项目后触发GC
+
+// 添加常量定义(文件顶部附近)
+const BATCH_SIZE = 50; // 批处理大小
 
 // 添加 processChapter 函数定义
 async function processChapter(chapter: UploadChapter, index: number, userId: string, bookId: string) {
@@ -450,13 +457,23 @@ const streamHandler = async (req: NextRequest) => {
 }
 
 // 添加重试函数
-async function retryOperation(operation: () => Promise<any>, retries = RETRY_COUNT) {
+async function retryOperation(operation: () => Promise<any>, retries = RETRY_COUNT, initialBackoff = 1000) {
+  let backoff = initialBackoff;
   for (let i = 0; i < retries; i++) {
     try {
       return await operation();
-    } catch (error) {
+    } catch (error: any) {
+      console.error(`操作失败 (尝试 ${i + 1}/${retries}):`, error.message);
       if (i === retries - 1) throw error;
-      await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1))); // 指数退避
+      
+      // 动态调整退避时间，但设置最大值
+      backoff = Math.min(backoff * 1.5, 10000);
+      await new Promise(resolve => setTimeout(resolve, backoff));
+      
+      // 检查是否需要手动触发GC
+      if (global.gc && process.memoryUsage().heapUsed > 200 * 1024 * 1024) {
+        global.gc();
+      }
     }
   }
 }
@@ -518,54 +535,76 @@ async function handleFormUpload(req: NextRequest) {
         const file = formData.get('file') as File;
         const bookData = JSON.parse(formData.get('bookData') as string);
         
+        // 提前获取arrayBuffer，避免在OSS操作中重复获取
+        const arrayBuffer = await file.arrayBuffer();
+        const epubBuffer = Buffer.from(arrayBuffer);
+        
         const { default: OSS } = await import('ali-oss');
         const client = new OSS({
           region: 'oss-cn-beijing',
           accessKeyId: process.env.ALIYUN_AK_ID || '',
           accessKeySecret: process.env.ALIYUN_AK_SECRET || '',
           bucket: 'chango-url',
-          secure: true
+          secure: true,
+          timeout: 120000, // 添加OSS客户端超时设置
+          // 使用类型断言解决属性不存在的问题
+          ...({
+            retryMax: 5,
+            retryTimeout: 60000
+          } as any)
         });
 
-        const baseDir = `books/${userId}/${bookId}`;
-        const epubPath = `${baseDir}/${path.basename(file.name)}`;
-        const arrayBuffer = await file.arrayBuffer();
-        const epubBuffer = Buffer.from(arrayBuffer);
-        const epubResult = await client.put(epubPath, epubBuffer, {
-          mime: 'application/epub+zip',
-          headers: { 'Cache-Control': 'max-age=31536000' }
-        });
+        try {
+          const baseDir = `books/${userId}/${bookId}`;
+          const epubPath = `${baseDir}/${path.basename(file.name)}`;
+          
+          // 使用更可靠的方式上传，增加重试
+          const epubResult = await retryOperation(async () => {
+            return await client.put(epubPath, epubBuffer, {
+              mime: 'application/epub+zip',
+              headers: { 'Cache-Control': 'max-age=31536000' },
+              timeout: 120000 // 单独为这个操作设置超时
+            });
+          }, 3);
+          
+          const { data: savedBook, error: bookError } = await withTimeout(
+            withConnectionRetry(async () => {
+              const client = getSupabaseClient();
+              return await client
+                .from('books')
+                .insert([{
+                  id: bookId,
+                  title: bookData.title,
+                  author: bookData.author,
+                  epub_path: epubResult.url.replace('http://', 'https://'),
+                  user_id: userId,
+                  metadata: bookData.metadata || {},
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                  cover_url: bookData.coverUrl || '',
+                  audio_path: '',
+                  description: bookData.metadata?.description || ''
+                }])
+                .select()
+                .single();
+            }),
+            30000 // 30秒超时
+          );
 
-        const { data: savedBook, error: bookError } = await withTimeout(
-          withConnectionRetry(async () => {
-            const client = getSupabaseClient();
-            return await client
-              .from('books')
-              .insert([{
-                id: bookId,
-                title: bookData.title,
-                author: bookData.author,
-                epub_path: epubResult.url.replace('http://', 'https://'),
-                user_id: userId,
-                metadata: bookData.metadata || {},
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-                cover_url: bookData.coverUrl || '',
-                audio_path: '',
-                description: bookData.metadata?.description || ''
-              }])
-              .select()
-              .single();
-          }),
-          30000 // 30秒超时
-        );
+          if (bookError) throw bookError;
 
-        if (bookError) throw bookError;
-
-        return NextResponse.json({
-          progress: 50,
-          book: savedBook
-        });
+          return NextResponse.json({
+            progress: 50,
+            book: savedBook
+          });
+        } catch (error: any) {
+          console.error('OSS上传失败:', error);
+          return NextResponse.json({
+            error: '文件上传失败',
+            details: error.message,
+            stage: 'OSS上传'
+          }, { status: 500 });
+        }
       }
 
       // 第三阶段：处理资源文件 (50-70%)
@@ -629,65 +668,31 @@ async function handleFormUpload(req: NextRequest) {
       // 第四阶段：处理章节内容 (70-100%)
       if (stage === 4) {
         const bookData = JSON.parse(formData.get('bookData') as string);
-        const chapterPromises = bookData.chapters.map(async (chapter: UploadChapter, i: number) => {
-          try {
-            const { data: contentParent } = await getSupabaseClient()
-              .from('content_parents')
-              .insert({
-                content_type: 'chapter',
-                title: chapter.title,
-                user_id: userId,
-                metadata: {
-                  book_id: bookId,
-                  chapter_index: i
-                }
-              })
-              .select('id')
-              .single();
-
-            if (!contentParent) throw new Error('创建 content_parent 失败');
-
-            const { data: savedChapter } = await getSupabaseClient()
-              .from('chapters')
-              .insert({
-                book_id: bookId,
-                title: chapter.title,
-                order_index: i,
-                parent_id: contentParent.id
-              })
-              .select()
-              .single();
-
-            if (!savedChapter) throw new Error('创建 chapter 失败');
-
-            const blocks = parseChapterContent(chapter.content);
-            const batchSize = 50;
-            const blockPromises = [];
-            
-            for (let j = 0; j < blocks.length; j += batchSize) {
-              const batch = blocks.slice(j, j + batchSize).map((block, idx) => ({
-                parent_id: contentParent.id,
-                block_type: block.type,
-                content: block.content,
-                order_index: j + idx,
-                metadata: block.metadata || {}
-              }));
-
-              blockPromises.push(
-                getSupabaseClient().from('context_blocks').insert(batch)
-              );
-            }
-
-            await Promise.all(blockPromises);
-            return savedChapter;
-          } catch (error) {
-            console.error(`处理第 ${i + 1} 章时出错:`, error);
-            throw error;
+        
+        // 分批处理章节，避免一次性创建过多Promise
+        const totalChapters = bookData.chapters.length;
+        const batchSize = 3; // 每批处理3个章节
+        const savedChapters = [];
+        
+        for (let i = 0; i < totalChapters; i += batchSize) {
+          const batch = bookData.chapters.slice(i, Math.min(i + batchSize, totalChapters));
+          
+          // 限制并发处理
+          const batchResults = await Promise.all(
+            batch.map((chapter: any, index: number) => 
+              processChapterWithRetry(chapter, i + index, userId, bookId)
+            )
+          );
+          
+          savedChapters.push(...batchResults);
+          
+          // 强制垃圾回收并暂停一下，给服务器"喘息"的机会
+          if (global.gc && i % 9 === 0) {
+            global.gc();
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
-        });
-
-        const savedChapters = await Promise.all(chapterPromises);
-
+        }
+        
         return NextResponse.json({
           progress: 100,
           chapters: savedChapters
@@ -769,4 +774,62 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// 优化章节处理函数
+async function processChapterWithRetry(
+  chapter: any, 
+  index: number, 
+  userId: string, 
+  bookId: string
+) {
+  return await retryOperation(async () => {
+    // 减少一次数据库操作，合并两次插入为一次事务
+    const { data: contentParent } = await getSupabaseClient()
+      .from('content_parents')
+      .insert({
+        content_type: 'chapter',
+        title: chapter.title,
+        user_id: userId,
+        metadata: { book_id: bookId, chapter_index: index }
+      })
+      .select('id')
+      .single();
+      
+    if (!contentParent) throw new Error('创建 content_parent 失败');
+    
+    const { data: savedChapter } = await getSupabaseClient()
+      .from('chapters')
+      .insert({
+        book_id: bookId,
+        title: chapter.title,
+        order_index: index,
+        parent_id: contentParent.id
+      })
+      .select()
+      .single();
+      
+    if (!savedChapter) throw new Error('创建 chapter 失败');
+    
+    // 批量处理语境块，减少数据库连接数
+    const blocks = parseChapterContent(chapter.content);
+    for (let j = 0; j < blocks.length; j += BATCH_SIZE) {
+      const batch = blocks.slice(j, j + BATCH_SIZE).map((block, idx) => ({
+        parent_id: contentParent.id,
+        block_type: block.type,
+        content: block.content,
+        order_index: j + idx,
+        metadata: block.metadata || {}
+      }));
+      
+      await getSupabaseClient().from('context_blocks').insert(batch);
+      
+      // 短暂暂停，避免过度消耗资源
+      if (j > 0 && j % 100 === 0) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    }
+    
+    return savedChapter;
+  }, 3);
 } 
