@@ -61,8 +61,9 @@ interface LocalBook {
   };
 }
 
-// 修改上传超时设置
-const UPLOAD_TIMEOUT = 600000; // 增加到10分钟
+// 添加超时和重试配置
+const UPLOAD_TIMEOUT = 300000; // 增加到5分钟
+const MAX_RETRIES = 2; // 最大重试次数
 
 export function FileUploader({ onBookLoaded }: FileUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -208,54 +209,26 @@ export function FileUploader({ onBookLoaded }: FileUploaderProps) {
       setUploadStage('上传EPUB文件');
       setUploadDetail(`正在上传EPUB文件: ${(file.size / 1024 / 1024).toFixed(1)}MB`);
       updateProgress(20);
+      const stage2FormData = new FormData();
+      stage2FormData.append('stage', '2');
+      stage2FormData.append('bookId', bookId);
+      stage2FormData.append('userId', userId);
+      stage2FormData.append('file', file);
+      stage2FormData.append('bookData', JSON.stringify(uploadData));
 
-      // 添加重试逻辑
-      let retryCount = 0;
-      const maxRetries = 3;
-      let stage2Data;
+      const stage2Response = await fetch('/api/books/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: stage2FormData
+      });
 
-      while (retryCount <= maxRetries) {
-        try {
-          const stage2FormData = new FormData();
-          stage2FormData.append('stage', '2');
-          stage2FormData.append('bookId', bookId);
-          stage2FormData.append('userId', userId);
-          stage2FormData.append('file', file);
-          stage2FormData.append('bookData', JSON.stringify(uploadData));
-
-          // 添加超时控制
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT);
-          
-          const stage2Response = await fetch('/api/books/upload', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${session.access_token}`
-            },
-            body: stage2FormData,
-            signal: controller.signal
-          }).finally(() => clearTimeout(timeoutId));
-
-          if (!stage2Response.ok) {
-            const errorData = await stage2Response.json().catch(() => ({}));
-            throw new Error(errorData.error || '上传EPUB文件失败');
-          }
-
-          stage2Data = await stage2Response.json();
-          break; // 成功就跳出循环
-        } catch (error: any) {
-          if (retryCount === maxRetries) {
-            throw error; // 达到重试次数上限，抛出错误
-          }
-          
-          retryCount++;
-          // 显示重试信息
-          setUploadDetail(`上传失败，正在重试 (${retryCount}/${maxRetries})...`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          setUploadDetail(`重新上传EPUB文件: ${(file.size / 1024 / 1024).toFixed(1)}MB`);
-        }
+      if (!stage2Response.ok) {
+        throw new Error('上传EPUB文件失败');
       }
 
+      const stage2Data = await stage2Response.json();
       setUploadProgress(stage2Data.progress);
       const { book } = stage2Data;
       setUploadDetail('EPUB文件上传完成，准备处理资源...');
