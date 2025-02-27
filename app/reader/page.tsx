@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { FileUploader } from '@/components/reader/FileUploader';
+import { BookUploader } from '@/components/reader/BookUploader';
 import { ReaderContent } from '@/components/reader/ReaderContent';
 import { Book } from '@/types/book';
 
@@ -32,7 +32,7 @@ export default function ReaderPage() {
         {!book ? (
           <>
             <h1 className="text-2xl font-bold mb-8">有声书导入</h1>
-            <FileUploader onBookLoaded={handleBookLoaded} />
+            <BookUploader onBookLoaded={handleBookLoaded} />
           </>
         ) : (
           <ReaderContent book={book} arrayBuffer={arrayBuffer!} />
