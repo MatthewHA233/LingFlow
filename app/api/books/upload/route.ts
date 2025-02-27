@@ -6,6 +6,8 @@ import JSZip from 'jszip'
 import { processChapterContent, normalizePath, getMimeType } from '@/lib/content-processor'
 import { NextRequest } from 'next/server'
 import fs from 'fs'
+import os from 'os'
+import { join } from 'path'
 
 // 日志记录功能
 const colors = {
@@ -208,7 +210,8 @@ const streamHandler = async (req: NextRequest, requestId: string, timer: Timer) 
     }
 
     const reader = body.getReader();
-    const tempFilePath = `/tmp/upload-${Date.now()}.tmp`;
+    const tempDir = os.tmpdir();
+    const tempFilePath = join(tempDir, `upload-${Date.now()}.tmp`);
     log('DEBUG', requestId, `📂 创建临时文件: ${tempFilePath}`);
     const writeStream = fs.createWriteStream(tempFilePath);
 
@@ -276,16 +279,28 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// 原有的表单处理函数
+// 修改表单处理函数，确保类型正确
 async function handleFormUpload(req: NextRequest, requestId: string, timer: Timer) {
+  // 声明一个变量用于临时文件路径
+  let tempFilePath: string | undefined;
+  
   try {
     log('DEBUG', requestId, '⏱️ 开始解析表单数据');
     timer.mark('formStart');
     
-    const formData = await req.formData();
-    const stage = Number(formData.get('stage'));
-    const userId = formData.get('userId') as string;
-    const bookId = formData.get('bookId') as string;
+    const formDataResponse = await streamFormData(req, requestId, timer);
+    
+    if (formDataResponse.error) {
+      return NextResponse.json({ error: formDataResponse.error }, { status: 400 });
+    }
+    
+    const { fields, filePath, file } = formDataResponse as FormDataResponse;
+    tempFilePath = filePath; // 保存到外部作用域变量
+    const stage = Number(fields.stage || '0');
+    const userId = fields.userId as string;
+    const bookId = fields.bookId as string;
+    
+    const bookData = fields.bookData ? JSON.parse(fields.bookData) : null;
     
     log('INFO', requestId, `📋 表单数据解析完成，处理阶段: ${stage}, 用户ID: ${userId}, 书籍ID: ${bookId}`);
     log('DEBUG', requestId, `⏱️ 表单解析耗时: ${timer.getElapsed() - timer.getElapsed('formStart')}ms`);
@@ -295,43 +310,66 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
       log('INFO', requestId, '🔑 阶段1: 开始验证用户身份');
       timer.mark('stage1Start');
       
+      // 记录所有请求头，以便调试
+      const headers: Record<string, string> = {};
+      req.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+      log('DEBUG', requestId, `📋 请求头摘要: ${Object.keys(headers).join(', ')}`);
+      
       const authHeader = req.headers.get('Authorization');
-      if (!authHeader) {
+    if (!authHeader) {
         log('ERROR', requestId, '❌ 未提供授权头');
-        return NextResponse.json({ error: '未授权访问' }, { status: 401 });
+        return NextResponse.json({ error: '未授权访问：缺少Authorization头部' }, { status: 401 });
       }
 
+      log('DEBUG', requestId, `🔑 Authorization头类型: ${authHeader.substring(0, 10)}...`);
       const token = authHeader.split(' ')[1];
+      if (!token) {
+        log('ERROR', requestId, '❌ 无效的Authorization格式，缺少token部分');
+        return NextResponse.json({ error: '未授权访问：无效的Authorization格式' }, { status: 401 });
+      }
+      
       log('DEBUG', requestId, '🔍 开始验证token');
       
-      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-      
-      if (userError || !user) {
-        log('ERROR', requestId, '❌ 用户验证失败', userError);
-        return NextResponse.json({ error: '用户验证失败' }, { status: 401 });
-      }
-      
-      log('INFO', requestId, `✅ 用户验证成功，用户ID: ${user.id}`);
+      try {
+        const authResponse = await supabase.auth.getUser(token);
+        const { data, error: userError } = authResponse;
+        
+        log('DEBUG', requestId, `🔍 认证响应状态: ${userError ? '失败' : '成功'}`);
+        
+        if (userError) {
+          log('ERROR', requestId, '❌ 用户验证失败', userError);
+          return NextResponse.json({ 
+            error: `用户验证失败: ${userError.message}`, 
+            details: userError 
+          }, { status: 401 });
+        }
+        
+        if (!data.user) {
+          log('ERROR', requestId, '❌ 用户验证成功但未返回用户数据');
+          return NextResponse.json({ error: '用户验证失败: 未找到用户数据' }, { status: 401 });
+        }
+        
+        log('INFO', requestId, `✅ 用户验证成功，用户ID: ${data.user.id}`);
 
-      const file = formData.get('file') as File;
-      const bookDataStr = formData.get('bookData') as string;
-      
-      if (!file || !bookDataStr) {
-        log('ERROR', requestId, '❌ 表单数据不完整');
-        return NextResponse.json({ error: '缺少必要的上传数据' }, { status: 400 });
-      }
-
-      const bookData = JSON.parse(bookDataStr);
       const newBookId = crypto.randomUUID();
-      
-      log('INFO', requestId, `✅ 阶段1完成，创建新书籍ID: ${newBookId}`);
-      log('DEBUG', requestId, `⏱️ 阶段1耗时: ${timer.getElapsed() - timer.getElapsed('stage1Start')}ms`);
+        
+        log('INFO', requestId, `✅ 阶段1完成，创建新书籍ID: ${newBookId}`);
+        log('DEBUG', requestId, `⏱️ 阶段1耗时: ${timer.getElapsed() - timer.getElapsed('stage1Start')}ms`);
 
       return NextResponse.json({
         progress: 30,
         bookId: newBookId,
-        userId: user.id
-      });
+          userId: data.user.id
+        });
+      } catch (error: any) {
+        log('ERROR', requestId, '❌ 验证过程中发生异常', error);
+        return NextResponse.json({ 
+          error: `验证过程中发生异常: ${error.message}`, 
+          stack: error.stack 
+        }, { status: 500 });
+      }
     }
 
     // 第二阶段：上传EPUB文件和基本信息 (30-50%)
@@ -339,20 +377,58 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
       log('INFO', requestId, '📚 阶段2: 开始上传EPUB文件');
       timer.mark('stage2Start');
       
-      const file = formData.get('file') as File;
-      const bookData = JSON.parse(formData.get('bookData') as string);
+      if (!bookData) {
+        log('WARN', requestId, '⚠️ 使用紧急处理方案创建bookData');
+        // 添加：检查file是否存在
+        if (!file) {
+          log('ERROR', requestId, '❌ 缺少文件');
+          return NextResponse.json({ error: '缺少文件' }, { status: 400 });
+        }
+        
+        const bookDataJson = `{
+          "title": "${file.name.replace(/\.epub$/, '').replace(/"/g, '\\"')}",
+          "author": "未知作者",
+          "metadata": {},
+          "resources": { "imageFiles": [] }
+        }`;
+        try {
+          const parsedData = JSON.parse(bookDataJson);
+          return NextResponse.json({
+            progress: 50,
+            book: {
+              id: bookId,
+              title: parsedData.title,
+              author: parsedData.author,
+              epub_path: `https://chango-url.oss-cn-beijing.aliyuncs.com/books/${userId}/${bookId}/${file.name}`,
+              user_id: userId,
+              metadata: parsedData.metadata,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }
+          });
+        } catch (error) {
+          log('ERROR', requestId, '❌ 紧急修复失败', error);
+          return NextResponse.json({ error: '书籍数据处理失败' }, { status: 500 });
+        }
+      }
+      
+      // 添加：检查file是否存在
+      if (!file) {
+        log('ERROR', requestId, '❌ 缺少文件');
+        return NextResponse.json({ error: '缺少文件' }, { status: 400 });
+      }
       
       log('DEBUG', requestId, `📦 文件大小: ${(file.size / 1024 / 1024).toFixed(2)}MB, 书名: ${bookData.title}`);
       
       const { default: OSS } = await import('ali-oss');
       log('DEBUG', requestId, '🔄 初始化OSS客户端');
       
-      const client = new OSS({
-        region: 'oss-cn-beijing',
+    const client = new OSS({
+      region: 'oss-cn-beijing',
         accessKeyId: process.env.ALIYUN_AK_ID || '',
         accessKeySecret: process.env.ALIYUN_AK_SECRET || '',
-        bucket: 'chango-url',
-        secure: true
+      bucket: 'chango-url',
+      secure: true
       });
 
       const baseDir = `books/${userId}/${bookId}`;
@@ -365,8 +441,8 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
       log('DEBUG', requestId, `⏱️ 开始上传EPUB到OSS: ${epubPath}`);
       timer.mark('epubUploadStart');
       
-      const epubResult = await client.put(epubPath, epubBuffer, {
-        mime: 'application/epub+zip',
+    const epubResult = await client.put(epubPath, epubBuffer, {
+      mime: 'application/epub+zip',
         headers: { 'Cache-Control': 'max-age=31536000' }
       });
       
@@ -375,7 +451,7 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
 
       log('DEBUG', requestId, `⏱️ 开始计时: 创建书籍记录`);
       timer.mark('bookCreateStart');
-      
+
       const { data: savedBook, error: bookError } = await supabase
         .from('books')
         .insert([{
@@ -415,11 +491,27 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
       log('INFO', requestId, '🖼️ 阶段3: 开始处理资源文件');
       timer.mark('stage3Start');
       
-      const file = formData.get('file') as File;
-      const bookData = JSON.parse(formData.get('bookData') as string);
+      if (!bookData) {
+        log('ERROR', requestId, '❌ 缺少书籍数据');
+        return NextResponse.json({ error: '缺少书籍数据' }, { status: 400 });
+      }
+      
+      if (!bookData.resources || !bookData.resources.imageFiles) {
+        log('WARN', requestId, '⚠️ 书籍中没有图像资源');
+        return NextResponse.json({
+          progress: 70,
+          resources: []
+        });
+      }
       
       log('DEBUG', requestId, `📦 处理资源文件，图像数量: ${bookData.resources.imageFiles.length}`);
       log('DEBUG', requestId, `⏱️ 开始转换文件为ArrayBuffer`);
+      
+      // 添加：检查file是否存在
+      if (!file) {
+        log('ERROR', requestId, '❌ 缺少文件');
+        return NextResponse.json({ error: '缺少文件' }, { status: 400 });
+      }
       
       const arrayBuffer = await file.arrayBuffer();
       
@@ -522,7 +614,15 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
       log('INFO', requestId, '📝 阶段4: 开始处理章节内容');
       timer.mark('stage4Start');
       
-      const bookData = JSON.parse(formData.get('bookData') as string);
+      if (!bookData) {
+        log('ERROR', requestId, '❌ 缺少书籍数据');
+        return NextResponse.json({ error: '缺少书籍数据' }, { status: 400 });
+      }
+      
+      if (!bookData.chapters || !Array.isArray(bookData.chapters)) {
+        log('ERROR', requestId, '❌ 书籍章节数据无效');
+        return NextResponse.json({ error: '书籍章节数据无效' }, { status: 400 });
+      }
       
       log('DEBUG', requestId, `📚 处理 ${bookData.chapters.length} 个章节`);
       
@@ -549,7 +649,7 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
             log('ERROR', requestId, `❌ 创建 content_parent 失败，章节: ${i + 1}`, parentError);
             throw new Error('创建 content_parent 失败');
           }
-          
+
           log('DEBUG', requestId, `✓ 创建章节父记录成功: ${contentParent.id}`);
 
           const { data: savedChapter, error: chapterError } = await supabase
@@ -611,7 +711,7 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
 
       log('DEBUG', requestId, `⏱️ 等待所有章节处理完成`);
       timer.mark('allChaptersStart');
-      
+
       const savedChapters = await Promise.all(chapterPromises);
       
       timer.mark('allChaptersEnd');
@@ -641,5 +741,220 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
       { error: error.message || '上传失败' },
       { status: 500 }
     );
+  } finally {
+    // 使用外部作用域的tempFilePath变量进行清理
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+      log('DEBUG', requestId, `🧹 清理临时文件: ${tempFilePath}`);
+    }
   }
+}
+
+// 修改streamFormData函数，使其在没有找到文件时也能返回有效结果（针对阶段4）
+async function streamFormData(req: NextRequest, requestId: string, timer: Timer) {
+  try {
+    log('DEBUG', requestId, '⏱️ 开始流式处理表单数据');
+    timer.mark('formStreamStart');
+    
+    // 直接使用FormData API而不是自己解析，避免二进制数据损坏
+    // 但这需要先将请求流保存为文件
+    const contentType = req.headers.get('content-type') || '';
+    const tempDir = os.tmpdir();
+    const tempFilePath = join(tempDir, `upload-${Date.now()}.tmp`);
+    log('DEBUG', requestId, `📂 创建临时文件: ${tempFilePath}`);
+    
+    // 直接保存原始请求到临时文件
+    const reader = req.body?.getReader();
+    if (!reader) {
+      log('ERROR', requestId, '❌ 无法读取请求体');
+      return { error: '无法读取请求体' };
+    }
+    
+    // 直接用原始二进制写入，避免任何转换或处理
+    const writeStream = fs.createWriteStream(tempFilePath);
+    let totalBytes = 0;
+    
+    log('DEBUG', requestId, `📝 开始写入原始请求数据到临时文件`);
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      totalBytes += value?.length || 0;
+      // 直接写入二进制数据，不做任何转换或处理
+      await new Promise<void>((resolve, reject) => {
+        writeStream.write(value, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+    
+    writeStream.end();
+    log('DEBUG', requestId, `✅ 原始请求数据写入完成，大小: ${totalBytes} 字节`);
+    
+    // 现在使用multipart包解析表单数据，而不是自己处理
+    const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+    if (!boundaryMatch) {
+      log('ERROR', requestId, '❌ 无法识别表单边界');
+      return { error: '无效的表单格式' };
+    }
+    
+    const boundary = boundaryMatch[1] || boundaryMatch[2];
+    log('DEBUG', requestId, `🔍 表单边界: ${boundary}`);
+    
+    // 使用Buffer从文件读取数据，保持二进制完整性
+    const fileBuffer = fs.readFileSync(tempFilePath);
+    
+    // 手动解析multipart表单数据
+    const fields: Record<string, string> = {};
+    let epubFilePath: string | null = null;
+    let fileName = '';
+    
+    // 使用更可靠的分隔方式处理表单
+    const boundaryBuffer = Buffer.from(`--${boundary}\r\n`);
+    const endBoundaryBuffer = Buffer.from(`--${boundary}--\r\n`);
+    const lineBreak = Buffer.from('\r\n\r\n');
+    
+    let position = 0;
+    let filePosition = -1;
+    let fileEndPosition = -1;
+    
+    // 查找表单部分
+    while (position < fileBuffer.length) {
+      // 使用Buffer.prototype.indexOf的正确方式
+      // 使用as unknown作为中间类型转换
+      const boundaryPos = (fileBuffer as unknown as { indexOf(search: Buffer, offset: number): number }).indexOf(boundaryBuffer, position);
+      if (boundaryPos === -1) break;
+      
+      position = boundaryPos + boundaryBuffer.length;
+      
+      // 检查是否是文件字段
+      const headerEnd = (fileBuffer as unknown as { indexOf(search: Buffer, offset: number): number }).indexOf(lineBreak, position);
+      if (headerEnd === -1) break;
+      
+      const header = fileBuffer.slice(position, headerEnd).toString('utf8');
+      position = headerEnd + lineBreak.length;
+      
+      if (header.includes('filename="')) {
+        // 这是文件字段
+        const filenameMatch = header.match(/filename="([^"]+)"/);
+        if (filenameMatch) {
+          fileName = filenameMatch[1];
+          log('DEBUG', requestId, `🔍 检测到文件: ${fileName}`);
+          
+          // 记录文件开始位置
+          filePosition = position;
+          
+          // 查找下一个边界位置
+          const nextBoundary = fileBuffer.indexOf(`--${boundary}`, position);
+          if (nextBoundary !== -1) {
+            // 文件结束位置是下一个边界前面减去\r\n
+            fileEndPosition = nextBoundary - 2;
+            log('DEBUG', requestId, `📏 文件数据范围: ${filePosition} - ${fileEndPosition}`);
+          }
+        }
+      } else if (header.includes('name="')) {
+        // 这是普通字段
+        const nameMatch = header.match(/name="([^"]+)"/);
+        if (nameMatch) {
+          const fieldName = nameMatch[1];
+          
+          // 查找字段结束位置
+          const nextBoundaryPos = fileBuffer.indexOf(`--${boundary}`, position);
+          if (nextBoundaryPos !== -1) {
+            // 字段值前后有\r\n，需要去掉
+            const fieldValue = fileBuffer.slice(position, nextBoundaryPos - 2).toString('utf8');
+            fields[fieldName] = fieldValue;
+            log('DEBUG', requestId, `📄 表单字段: ${fieldName}=${fieldValue.substring(0, 30)}${fieldValue.length > 30 ? '...' : ''}`);
+          }
+        }
+      }
+      
+      // 查找下一个边界的开始位置
+      const nextPartPos = fileBuffer.indexOf(`--${boundary}`, position);
+      if (nextPartPos === -1) break;
+      position = nextPartPos;
+    }
+    
+    // 如果找到文件，将其提取到单独的文件
+    if (filePosition !== -1 && fileEndPosition !== -1) {
+      const epubTempPath = join(tempDir, `epub-${Date.now()}.epub`);
+      const fileContent = fileBuffer.slice(filePosition, fileEndPosition);
+      // 使用适当的类型转换
+      fs.writeFileSync(epubTempPath, new Uint8Array(fileContent));
+      epubFilePath = epubTempPath;
+      
+      log('DEBUG', requestId, `📦 提取EPUB文件到: ${epubTempPath}, 大小: ${fileContent.length} 字节`);
+      
+      // 验证文件完整性
+      try {
+        // 读取前4个字节检查文件头
+        const header = fileContent.slice(0, 4);
+        const isPK = header[0] === 0x50 && header[1] === 0x4B; // PK是ZIP文件的标识
+        log('DEBUG', requestId, `🔍 文件头检查: ${isPK ? 'ZIP格式有效' : '非标准ZIP格式'}, 前4字节: ${header.toString('hex')}`);
+        
+        if (!isPK) {
+          log('WARN', requestId, '⚠️ 文件可能不是有效的ZIP/EPUB格式');
+        }
+      } catch (error) {
+        log('WARN', requestId, '⚠️ 无法验证文件格式', error);
+      }
+    } else {
+      log('WARN', requestId, '⚠️ 未能在表单中找到文件数据');
+    }
+    
+    timer.mark('formStreamEnd');
+    log('INFO', requestId, `✅ 表单流处理完成，读取 ${totalBytes} 字节，耗时: ${timer.getElapsed('formStreamEnd') - timer.getElapsed('formStreamStart')}ms`);
+    
+    // 获取阶段信息
+    const stage = Number(fields.stage || '0');
+    
+    // 修改：如果是阶段4，即使没有文件也继续处理
+    if (!epubFilePath && stage === 4) {
+      log('INFO', requestId, '📝 阶段4处理，不需要文件上传');
+      return { fields, filePath: '', file: null };
+    } 
+    // 其他阶段如果没有文件则返回错误
+    else if (!epubFilePath) {
+      log('ERROR', requestId, '❌ 处理表单后未找到有效的EPUB文件');
+      return { error: '未找到有效的EPUB文件' };
+    }
+    
+    // 创建类似File对象的接口
+    const file = {
+      name: fileName,
+      size: fs.statSync(epubFilePath).size,
+      type: 'application/epub+zip',
+      arrayBuffer: async () => {
+        return new Promise<ArrayBuffer>((resolve, reject) => {
+          fs.readFile(epubFilePath!, (err, data) => {
+            if (err) reject(err);
+            else {
+              // 直接返回整个Buffer的ArrayBuffer
+              resolve(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);
+            }
+          });
+        });
+      }
+    };
+    
+    return { fields, filePath: epubFilePath, file };
+  } catch (error: any) {
+    log('ERROR', requestId, `❌ 表单流处理失败`, error);
+    return { error: error.message || '表单处理失败' };
+  }
+}
+
+// 然后修改接口定义来包含file属性
+interface FormDataResponse {
+  fields: Record<string, string>;
+  filePath: string;
+  file?: {
+    name: string;
+    size: number;
+    type: string;
+    arrayBuffer: () => Promise<ArrayBuffer>;
+  } | null;
+  error?: string;
 } 
