@@ -5,4 +5,117 @@
 
 .animate-twinkle {
   animation: twinkle 3s ease-in-out infinite;
+}
+
+/* 拖拽相关样式 */
+.dragging {
+  opacity: 0.5;
+  cursor: grabbing !important;
+}
+
+.sentence-drag-preview {
+  max-width: 250px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background-color: rgba(var(--primary-rgb), 0.1);
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
+  border-radius: 0.25rem;
+  padding: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* 音频对齐块样式 */
+.audio-aligned-block .sentence-container:hover {
+  background-color: rgba(var(--primary-rgb), 0.1);
+}
+
+.audio-aligned-block span:hover {
+  background-color: rgba(var(--primary-rgb), 0.2);
+}
+
+/* 单词高亮效果 */
+.word-highlight {
+  position: relative;
+  display: inline-block;
+  padding: 0 2px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.word-highlight:hover {
+  background-color: rgba(var(--primary-rgb), 0.2);
+}
+
+.word-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background-color: rgba(var(--primary-rgb), 0.8);
+  transition: width 0.1s linear;
+}
+
+/* 对齐动画相关样式 */
+@keyframes pulse-border {
+  0% {
+    border-color: rgba(var(--primary-rgb), 0.3);
+    box-shadow: 0 0 0 0 rgba(var(--primary-rgb), 0.3);
+  }
+  70% {
+    border-color: rgba(var(--primary-rgb), 0.7);
+    box-shadow: 0 0 0 10px rgba(var(--primary-rgb), 0);
+  }
+  100% {
+    border-color: rgba(var(--primary-rgb), 0.3);
+    box-shadow: 0 0 0 0 rgba(var(--primary-rgb), 0);
+  }
+}
+
+.aligning-block {
+  animation: pulse-border 2s infinite;
+  position: relative;
+  overflow: hidden;
+}
+
+.aligning-block::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 30%;
+  background: linear-gradient(to right, 
+    rgba(var(--primary-rgb), 0.1),
+    rgba(var(--primary-rgb), 0.2),
+    rgba(var(--primary-rgb), 0.1),
+    rgba(var(--primary-rgb), 0)
+  );
+  animation: aligning-sweep 2s infinite ease-in-out;
+}
+
+@keyframes aligning-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+/* 完成动画 */
+@keyframes completion-flash {
+  0% {
+    background-color: rgba(var(--primary-rgb), 0.05);
+  }
+  50% {
+    background-color: rgba(74, 222, 128, 0.2);
+  }
+  100% {
+    background-color: rgba(var(--primary-rgb), 0.05);
+  }
+}
+
+.alignment-complete {
+  animation: completion-flash 1.5s ease-out;
 } 

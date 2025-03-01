@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { supabase } from '@/lib/supabase-client';
 import Image from 'next/image';
+import { cn } from '@/lib/utils';
+import { AudioController, AUDIO_EVENTS } from '@/lib/audio-controller';
 
 interface AudioPlayerProps {
   bookId: string;
@@ -13,6 +15,8 @@ interface AudioPlayerProps {
   onTimeUpdate?: (currentTime: number) => void;
   onDurationChange?: (duration: number) => void;
   compact?: boolean;
+  passiveMode?: boolean;
+  playMode?: 'sentence' | 'block' | 'continuous';
 }
 
 export function AudioPlayer({ 
@@ -21,7 +25,9 @@ export function AudioPlayer({
   currentTime: externalTime,
   onTimeUpdate,
   onDurationChange,
-  compact = false
+  compact = false,
+  passiveMode = false,
+  playMode
 }: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -31,6 +37,9 @@ export function AudioPlayer({
   const [isExpanded, setIsExpanded] = useState(true);
   const audioRef = useRef<HTMLAudioElement>(null);
   const isSeekingRef = useRef(false);
+  const [loopMode, setLoopMode] = useState(playMode || 'none');
+  const [isReplaying, setIsReplaying] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // 处理外部时间更新
   useEffect(() => {
@@ -41,14 +50,14 @@ export function AudioPlayer({
       audioRef.current.currentTime = externalTime / 1000;
       setCurrentTime(externalTime);
       
-      // 确保音频播放
-      if (!isPlaying) {
+      // 只有在非被动模式下才自动播放
+      if (!isPlaying && !passiveMode) {
         audioRef.current.play()
           .then(() => setIsPlaying(true))
           .catch(console.error);
       }
     }
-  }, [externalTime, isPlaying]);
+  }, [externalTime, isPlaying, passiveMode]);
 
   // 监听音频时间更新
   useEffect(() => {
@@ -111,29 +120,48 @@ export function AudioPlayer({
     }
   }, [onDurationChange]);
 
-  const handlePlayPause = async () => {
-    if (audioRef.current) {
-      try {
-        if (isPlaying) {
-          audioRef.current.pause();
-        } else {
-          await audioRef.current.play();
-        }
-        setIsPlaying(!isPlaying);
-      } catch (error) {
-        console.error('播放控制失败:', error);
+  useEffect(() => {
+    // 监听状态变更
+    const handleStateChange = (e: CustomEvent) => {
+      const { isPlaying: newIsPlaying } = e.detail;
+      setIsPlaying(newIsPlaying);
+    };
+    
+    // 监听时间更新，但限制更新频率
+    let lastTimeUpdate = 0;
+    const handleTimeUpdate = (e: CustomEvent) => {
+      const now = Date.now();
+      if (now - lastTimeUpdate > 100) { // 限制更新频率
+        lastTimeUpdate = now;
+        const { currentTime } = e.detail;
+        setCurrentTime(currentTime);
+        onTimeUpdate?.(currentTime);
       }
-    }
-  };
+    };
+    
+    window.addEventListener(AUDIO_EVENTS.STATE_CHANGE, handleStateChange as EventListener);
+    window.addEventListener(AUDIO_EVENTS.TIME_UPDATE, handleTimeUpdate as EventListener);
+    
+    return () => {
+      window.removeEventListener(AUDIO_EVENTS.STATE_CHANGE, handleStateChange as EventListener);
+      window.removeEventListener(AUDIO_EVENTS.TIME_UPDATE, handleTimeUpdate as EventListener);
+    };
+  }, [onTimeUpdate]);
 
   const handleSeek = (value: number[]) => {
+    const newTime = value[0];
     if (audioRef.current) {
-      isSeekingRef.current = true;
-      const newTime = value[0];
-      audioRef.current.currentTime = newTime / 1000;
+      audioRef.current.currentTime = newTime;
       setCurrentTime(newTime);
-      onTimeUpdate?.(newTime);
-      isSeekingRef.current = false;
+      // 同步到全局控制器
+      if (isPlaying) {
+        AudioController.play(
+          audioUrl,
+          newTime * 1000,
+          duration * 1000,
+          'main-audio-player'
+        );
+      }
     }
   };
 
@@ -158,10 +186,42 @@ export function AudioPlayer({
     }
   };
 
+  const togglePlay = () => {
+    if (isPlaying) {
+      AudioController.pause();
+    } else {
+      // 添加调试日志
+      console.log('播放音频:', {
+        audioUrl,
+        startTime: currentTime,
+        endTime: duration,
+        playerId: 'main-audio-player'
+      });
+      
+      // 确保设置了endTime
+      const endTimeToUse = duration > 0 ? duration : 9999999; // 如果没有duration则使用一个大值
+      
+      AudioController.play(
+        audioUrl,
+        currentTime,
+        endTimeToUse,
+        'main-audio-player'
+      );
+    }
+  };
+
   useEffect(() => {
     const audio = audioRef.current;
     if (audio) {
-      const handleEnded = () => setIsPlaying(false);
+      const handleEnded = () => {
+        setIsPlaying(false);
+        // 在被动模式下，发送播放结束通知
+        if (passiveMode) {
+          // 发送自定义事件通知ContentBlock播放结束
+          const event = new CustomEvent('audio-playback-ended');
+          window.dispatchEvent(event);
+        }
+      };
       
       audio.addEventListener('loadedmetadata', handleLoadedMetadata);
       audio.addEventListener('ended', handleEnded);
@@ -171,7 +231,65 @@ export function AudioPlayer({
         audio.removeEventListener('ended', handleEnded);
       };
     }
-  }, [handleLoadedMetadata]);
+  }, [handleLoadedMetadata, passiveMode]);
+
+  // 修改音频播放循环功能实现
+
+  // 添加对循环模式的处理
+  useEffect(() => {
+    // 监听音频完成事件
+    const handleAudioEnd = async (e: CustomEvent) => {
+      const { playerId } = e.detail;
+      
+      // 只处理主播放器的结束事件
+      if (playerId === 'main-audio-player' && !isReplaying && !isLoading) {
+        // 防止重入
+        setIsReplaying(true);
+        setIsLoading(true);
+        
+        try {
+          if (loopMode === 'sentence' || loopMode === 'block') {
+            // 延迟一点时间，确保前一个音频已完全停止
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // 尝试重新播放
+            const success = await AudioController.play(
+              audioUrl,
+              0,
+              duration,
+              'main-audio-player'
+            );
+            
+            console.log('循环播放结果:', success);
+          }
+        } catch (error) {
+          console.error('循环播放错误:', error);
+        } finally {
+          // 无论成功失败，都解除锁定状态
+          setTimeout(() => {
+            setIsReplaying(false);
+            setIsLoading(false);
+          }, 500);
+        }
+      }
+    };
+    
+    window.addEventListener('audio-playback-ended', handleAudioEnd as EventListener);
+    
+    return () => {
+      window.removeEventListener('audio-playback-ended', handleAudioEnd as EventListener);
+    };
+  }, [audioUrl, duration, loopMode, isReplaying, isLoading]);
+
+  // 当循环模式改变时，发送全局事件
+  useEffect(() => {
+    if (loopMode !== 'none') {
+      // 广播循环模式变更
+      window.dispatchEvent(new CustomEvent('global-loop-mode-change', {
+        detail: { mode: loopMode }
+      }));
+    }
+  }, [loopMode]);
 
   return (
     <div className={`bg-card rounded-lg ${compact ? 'p-4' : 'p-6'} space-y-4`}>
@@ -201,7 +319,7 @@ export function AudioPlayer({
             isPlaying ? 'animate-spin' : ''
           }`} 
           style={{ animationDuration: '3s' }}
-          onClick={handlePlayPause}
+          onClick={togglePlay}
         >
           {coverUrl ? (
             <Image 
@@ -247,7 +365,12 @@ export function AudioPlayer({
             </button>
             <button 
               className="p-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90"
-              onClick={handlePlayPause}
+              onClick={(e) => {
+                // 阻止事件冒泡，防止与其他点击逻辑冲突
+                e.preventDefault();
+                e.stopPropagation();
+                togglePlay();
+              }}
             >
               {isPlaying ? (
                 <Pause className="w-4 h-4" />
@@ -274,6 +397,64 @@ export function AudioPlayer({
               onValueChange={(value) => setVolume(value[0] / 100)}
               className="w-20"
             />
+          </div>
+
+          {/* 循环模式控制 */}
+          <div className="mt-3 pt-2 border-t border-border">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">循环模式:</span>
+              <div className="flex rounded-md overflow-hidden border divide-x">
+                <button 
+                  className={cn(
+                    "px-2 py-1 text-xs transition-colors",
+                    loopMode === 'sentence' 
+                      ? "bg-primary text-primary-foreground" 
+                      : "bg-background hover:bg-accent/30"
+                  )}
+                  onClick={() => setLoopMode('sentence')}
+                  title="句子循环"
+                >
+                  单句
+                </button>
+                <button 
+                  className={cn(
+                    "px-2 py-1 text-xs transition-colors",
+                    loopMode === 'block' 
+                      ? "bg-primary text-primary-foreground" 
+                      : "bg-background hover:bg-accent/30"
+                  )}
+                  onClick={() => setLoopMode('block')}
+                  title="段落循环"
+                >
+                  段落
+                </button>
+                <button 
+                  className={cn(
+                    "px-2 py-1 text-xs transition-colors",
+                    loopMode === 'continuous' 
+                      ? "bg-primary text-primary-foreground" 
+                      : "bg-background hover:bg-accent/30"
+                  )}
+                  onClick={() => setLoopMode('continuous')}
+                  title="连续播放"
+                >
+                  连续
+                </button>
+              </div>
+            </div>
+            
+            {loopMode !== 'none' && (
+              <button 
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('set-play-mode', {
+                    detail: { mode: loopMode }
+                  }));
+                }}
+                className="mt-1 text-xs text-emerald-500 hover:text-emerald-600 hover:underline flex items-center justify-center w-full"
+              >
+                应用到全局 <ArrowRight className="w-3 h-3 ml-1" />
+              </button>
+            )}
           </div>
         </>
       )}

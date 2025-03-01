@@ -10,6 +10,11 @@ import {
   DropResult
 } from 'react-beautiful-dnd';
 import { debounce } from 'lodash';
+import { Play, Pause, GripVertical } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import { formatTime } from '@/lib/utils/format';
+import { cn } from '@/lib/utils';
+import { AudioController, AUDIO_EVENTS } from '@/lib/audio-controller';
 
 interface Word {
   id: string;
@@ -35,9 +40,10 @@ interface SentencePlayerProps {
   speechId: string;
   onTimeChange: (time: number) => void;
   currentTime?: number;
+  isAlignMode?: boolean;
 }
 
-export function SentencePlayer({ speechId, onTimeChange, currentTime = 0 }: SentencePlayerProps) {
+export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlignMode = false }: SentencePlayerProps) {
   const [sentences, setSentences] = useState<Sentence[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,11 +52,16 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0 }: Sent
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 20 });
   const pageSize = 50;  // 增加每页加载的数量
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
-  const [activeSentenceIndex, setActiveSentenceIndex] = useState<number>(-1);
+  const [activeSentenceIndex, setActiveSentenceIndex] = useState<number | null>(-1);
   const lastClickTimeRef = useRef<number>(0);
   const MIN_CLICK_INTERVAL = 200;
   const loadingRef = useRef(false);  // 添加加载状态的 ref
   const speechIdRef = useRef(speechId); // 添加 speechId 的 ref
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [activeSentenceId, setActiveSentenceId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string>('');
+  const sentenceTimers = useRef<{[key: string]: NodeJS.Timeout}>({});
 
   // 重置状态 - 仅在 speechId 变化时执行一次
   useEffect(() => {
@@ -64,7 +75,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0 }: Sent
     setLoading(true);
     setError(null);
     setVisibleRange({ start: 0, end: 20 });
-    setActiveSentenceIndex(-1);
+    setActiveSentenceIndex(null);
     loadingRef.current = false;
     
     // 重置滚动位置
@@ -359,6 +370,105 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0 }: Sent
   // 添加 displayName
   SentenceItem.displayName = 'SentenceItem';
 
+  // 添加拖拽处理函数
+  const handleDragStart = (e: React.DragEvent, sentence: Sentence) => {
+    if (!isAlignMode) return; // 只在对齐模式下可拖拽
+    
+    // 设置拖拽数据
+    const dragData = {
+      type: 'sentence',
+      sentenceId: sentence.id,
+      speechId: speechId,
+      text: sentence.text_content,
+      beginTime: sentence.begin_time,
+      endTime: sentence.end_time
+    };
+    
+    try {
+      // 确保数据格式正确
+      e.dataTransfer.setData('application/json', JSON.stringify(dragData));
+      e.dataTransfer.effectAllowed = 'copy';
+      
+      // 创建拖拽预览效果
+      const dragPreview = document.createElement('div');
+      dragPreview.classList.add('sentence-drag-preview');
+      dragPreview.textContent = sentence.text_content;
+      dragPreview.style.position = 'absolute';
+      dragPreview.style.left = '-9999px';
+      document.body.appendChild(dragPreview);
+      e.dataTransfer.setDragImage(dragPreview, 0, 0);
+      
+      // 添加样式
+      e.currentTarget.classList.add('opacity-50');
+      
+      setTimeout(() => {
+        document.body.removeChild(dragPreview);
+      }, 0);
+    } catch (err) {
+      console.error('设置拖拽数据失败:', err);
+    }
+  };
+  
+  const handleDragEnd = (e: React.DragEvent) => {
+    e.currentTarget.classList.remove('opacity-50');
+  };
+
+  // 修改togglePlay函数
+  const togglePlay = () => {
+    // 确保有活动句子
+    if (!activeSentenceId || !sentences.length) return;
+    
+    // 找到活动句子
+    const activeSentence = sentences.find(s => s.id === activeSentenceId);
+    if (!activeSentence) return;
+    
+    const playerId = `sentence-${activeSentenceId}`;
+    
+    // 播放音频
+    const isPlayStarted = AudioController.play(
+      audioUrl,
+      activeSentence.begin_time,
+      activeSentence.end_time,
+      playerId
+    );
+    
+    // 更新状态
+    setIsPlaying(isPlayStarted);
+  };
+
+  // 添加状态监听
+  useEffect(() => {
+    // 监听音频状态变更
+    const handleStateChange = (e: CustomEvent) => {
+      const { isPlaying: newIsPlaying, playerId } = e.detail;
+      
+      // 检查播放器ID是否与当前活动句子相关
+      if (playerId && playerId.startsWith('sentence-') && activeSentenceId) {
+        const sentenceIdFromPlayer = playerId.replace('sentence-', '');
+        
+        // 如果状态变更与当前活动句子相关
+        if (sentenceIdFromPlayer === activeSentenceId) {
+          setIsPlaying(newIsPlaying);
+          
+          // 如果开始播放，重置活动单词索引
+          if (newIsPlaying) {
+            setActiveSentenceIndex(null);
+          }
+        } else {
+          // 如果与其他句子相关，重置自己的状态
+          setIsPlaying(false);
+          setActiveSentenceIndex(null);
+        }
+      }
+    };
+    
+    window.addEventListener(AUDIO_EVENTS.STATE_CHANGE, handleStateChange as EventListener);
+    
+    return () => {
+      window.removeEventListener(AUDIO_EVENTS.STATE_CHANGE, handleStateChange as EventListener);
+    };
+  }, [activeSentenceId]); // 使用activeSentenceId而不是sentence.id
+
   if (loading && page === 1) {
     return <div className="p-4 text-center">加载中...</div>;
   }
@@ -376,28 +486,37 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0 }: Sent
         {sentences.slice(visibleRange.start, visibleRange.end + 1).map((sentence, index) => {
           const actualIndex = index + visibleRange.start;
           return (
-            <div key={sentence.id || actualIndex}>
-              <SentenceItem
-                sentence={sentence}
-                isActive={actualIndex === activeSentenceIndex}
-                currentTime={currentTime}
-                onSentenceClick={handleSentenceClick}
-                onWordClick={handleWordClick}
-              />
+            <div 
+              key={sentence.id || actualIndex}
+              className={cn(
+                "relative p-3 bg-card rounded-md border shadow-sm",
+                activeSentenceId === sentence.id ? 'border-primary' : 'border-border',
+                isAlignMode ? 'cursor-grab active:cursor-grabbing' : '' // 对齐模式下显示拖拽光标
+              )}
+              draggable={isAlignMode} // 只在对齐模式下可拖拽
+              onDragStart={(e) => isAlignMode && handleDragStart(e, sentence)}
+              onDragEnd={handleDragEnd}
+            >
+              {/* 在对齐模式下显示拖拽手柄 */}
+              {isAlignMode && (
+                <div className="absolute left-0 top-0 bottom-0 flex items-center justify-center w-8 opacity-40 group-hover:opacity-100">
+                  <GripVertical className="h-4 w-4 text-muted-foreground" />
+                </div>
+              )}
+              
+              <div className={isAlignMode ? "pl-5" : ""}>
+                <SentenceItem
+                  sentence={sentence}
+                  isActive={actualIndex === activeSentenceIndex}
+                  currentTime={currentTime}
+                  onSentenceClick={handleSentenceClick}
+                  onWordClick={handleWordClick}
+                />
+              </div>
             </div>
           );
         })}
       </div>
     </div>
   );
-}
-
-function formatTime(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  
-  return `${pad(hours)}:${pad(minutes % 60)}:${pad(seconds % 60)}`;
 } 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AudioRecognizer } from './AudioRecognizer';
 import { DraggableAudioPlayer } from './DraggableAudioPlayer';
 import { Book } from '@/types/book';
@@ -8,6 +8,9 @@ import { supabase } from '@/lib/supabase-client';
 import { X, Mic, Menu, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ContentBlock } from './ContentBlock';
 import { toast } from 'sonner';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import Image from 'next/image';
+import { AudioController } from '@/lib/audio-controller';
 
 interface ReaderContentProps {
   book: Book;
@@ -25,6 +28,9 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
   const [loading, setLoading] = useState(false);
   const [parentIds, setParentIds] = useState<Record<number, string>>({});
   const [selectedBlocks, setSelectedBlocks] = useState<Set<string>>(new Set());
+  const [aligningBlocks, setAligningBlocks] = useState<Set<string>>(new Set());
+  const [playMode, setPlayMode] = useState<'sentence' | 'block' | 'continuous'>('continuous');
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   // 添加块更新处理函数
   const handleBlockUpdate = async (blockId: string, newType: string, content: string) => {
@@ -253,9 +259,75 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     }
   }, [book.id, resources.length]);
 
-  // 加载当前章节的语境块
+  // 在组件中添加调试日志
   useEffect(() => {
-    async function loadContextBlocks() {
+    console.log('加载的上下文块:', contextBlocks);
+    console.log('当前章节:', currentChapter);
+    console.log('当前章节的块:', contextBlocks[currentChapter]);
+  }, [contextBlocks, currentChapter]);
+
+  // 修改loadContextBlocksForChapter函数，添加更多错误处理
+  const loadContextBlocksForChapter = async (chapterIndex: number) => {
+    console.log(`开始加载章节 ${chapterIndex} 的内容，parentId: ${parentIds[chapterIndex]}`);
+    
+    if (!parentIds[chapterIndex]) {
+      console.error('没有找到章节的parentId，尝试重新获取', chapterIndex);
+      // 尝试重新获取parentId
+      await loadParentIds();
+      // 如果还是没有，则放弃
+      if (!parentIds[chapterIndex]) {
+        toast.error('无法加载章节内容，请刷新页面');
+        return;
+      }
+    }
+    
+    try {
+      setLoading(true);
+      
+      const parentId = parentIds[chapterIndex];
+      if (!parentId) {
+        console.error('未找到章节对应的parent_id:', chapterIndex, '当前parentIds:', parentIds);
+        toast.error('加载失败', { description: '未找到章节标识信息' });
+        return;
+      }
+
+      console.log(`正在重新加载章节内容，chapterIndex: ${chapterIndex}, parentId: ${parentId}`);
+
+      const { data: blocks, error: blocksError } = await supabase
+        .from('context_blocks')
+        .select('*')
+        .eq('parent_id', parentId)
+        .order('order_index');
+
+      if (blocksError) {
+        console.error('加载语境块失败:', blocksError);
+        toast.error('加载失败', { description: blocksError.message });
+        return;
+      }
+
+      console.log(`成功加载了 ${blocks?.length || 0} 个语境块`);
+
+      // 使用函数式更新来确保基于最新状态
+      setContextBlocks(prev => {
+        const newBlocks = { ...prev };
+        newBlocks[chapterIndex] = blocks || [];
+        console.log('更新后的blocks状态:', newBlocks);
+        return newBlocks;
+      });
+
+      console.log(`章节 ${chapterIndex} 的内容已重新加载`);
+
+    } catch (err) {
+      console.error('加载语境块失败:', err);
+      toast.error('加载失败', { description: '请刷新页面重试' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 修改原来的useEffect
+  useEffect(() => {
+    async function loadContextBlocksInitial() {
       if (contextBlocks[currentChapter]) {
         return;
       }
@@ -300,12 +372,224 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     }
 
     if (book.id && currentChapter >= 0 && parentIds[currentChapter]) {
-      loadContextBlocks();
+      loadContextBlocksInitial();
     }
   }, [book.id, currentChapter, parentIds, contextBlocks]);
 
   const handleChapterChange = (newChapter: number) => {
     setCurrentChapter(newChapter);
+  };
+
+  // 添加处理对齐开始的函数
+  const handleAlignmentStart = (blockId: string) => {
+    setAligningBlocks(prev => {
+      const newSet = new Set(prev);
+      newSet.add(blockId);
+      return newSet;
+    });
+  };
+  
+  // 添加处理对齐完成的函数
+  const handleAlignmentComplete = (blockId: string) => {
+    console.log(`对齐完成，blockId: ${blockId}, 当前章节: ${currentChapter}`);
+    
+    setAligningBlocks(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(blockId);
+      return newSet;
+    });
+    
+    // 在更新UI前，先重新加载数据
+    loadContextBlocksForChapter(currentChapter)
+      .then(() => {
+        console.log('数据重新加载成功');
+        
+        toast.success('文本对齐完成', {
+          description: '语境块已更新为音频点读模式'
+        });
+      })
+      .catch(err => {
+        console.error('重新加载数据失败:', err);
+        
+        toast.error('数据刷新失败', {
+          description: '请刷新页面查看最新结果'
+        });
+      });
+  };
+
+  // 完全重写handlePlayNext函数
+  const handlePlayNext = useCallback((currentBlockId: string, lastSentenceIndex: number) => {
+    // 防止重复触发
+    if (isTransitioning) {
+      console.log('正在进行播放过渡，忽略此次请求');
+      return;
+    }
+    
+    setIsTransitioning(true);
+    console.log('处理下一块播放:', {currentBlockId, lastSentenceIndex});
+    
+    // 查找当前块的索引
+    let currentBlockIndex = -1;
+    let targetBlock = null;
+    
+    if (contextBlocks[currentChapter]) {
+      currentBlockIndex = contextBlocks[currentChapter].findIndex(block => block.id === currentBlockId);
+      
+      // 如果找到当前块并且不是最后一个块
+      if (currentBlockIndex >= 0 && currentBlockIndex < contextBlocks[currentChapter].length - 1) {
+        // 获取下一个块
+        targetBlock = contextBlocks[currentChapter][currentBlockIndex + 1];
+        console.log('找到下一个块:', targetBlock);
+      }
+    }
+    
+    // 给系统一些时间来清理前一个播放实例
+    setTimeout(() => {
+      // 如果没有下一个块，考虑加载下一章节
+      if (!targetBlock) {
+        if (currentChapter < book.chapters.length - 1) {
+          console.log('当前章节已结束，准备加载下一章节');
+          handleChapterChange(currentChapter + 1);
+        } else {
+          console.log('已到达书籍末尾');
+          toast.info('已播放完全部内容');
+        }
+      } else {
+        // 如果找到下一个块，定位到它
+        const blockElement = document.getElementById(`block-${targetBlock.id}`);
+        if (blockElement) {
+          console.log('滚动到下一个块');
+          blockElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          
+          // 发送自定义事件通知该块开始播放
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('play-block', {
+              detail: { blockId: targetBlock.id, index: 0 }
+            }));
+            
+            // 重置过渡状态
+            setIsTransitioning(false);
+          }, 500);
+        } else {
+          console.error('找不到目标块元素');
+          setIsTransitioning(false);
+        }
+      }
+    }, 300); // 给一些时间让上一个音频完全停止
+  }, [contextBlocks, currentChapter, book.chapters.length, isTransitioning, handleChapterChange]);
+
+  // 添加播放模式选择器UI
+  const renderPlayModeSelector = () => (
+    <div className="flex items-center gap-2 ml-4">
+      <span className="text-xs text-muted-foreground">播放模式:</span>
+      <ToggleGroup type="single" value={playMode} onValueChange={(value) => value && setPlayMode(value as any)}>
+        <ToggleGroupItem value="sentence" size="sm">句子循环</ToggleGroupItem>
+        <ToggleGroupItem value="block" size="sm">段落循环</ToggleGroupItem>
+        <ToggleGroupItem value="continuous" size="sm">连续播放</ToggleGroupItem>
+      </ToggleGroup>
+    </div>
+  );
+
+  const renderBlocks = () => {
+    if (!contextBlocks[currentChapter]) {
+      return <div className="p-4 text-muted-foreground">无内容</div>;
+    }
+
+    return contextBlocks[currentChapter].map((block) => (
+      <ContentBlock
+        key={block.id}
+        block={block}
+        resources={resources}
+        onBlockUpdate={handleBlockUpdate}
+        onOrderChange={handleBlockOrderChange}
+        isSelected={selectedBlocks.has(block.id)}
+        onSelect={handleBlockSelect}
+        audioUrl={audioUrl}
+        onTimeChange={setCurrentTime}
+        isAligning={aligningBlocks.has(block.id)}
+        onAlignmentComplete={handleAlignmentComplete}
+        playMode={playMode}
+        onPlayNext={handlePlayNext}
+        onPlayModeChange={handlePlayModeChange}
+      />
+    ));
+  };
+
+  // 添加事件监听器以接收循环模式变更
+  useEffect(() => {
+    const handleSetPlayMode = (e: CustomEvent) => {
+      const mode = e.detail.mode;
+      if (mode && ['sentence', 'block', 'continuous'].includes(mode)) {
+        setPlayMode(mode as any);
+        toast.info(`已设置全局播放模式为: ${
+          mode === 'sentence' ? '句子循环' : 
+          mode === 'block' ? '段落循环' : '连续播放'
+        }`);
+      }
+    };
+    
+    window.addEventListener('set-play-mode', handleSetPlayMode as EventListener);
+    
+    return () => {
+      window.removeEventListener('set-play-mode', handleSetPlayMode as EventListener);
+    };
+  }, []);
+
+  // 在组件挂载和卸载时清理音频
+  useEffect(() => {
+    // 组件挂载时强制清理
+    AudioController.emergencyCleanup();
+    
+    // 组件卸载时也清理
+    return () => {
+      AudioController.emergencyCleanup();
+    };
+  }, []);
+
+  // 添加函数以处理播放模式变更
+  const handlePlayModeChange = (newMode: 'sentence' | 'block' | 'continuous') => {
+    console.log('设置全局播放模式为:', newMode);
+    setPlayMode(newMode);
+    
+    // 通知其他可能需要知道的组件
+    window.dispatchEvent(new CustomEvent('set-play-mode', {
+      detail: { mode: newMode }
+    }));
+  };
+
+  // 在 ReaderContent 组件中添加 loadParentIds 函数
+  const loadParentIds = async () => {
+    try {
+      console.log('重新加载章节父级ID, book.id:', book.id);
+      
+      const { data, error } = await supabase
+        .from('chapters')
+        .select('order_index, parent_id')
+        .eq('book_id', book.id)
+        .order('order_index');
+
+      if (error) {
+        console.error('加载章节父级ID失败:', error);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        console.error('未找到任何章节数据，book.id:', book.id);
+        return;
+      }
+
+      console.log('加载到的章节数据:', data);
+
+      const idMap = data.reduce((acc: Record<number, string>, chapter: { order_index: number; parent_id: string }) => {
+        acc[chapter.order_index] = chapter.parent_id;
+        return acc;
+      }, {});
+
+      setParentIds(idMap);
+      console.log('更新的parentIds:', idMap);
+    } catch (err) {
+      console.error('加载章节父级ID失败:', err);
+    }
   };
 
   return (
@@ -370,17 +654,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : (
-            contextBlocks[currentChapter]?.map((block) => (
-              <ContentBlock
-                key={block.id}
-                block={block}
-                resources={resources}
-                onBlockUpdate={handleBlockUpdate}
-                onOrderChange={handleBlockOrderChange}
-                isSelected={selectedBlocks.has(block.id)}
-                onSelect={handleBlockSelect}
-              />
-            ))
+            renderBlocks()
           )}
         </div>
       </div>
@@ -488,6 +762,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
           audioUrl={audioUrl}
           currentTime={currentTime}
           onTimeUpdate={setCurrentTime}
+          passiveMode={true}
         />
       )}
 

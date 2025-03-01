@@ -7,6 +7,7 @@ interface DraggableAudioPlayerProps {
   audioUrl: string;
   currentTime?: number;
   onTimeUpdate?: (currentTime: number) => void;
+  passiveMode?: boolean;
 }
 
 export function DraggableAudioPlayer({

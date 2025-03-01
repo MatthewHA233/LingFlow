@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Wand2, Upload } from 'lucide-react';
+import { Wand2, Upload, X, AlignCenter } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { SentencePlayer } from './SentencePlayer';
 import { AudioUploader } from './AudioUploader';
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatDateTime } from '@/lib/utils/date';
 import { SpeechRecognitionService, AlignmentResult } from '@/lib/services/speech-recognition';
 import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
+import { Button } from '@/components/ui/button';
 
 interface AudioRecognizerProps {
   bookContent: string;
@@ -43,6 +44,7 @@ export function AudioRecognizer({
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [speechResults, setSpeechResults] = useState<SpeechResult[]>([]);
   const [showUploader, setShowUploader] = useState(false);  // 添加上传界面显示状态
+  const [isAlignMode, setIsAlignMode] = useState(false);
 
   // 加载书籍的所有音频记录
   useEffect(() => {
@@ -163,8 +165,33 @@ export function AudioRecognizer({
     }
   };
 
+  // 切换对齐模式
+  const toggleAlignMode = () => {
+    setIsAlignMode(!isAlignMode);
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* 头部添加对齐按钮 */}
+      <div className="flex items-center justify-between p-2 border-b">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-medium">音频处理</h3>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          {speechId && status === 'completed' && (
+            <Button 
+              variant={isAlignMode ? "secondary" : "ghost"} 
+              size="sm"
+              onClick={toggleAlignMode}
+            >
+              <AlignCenter className="h-4 w-4 mr-1" />
+              {isAlignMode ? "退出对齐模式" : "开始文本对齐"}
+            </Button>
+          )}
+        </div>
+      </div>
+      
       {/* 音频记录选择器和上传按钮 */}
       <div className="flex flex-col gap-4">
         {/* 历史记录选择器 */}
@@ -241,7 +268,7 @@ export function AudioRecognizer({
             </HoverBorderGradient>
           )}
 
-          {/* 句子播放器 */}
+          {/* 句子播放器 - 根据模式切换组件 */}
           {speechId && status === 'completed' && (
             <div className="border-t pt-4">
               <h3 className="text-sm font-medium mb-2">逐句点读</h3>
@@ -249,6 +276,7 @@ export function AudioRecognizer({
                 speechId={speechId}
                 onTimeChange={setCurrentTime}
                 currentTime={currentTime}
+                isAlignMode={isAlignMode}
               />
             </div>
           )}

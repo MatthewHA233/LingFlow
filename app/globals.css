@@ -87,3 +87,62 @@
     backface-visibility: hidden;
   }
 }
+
+/* 平滑的淡入淡出动画，替代夸张的弹跳 */
+@keyframes fade-in {
+  0% { opacity: 0; transform: translateY(-5px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+/* 对齐完成动画 - 精致丝滑版 */
+@keyframes border-pulse {
+  0%, 100% { 
+    border-color: rgba(var(--primary), 0.1);
+    box-shadow: 0 0 0 1px rgba(var(--primary), 0.05);
+  }
+  50% { 
+    border-color: rgba(var(--primary), 0.3);
+    box-shadow: 0 0 0 1px rgba(var(--primary), 0.15), 0 0 15px 2px rgba(var(--primary), 0.1);
+  }
+}
+
+@keyframes subtle-glow {
+  0% { background-color: transparent; }
+  40% { background-color: rgba(var(--primary), 0.04); }
+  60% { background-color: rgba(var(--primary), 0.04); }
+  100% { background-color: transparent; }
+}
+
+@keyframes badge-slide-in {
+  0% { transform: translateY(-24px); opacity: 0; }
+  20% { transform: translateY(0); opacity: 1; }
+  80% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(-24px); opacity: 0; }
+}
+
+.alignment-complete {
+  animation: border-pulse 2s ease-in-out, subtle-glow 2s ease-in-out;
+  position: relative;
+}
+
+.alignment-complete::after {
+  content: '✓ 对齐完成';
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-size: 12px;
+  color: rgba(var(--primary), 0.9);
+  background-color: rgba(var(--background), 0.85);
+  backdrop-filter: blur(4px);
+  padding: 4px 8px;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transform: translateY(-24px);
+  opacity: 0;
+  animation: badge-slide-in 2.5s ease-in-out forwards;
+  z-index: 10;
+}
