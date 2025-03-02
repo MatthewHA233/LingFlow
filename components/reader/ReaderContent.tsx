@@ -644,7 +644,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
 
       {/* 音频处理抽屉面板 */}
       <div className={`
-        fixed right-0 top-28 w-[600px] h-[calc(100vh-7rem)]
+        fixed right-0 top-28 w-[400px] h-[calc(100vh-7rem)]
         transform transition-all duration-300 ease-in-out
         bg-card/95 backdrop-blur border-l shadow-lg z-30
         ${showAudioPanel ? 'translate-x-0' : 'translate-x-full'}

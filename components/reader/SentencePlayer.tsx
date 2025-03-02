@@ -10,7 +10,7 @@ import {
   DropResult
 } from 'react-beautiful-dnd';
 import { debounce } from 'lodash';
-import { Play, Pause, GripVertical } from 'lucide-react';
+import { Play, Pause, GripVertical, AlignCenter } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { formatTime } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
@@ -34,6 +34,7 @@ interface Sentence {
   emotion_value?: number;
   order: number;
   words: Word[];
+  conversion_status?: string;
 }
 
 interface SentencePlayerProps {
@@ -41,9 +42,10 @@ interface SentencePlayerProps {
   onTimeChange: (time: number) => void;
   currentTime?: number;
   isAlignMode?: boolean;
+  onToggleAlignMode?: () => void;
 }
 
-export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlignMode = false }: SentencePlayerProps) {
+export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlignMode = false, onToggleAlignMode }: SentencePlayerProps) {
   const [sentences, setSentences] = useState<Sentence[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +64,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [audioUrl, setAudioUrl] = useState<string>('');
   const sentenceTimers = useRef<{[key: string]: NodeJS.Timeout}>({});
+  const [hideAligned, setHideAligned] = useState(false);
 
   // 重置状态 - 仅在 speechId 变化时执行一次
   useEffect(() => {
@@ -191,28 +194,24 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
 
       const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
       
-      // 估算每个句子的平均高度
-      const itemHeight = 35;
+      // 估算每个句子的平均高度 - 减小为合理值
+      const itemHeight = 28; // 从35减为28
       
-      // 计算可见区域能显示的大致句子数量
-      const visibleItems = Math.ceil(clientHeight / itemHeight);
-      
-      // 计算当前滚动位置对应的句子索引
-      const startIndex = Math.floor(scrollTop / itemHeight);
-      
-      // 更新可视范围，上下多缓存一些句子
-      setVisibleRange({
-        start: Math.max(0, startIndex - 5),
-        end: Math.min(sentences.length - 1, startIndex + visibleItems + 5)
-      });
-
-      // 检查是否需要加载更多
-      // 当滚动到距离底部 200px 时就开始加载
-      if (scrollHeight - scrollTop - clientHeight < 200) {
+      // 增加预加载触发距离，提前加载
+      if (scrollHeight - scrollTop - clientHeight < 300) { // 从200增加到300
         console.log('触发加载更多, 当前页码:', page);
         setPage(prev => prev + 1);
       }
-    }, 100);
+      
+      // 更新可视区域，加大缓冲区
+      const visibleItems = Math.ceil(clientHeight / itemHeight);
+      const startIndex = Math.floor(scrollTop / itemHeight);
+      
+      setVisibleRange({
+        start: Math.max(0, startIndex - 10), // 从5增加到10
+        end: Math.min(sentences.length - 1, startIndex + visibleItems + 10) // 从5增加到10
+      });
+    }, 50); // 减少防抖时间，从100ms到50ms
 
     scrollContainer.addEventListener('scroll', handleScroll);
     return () => {
@@ -296,19 +295,27 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
     return result;
   }, []);
 
+  // 过滤句子列表
+  const filteredSentences = useMemo(() => {
+    if (!hideAligned) return sentences;
+    return sentences.filter(sentence => sentence.conversion_status !== 'converted');
+  }, [sentences, hideAligned]);
+
   // 使用 memo 优化句子渲染
   const SentenceItem = memo(({ 
     sentence, 
     isActive, 
     currentTime,
     onSentenceClick,
-    onWordClick 
+    onWordClick,
+    isAligned 
   }: { 
     sentence: Sentence;
     isActive: boolean;
     currentTime: number;
     onSentenceClick: (sentence: Sentence) => void;
     onWordClick: (word: Word, e: React.MouseEvent) => void;
+    isAligned?: boolean;
   }) => {
     const sentenceContent = useMemo(() => 
       renderSentenceContent(sentence, currentTime),
@@ -317,23 +324,24 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
 
     return (
       <div
-        className={`p-2 rounded-lg transition-colors ${
+        className={`p-1 rounded-lg transition-colors ${
           isActive ? 'bg-accent/30' : 'hover:bg-accent/20'
         }`}
         onClick={() => onSentenceClick(sentence)}
       >
-        <div className="pl-4">
+        <div className="pl-3">
           {isActive && (
-            <div className="mb-1 text-xs text-muted-foreground space-y-1">
-              <div className="flex items-center justify-between">
-                <span>{formatTime(sentence.begin_time)} - {formatTime(sentence.end_time)}</span>
-                <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center">
+            <div className="mb-0.5 text-xs text-muted-foreground">
+              <div className="flex items-center justify-between gap-1 flex-wrap">
+                <span className="text-[10px]">{formatTime(sentence.begin_time)} - {formatTime(sentence.end_time)}</span>
+                <div className="text-[10px] text-muted-foreground flex flex-wrap items-center gap-1">
                   {sentence.speech_rate && (
-                    <span>语速: {Math.round(sentence.speech_rate)}字/分钟</span>
+                    <span>语速:{Math.round(sentence.speech_rate)}字/分</span>
                   )}
                   {sentence.emotion_value && (
-                    <span className="ml-2">情感值: {sentence.emotion_value.toFixed(1)}</span>
+                    <span>情感:{sentence.emotion_value.toFixed(1)}</span>
                   )}
+                  {isAligned && <span className="text-emerald-500">已对齐</span>}
                 </div>
               </div>
             </div>
@@ -469,6 +477,20 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
     };
   }, [activeSentenceId]); // 使用activeSentenceId而不是sentence.id
 
+  // 修改SentencePlayer中的相关部分
+  useEffect(() => {
+    // 添加监听器来接收"仅未对齐"按钮的点击事件
+    const handleToggleHideAligned = () => {
+      setHideAligned(!hideAligned);
+    };
+    
+    window.addEventListener('toggle-hide-aligned', handleToggleHideAligned);
+    
+    return () => {
+      window.removeEventListener('toggle-hide-aligned', handleToggleHideAligned);
+    };
+  }, [hideAligned]);
+
   if (loading && page === 1) {
     return <div className="p-4 text-center">加载中...</div>;
   }
@@ -480,37 +502,45 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
   return (
     <div
       ref={setScrollContainer}
-      className="h-[calc(100vh-20rem)] overflow-y-auto"
+      className="h-[calc(100vh-19rem)] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent hover:scrollbar-thumb-primary/30"
     >
-      <div className="space-y-2 p-4">
-        {sentences.slice(visibleRange.start, visibleRange.end + 1).map((sentence, index) => {
-          const actualIndex = index + visibleRange.start;
+      <div className="space-y-1 p-2">
+        {filteredSentences.slice(visibleRange.start, visibleRange.end + 1).map((sentence, index) => {
+          const actualIndex = filteredSentences.indexOf(sentence);
+          const isAligned = sentence.conversion_status === 'converted';
+          
           return (
             <div 
               key={sentence.id || actualIndex}
               className={cn(
-                "relative p-3 bg-card rounded-md border shadow-sm",
+                "relative p-1.5 rounded-md border shadow-sm",
+                isAligned ? "bg-emerald-950/10" : "bg-card", 
                 activeSentenceId === sentence.id ? 'border-primary' : 'border-border',
-                isAlignMode ? 'cursor-grab active:cursor-grabbing' : '' // 对齐模式下显示拖拽光标
+                isAlignMode ? 'cursor-grab active:cursor-grabbing' : ''
               )}
-              draggable={isAlignMode} // 只在对齐模式下可拖拽
+              draggable={isAlignMode}
               onDragStart={(e) => isAlignMode && handleDragStart(e, sentence)}
               onDragEnd={handleDragEnd}
             >
-              {/* 在对齐模式下显示拖拽手柄 */}
+              {isAligned && (
+                <div className="absolute right-1 top-1 w-2 h-2 bg-emerald-500 rounded-full" 
+                     title="已完成对齐"></div>
+              )}
+              
               {isAlignMode && (
-                <div className="absolute left-0 top-0 bottom-0 flex items-center justify-center w-8 opacity-40 group-hover:opacity-100">
-                  <GripVertical className="h-4 w-4 text-muted-foreground" />
+                <div className="absolute left-0 top-0 bottom-0 flex items-center justify-center w-6 opacity-40 group-hover:opacity-100">
+                  <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
                 </div>
               )}
               
-              <div className={isAlignMode ? "pl-5" : ""}>
+              <div className={isAlignMode ? "pl-4" : ""}>
                 <SentenceItem
                   sentence={sentence}
                   isActive={actualIndex === activeSentenceIndex}
                   currentTime={currentTime}
                   onSentenceClick={handleSentenceClick}
                   onWordClick={handleWordClick}
+                  isAligned={isAligned}
                 />
               </div>
             </div>

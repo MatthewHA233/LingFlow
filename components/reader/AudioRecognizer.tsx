@@ -172,37 +172,17 @@ export function AudioRecognizer({
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* 头部添加对齐按钮 */}
-      <div className="flex items-center justify-between p-2 border-b">
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium">音频处理</h3>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          {speechId && status === 'completed' && (
-            <Button 
-              variant={isAlignMode ? "secondary" : "ghost"} 
-              size="sm"
-              onClick={toggleAlignMode}
-            >
-              <AlignCenter className="h-4 w-4 mr-1" />
-              {isAlignMode ? "退出对齐模式" : "开始文本对齐"}
-            </Button>
-          )}
-        </div>
-      </div>
-      
       {/* 音频记录选择器和上传按钮 */}
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 p-4">
         {/* 历史记录选择器 */}
         {(speechResults.length > 0 || status === 'completed') && (
           <div className="w-full">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium">历史记录</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-muted-foreground">历史记录</h3>
               <HoverBorderGradient
                 containerClassName="rounded-full"
                 onClick={() => setShowUploader(!showUploader)}
-                className="flex items-center gap-1 text-xs"
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-primary/10 hover:bg-primary/15 transition-colors"
               >
                 <Upload className="w-3 h-3" />
                 <span>上传新音频</span>
@@ -213,7 +193,7 @@ export function AudioRecognizer({
                 value={speechId}
                 onValueChange={handleAudioChange}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full h-9 border-muted-foreground/20">
                   <SelectValue placeholder="选择历史音频记录" />
                 </SelectTrigger>
                 <SelectContent>
@@ -234,7 +214,17 @@ export function AudioRecognizer({
         {/* 上传组件 */}
         {(showUploader || (!speechResults.length && status !== 'completed')) && (
           <div className="w-full">
-            {showUploader && <h3 className="text-sm font-medium mb-2">上传音频</h3>}
+            {showUploader && (
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-muted-foreground">上传音频</h3>
+                <button 
+                  onClick={() => setShowUploader(false)}
+                  className="text-xs text-muted-foreground hover:text-foreground p-1 rounded-md"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
             <AudioUploader
               bookId={bookId}
               onUploadSuccess={handleUploadSuccess}
@@ -246,20 +236,20 @@ export function AudioRecognizer({
 
       {/* 错误提示 */}
       {errorMessage && (
-        <div className="p-3 bg-red-100 text-red-700 rounded">
+        <div className="mx-4 p-3 bg-destructive/10 text-destructive rounded-md border border-destructive/20 text-sm">
           {errorMessage}
         </div>
       )}
 
       {/* 音频处理区域 */}
       {audioUrl && (
-        <div className="space-y-4">
+        <div className="space-y-4 px-4">
           {/* 智慧语音识别按钮 - 仅在未识别时显示 */}
           {status !== 'completed' && (
             <HoverBorderGradient
               containerClassName="w-full rounded-lg"
               onClick={() => status !== 'processing' && handleRecognition()}
-              className={`w-full flex items-center justify-center gap-2 ${
+              className={`w-full flex items-center justify-center gap-2 py-2 ${
                 status === 'processing' ? 'opacity-50 cursor-not-allowed' : ''
               }`}
             >
@@ -268,22 +258,56 @@ export function AudioRecognizer({
             </HoverBorderGradient>
           )}
 
-          {/* 句子播放器 - 根据模式切换组件 */}
+          {/* 句子播放器 - 传递对齐模式状态和切换函数 */}
           {speechId && status === 'completed' && (
-            <div className="border-t pt-4">
-              <h3 className="text-sm font-medium mb-2">逐句点读</h3>
-              <SentencePlayer
-                speechId={speechId}
-                onTimeChange={setCurrentTime}
-                currentTime={currentTime}
-                isAlignMode={isAlignMode}
-              />
+            <div className="border-t pt-3 mt-1">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-muted-foreground">逐句点读</h3>
+                
+                {/* 将按钮从SentencePlayer移到这里 */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => {
+                      // 通过事件通知SentencePlayer切换状态
+                      window.dispatchEvent(new CustomEvent('toggle-hide-aligned'));
+                    }}
+                    className="flex items-center gap-0.5 text-xs px-1.5 py-1 rounded-md bg-accent/30 hover:bg-accent/50 transition-all duration-300"
+                    title="隐藏已对齐句子"
+                  >
+                    <span className="inline-block w-2 h-2 rounded-full mr-1 bg-foreground"></span>
+                    <span className="text-xs">仅未对齐</span>
+                  </button>
+                  
+                  <button
+                    onClick={toggleAlignMode}
+                    className={`flex items-center gap-0.5 text-xs px-1.5 py-1 rounded-md transition-all duration-300 ${
+                      isAlignMode 
+                        ? 'bg-primary/15 text-primary' 
+                        : 'bg-accent/30 hover:bg-accent/50 text-foreground'
+                    }`}
+                    title={isAlignMode ? "退出文本对齐模式" : "开始文本对齐"}
+                  >
+                    <AlignCenter className={`h-3 w-3 ${isAlignMode ? 'animate-pulse' : ''}`} />
+                    <span className="text-xs">{isAlignMode ? "退出对齐" : "语境块对齐"}</span>
+                  </button>
+                </div>
+              </div>
+              <div className="bg-background/50 rounded-md border border-border/50">
+                <SentencePlayer
+                  speechId={speechId}
+                  onTimeChange={setCurrentTime}
+                  currentTime={currentTime}
+                  isAlignMode={isAlignMode}
+                  onToggleAlignMode={toggleAlignMode}
+                />
+              </div>
             </div>
           )}
 
           {/* 处理状态显示 */}
           {status === 'processing' && (
-            <div className="text-sm text-muted-foreground text-center">
+            <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-b-transparent"></div>
               正在识别语音内容，请稍候...
             </div>
           )}
