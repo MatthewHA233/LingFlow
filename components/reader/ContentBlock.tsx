@@ -238,26 +238,31 @@ export function ContentBlock({
 
   // 添加音频时间更新监听，更新UI
   useEffect(() => {
-    const handleTimeUpdate = (e: Event) => {
-      const audioElement = e.target as HTMLAudioElement;
-      const currentTime = audioElement.currentTime;
+    const handleTimeUpdate = (e: CustomEvent) => {
+      const { currentTime, playerId } = e.detail;
       
-      // 构建与自定义事件相同格式的数据结构
-      const detail = {
-        currentTime,
-        playerId: 'main-audio-player'
-      };
+      // 检查是否是单词播放器ID
+      const isWordPlayer = playerId && playerId.includes('-word-');
       
       // 更新当前时间
       setCurrentAudioTime(currentTime);
       
-      // 查找当前时间所在的句子
-      const matchingSentenceIndex = alignedSentences.findIndex(
-        sentence => currentTime >= sentence.begin_time && currentTime < sentence.end_time
-      );
-      
-      if (matchingSentenceIndex !== -1 && activeIndex === null) {
-        setActiveIndex(matchingSentenceIndex);
+      // 如果是单词播放，不要触发句子高亮
+      if (!isWordPlayer && playerId && (
+        playerId.startsWith(`block-${block.id}`) || 
+        playerId === 'main-audio-player'
+      )) {
+        // 只在句子播放时更新活动句子
+        if (activeIndex === null) {
+          // 查找当前时间所在的句子
+          const matchingSentenceIndex = alignedSentences.findIndex(
+            sentence => currentTime >= sentence.begin_time && currentTime < sentence.end_time
+          );
+          
+          if (matchingSentenceIndex !== -1) {
+            setActiveIndex(matchingSentenceIndex);
+          }
+        }
       }
       
       // 总是传递时间给父组件
@@ -273,7 +278,7 @@ export function ContentBlock({
         }
       };
     }
-  }, [alignedSentences, activeIndex, onTimeChange]);
+  }, [block.id, onTimeChange]);
 
   // 添加全局音频状态监听
   useEffect(() => {
@@ -332,31 +337,6 @@ export function ContentBlock({
     };
   }, [block.id, activeIndex, alignedSentences]);
 
-  // 添加对play-block事件的监听
-  useEffect(() => {
-    // 监听播放指令
-    const handlePlayBlockEvent = (e: CustomEvent) => {
-      const { blockId, index } = e.detail;
-      if (blockId === block.id && alignedSentences.length > 0) {
-        console.log('收到播放指令', blockId, index);
-        
-        // 确保索引有效
-        const sentenceIndex = index >= 0 && index < alignedSentences.length ? index : 0;
-        
-        // 延迟一点时间再播放，确保UI已经更新
-        setTimeout(() => {
-          playSentence(alignedSentences[sentenceIndex], sentenceIndex);
-        }, 200);
-      }
-    };
-    
-    window.addEventListener('play-block', handlePlayBlockEvent as EventListener);
-    
-    return () => {
-      window.removeEventListener('play-block', handlePlayBlockEvent as EventListener);
-    };
-  }, [block.id, alignedSentences]);
-
   // 处理块点击事件
   const handleClick = (e: React.MouseEvent) => {
     if (onSelect && !e.defaultPrevented) {
@@ -374,45 +354,102 @@ export function ContentBlock({
   // 处理拖拽开始
   const handleDragStart = (e: React.DragEvent) => {
     setIsDragging(true);
-    e.dataTransfer.setData('text/plain', block.id);
+    e.dataTransfer.setData('blockId', block.id);
     e.dataTransfer.effectAllowed = 'move';
   };
 
   // 处理拖拽结束
   const handleDragEnd = () => {
     setIsDragging(false);
-    setDropPosition(null);
   };
 
   // 处理拖拽悬停
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
     
-    const rect = blockRef.current?.getBoundingClientRect();
-    if (rect) {
-      const mouseY = e.clientY;
-      const threshold = rect.top + (rect.height / 3);
-      setDropPosition(mouseY < threshold ? 'before' : 'after');
+    // 确保Firefox可以正确获取数据
+    if (e.dataTransfer.types.includes('application/json')) {
+      // 这是句子拖拽，整个块高亮
+      setIsDragOver(true);
+      setDropPosition(null); // 不需要位置指示器
+      return;
+    }
+    
+    // 这是块拖拽，显示位置指示器
+    const rect = e.currentTarget.getBoundingClientRect();
+    const posY = e.clientY - rect.top;
+    
+    if (posY < rect.height / 2) {
+      setDropPosition('before');
+    } else {
+      setDropPosition('after');
     }
   };
 
   // 离开拖拽区域
-  const handleDragLeave = () => {
+  const handleDragLeave = (e: React.DragEvent) => {
+    setIsDragOver(false);
     setDropPosition(null);
   };
 
   // 处理拖放
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
-    const draggedId = e.dataTransfer.getData('text/plain');
-    if (draggedId !== block.id && dropPosition) {
-      onOrderChange?.(draggedId, block.id, dropPosition);
-    }
+    setIsDragOver(false);
     setDropPosition(null);
+    
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('application/json'));
+      
+      // 如果是块排序
+      if (data.type === 'block' && onOrderChange) {
+        const position = getDropPosition(e);
+        onOrderChange(data.id, block.id, position);
+        return;
+      }
+      
+      // 如果是语音识别句子对齐
+      if (data.type === 'sentence' && block.block_type === 'text') {
+        // 设置当前块为对齐中状态
+        setLocalAligning(true);
+        
+        toast({
+          title: "正在进行文本对齐",
+          description: "请稍候，正在处理对齐...",
+        });
+        
+        // 实际执行对齐操作
+        const result = await TextAlignmentService.alignSentenceToBlock(
+          block.id,
+          data.sentenceId,
+          data.speechId
+        );
+        
+        if (result.success) {
+          // 让动画继续播放一段时间
+          // 实际对齐完成后，动画效果会在useEffect中自动处理
+        } else {
+          // 立即结束对齐状态
+          setLocalAligning(false);
+          toast({
+            title: "对齐失败",
+            description: result.message || "文本对齐处理失败",
+            variant: "destructive",
+          });
+        }
+      }
+    } catch (error) {
+      console.error('处理拖放操作失败:', error);
+      setLocalAligning(false);
+      toast({
+        title: "操作失败",
+        description: "处理拖放操作时出错",
+        variant: "destructive",
+      });
+    }
   };
 
-  // 修改句子播放函数
+  // 修改句子播放完成回调
   const playSentence = (sentence: any, index: number) => {
     // 如果已经在播放这个句子，则暂停
     if (activeIndex === index && isPlaying) {
@@ -421,31 +458,76 @@ export function ContentBlock({
     }
     
     // 播放新句子
-    AudioController.play(
+    const wasPlaying = AudioController.play(
       audioUrl || '',
-      sentence.begin_time, // 开始时间
-      null, // 不使用结束时间控制，由其他事件处理
-      `block-${block.id}-sentence-${index}`
-    ).then((wasPlaying: boolean) => {
-      // 播放成功后更新UI状态
-      if (wasPlaying) {
-        setActiveIndex(index);
-        setIsPlaying(true);
+      sentence.begin_time,
+      sentence.end_time,
+      `block-${block.id}-sentence-${index}`,
+      () => {
+        console.log('句子播放完成', index);
         
-        // 如果有结束时间，设置定时器在句子结束时触发
-        if (sentence.end_time && sentence.begin_time < sentence.end_time) {
-          // 计算持续时间（毫秒）
-          const duration = sentence.end_time - sentence.begin_time;
-          
-          // 设置定时器
-          setTimeout(() => {
-            // 句子播放完成
-            console.log('句子播放完成', index);
-            handleSentencePlayComplete(index);
-          }, duration);
+        // 如果正在重播中，不要触发新的重播
+        if (isReplaying) return;
+        
+        // 防止重入
+        setIsReplaying(true);
+        
+        // 句子播放完成时的处理
+        switch (playMode) {
+          case 'sentence':
+            // 延迟后再次播放当前句子
+            setTimeout(() => {
+              playSentence(sentence, index);
+              // 延迟后解除重入锁
+              setTimeout(() => {
+                setIsReplaying(false);
+              }, 500);
+            }, 300);
+            break;
+            
+          case 'block':
+            // 延迟播放下一句或回到第一句
+            setTimeout(() => {
+              if (index < alignedSentences.length - 1) {
+                playSentence(alignedSentences[index + 1], index + 1);
+              } else {
+                playSentence(alignedSentences[0], 0);
+              }
+              // 延迟后解除重入锁
+              setTimeout(() => {
+                setIsReplaying(false);
+              }, 500);
+            }, 300);
+            break;
+            
+          case 'continuous':
+            // 延迟播放下一句或下一块
+            setTimeout(() => {
+              if (index < alignedSentences.length - 1) {
+                playSentence(alignedSentences[index + 1], index + 1);
+              } else {
+                onPlayNext?.(block.id, index);
+              }
+              // 延迟后解除重入锁
+              setTimeout(() => {
+                setIsReplaying(false);
+              }, 500);
+            }, 300);
+            break;
+            
+          default:
+            // 默认不做操作，但要解除重入锁
+            setIsReplaying(false);
+            break;
         }
       }
-    });
+    );
+    
+    // 更新UI状态
+    if (wasPlaying) {
+      setActiveIndex(index);
+      setIsPlaying(true);
+    }
   };
 
   // 简化单词播放函数
@@ -458,16 +540,14 @@ export function ContentBlock({
     // 标记单词为活动状态
     setActiveWordId(word.id);
     
-    // 播放单词 - 调整参数数量
+    // 播放单词
     AudioController.play(
       audioUrl || '',
       word.begin_time,
       word.end_time,
-      `block-${block.id}-word-${word.id}`
+      `block-${block.id}-word-${word.id}`,
+      () => setActiveWordId(null)
     );
-    
-    // 设置单独的回调
-    AudioController.setOnEndCallback(() => setActiveWordId(null));
   };
 
   // 减少事件监听数量
@@ -605,6 +685,16 @@ export function ContentBlock({
     return <span>{elements}</span>;
   };
 
+  // 添加getDropPosition函数实现
+  const getDropPosition = (e: React.DragEvent): 'before' | 'after' => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const posY = e.clientY - rect.top;
+    
+    // 如果鼠标位置在元素上半部分，则放置在元素前面
+    // 否则放置在元素后面
+    return posY < rect.height / 2 ? 'before' : 'after';
+  };
+
   // 渲染内容
   const renderContent = () => {
     // 图片语境块
@@ -710,61 +800,13 @@ export function ContentBlock({
     };
   }, [onPlayModeChange]);
 
-  // 添加句子播放完成处理函数
-  const handleSentencePlayComplete = (index: number) => {
-    // 如果正在重播中，不要触发新的重播
-    if (isReplaying) return;
-    
-    // 防止重入
-    setIsReplaying(true);
-    
-    // 根据播放模式决定下一步操作
-    switch (playMode) {
-      case 'sentence':
-        // 重复播放当前句子
-        setTimeout(() => {
-          playSentence(alignedSentences[index], index);
-          setTimeout(() => setIsReplaying(false), 500);
-        }, 300);
-        break;
-        
-      case 'block':
-        // 播放整个块
-        setTimeout(() => {
-          if (index < alignedSentences.length - 1) {
-            playSentence(alignedSentences[index + 1], index + 1);
-          } else {
-            playSentence(alignedSentences[0], 0);
-          }
-          setTimeout(() => setIsReplaying(false), 500);
-        }, 300);
-        break;
-        
-      case 'continuous':
-        // 连续播放
-        setTimeout(() => {
-          if (index < alignedSentences.length - 1) {
-            playSentence(alignedSentences[index + 1], index + 1);
-          } else {
-            // 播放下一个块
-            onPlayNext?.(block.id, index);
-          }
-          setTimeout(() => setIsReplaying(false), 500);
-        }, 300);
-        break;
-        
-      default:
-        setIsReplaying(false);
-        break;
-    }
-  };
-
   return (
     <div
       ref={blockRef}
       className={cn(
         'group relative my-1 p-2 rounded-md transition-all duration-300',
         isSelected ? 'bg-accent/20 border border-primary/30' : 'hover:bg-accent/10 border border-transparent',
+        isDragOver ? 'border-2 border-dashed border-primary/50 bg-primary/5' : '',
         dropPosition === 'before' ? 'border-t-2 border-t-primary' : '',
         dropPosition === 'after' ? 'border-b-2 border-b-primary' : '',
         localAligning ? 'bg-primary/5 border border-primary/30 shadow-md' : '',

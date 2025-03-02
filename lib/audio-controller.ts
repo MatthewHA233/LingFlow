@@ -59,63 +59,123 @@ export const AudioController = {
   },
   
   // 播放音频
-  play(url: string, startTime: number = 0, duration?: number, playerId: string = 'default') {
+  play(url: string, startTime: number, endTime: number, playerId: string, callback?: () => void): boolean {
+    // 防止重复调用
+    if (isAudioBusy) {
+      console.log('音频系统忙，忽略播放请求');
+      return false;
+    }
+    
     // 检查URL是否有效
     if (!url || url.trim() === '') {
       console.error('无效的音频URL');
       return false;
     }
     
-    // 如果当前正在播放，先停止
-    this.stop();
-    
     try {
-      // 创建新的音频实例
+      // 如果是同一个播放请求但正在播放，则暂停
+      if (activePlayerId === playerId && audioInstance && !audioInstance.paused) {
+        this.pause();
+        return false;
+      }
+      
+      // 设置忙状态，防止短时间内重复调用
+      isAudioBusy = true;
+      clearBusyTimeout = setTimeout(() => { isAudioBusy = false; }, 300);
+      
+      // 清理之前的实例
+      this.emergencyCleanup();
+      
+      // 创建新实例并预加载
       const audio = new Audio();
+      audio.preload = 'auto'; // 强制预加载
       
-      // 添加错误处理
-      audio.onerror = (e) => {
-        console.error('音频加载错误:', e);
-        this.emergencyCleanup();
-      };
+      // 避免自动播放错误
+      audio.muted = true;
+      audio.autoplay = false;
       
-      // 设置音频属性
+      // 设置源
       audio.src = url;
-      audio.currentTime = startTime / 1000; // 转换为秒
       
-      // 预加载音频
-      return new Promise((resolve) => {
-        // 添加可以播放事件监听
-        audio.oncanplaythrough = () => {
-          // 实际开始播放
-          const playPromise = audio.play();
+      // 在设置事件之前先加载
+      const loadPromise = new Promise((resolve) => {
+        audio.addEventListener('canplaythrough', resolve, {once: true});
+        audio.load();
+        
+        // 如果10秒内没有加载完成，也继续执行
+        setTimeout(resolve, 10000);
+      });
+      
+      loadPromise.then(() => {
+        // 设置音频参数
+        audio.muted = false;
+        audio.currentTime = startTime / 1000;
+        audioInstance = audio;
+        activePlayerId = playerId;
+        
+        // 设置播放结束监听
+        const handleEnded = () => {
+          this.pause();
+          if (callback) callback();
+        };
+        
+        // 设置时间更新监听
+        const handleTimeUpdate = () => {
+          if (!audio) return;
           
-          if (playPromise !== undefined) {
-            playPromise
-              .then(() => {
-                // 播放成功
-                audioInstance = audio;
-                activePlayerId = playerId;
-                this.notifyStateChange(true, playerId);
-                resolve(true);
-              })
-              .catch(error => {
-                console.error('播放失败:', error);
-                this.emergencyCleanup();
-                resolve(false);
-              });
+          const currentTime = audio.currentTime * 1000;
+          
+          // 发送时间更新事件
+          window.dispatchEvent(new CustomEvent(AUDIO_EVENTS.TIME_UPDATE, {
+            detail: { currentTime, playerId }
+          }));
+          
+          // 检查是否到达结束时间（使用更宽松的比较以确保触发）
+          if (endTime > 0 && (currentTime >= endTime - 50)) {
+            const now = Date.now();
+            
+            // 防止短时间内多次触发结束事件
+            if (now - lastEndEventTime > END_EVENT_DEBOUNCE) {
+              lastEndEventTime = now;
+              console.log(`音频到达结束时间: ${currentTime.toFixed(0)}/${endTime.toFixed(0)}`);
+              
+              // 暂停播放
+              audio.pause();
+              this.notifyStateChange(false, playerId);
+              
+              // 触发播放结束事件
+              window.dispatchEvent(new CustomEvent('audio-playback-ended', {
+                detail: { playerId, endTime, actualEndTime: currentTime }
+              }));
+              
+              // 如果有回调，执行回调
+              if (callback) {
+                console.log('执行结束回调');
+                // 使用setTimeout确保在UI更新后执行
+                setTimeout(() => {
+                  callback();
+                }, 10);
+              }
+            }
           }
         };
         
-        // 设置加载超时
-        setTimeout(() => {
-          if (!audioInstance) {
-            console.warn('音频加载超时');
+        // 绑定事件
+        audio.addEventListener('timeupdate', handleTimeUpdate);
+        audio.addEventListener('ended', handleEnded);
+        
+        // 播放
+        audio.play()
+          .then(() => {
+            this.notifyStateChange(true, playerId);
+          })
+          .catch(err => {
+            console.error('播放失败', err);
             this.emergencyCleanup();
-            resolve(false);
-          }
-        }, 3000);
+          });
       });
+      
+      return true;
     } catch (error) {
       console.error('播放出错', error);
       this.emergencyCleanup();
@@ -136,14 +196,6 @@ export const AudioController = {
     window.dispatchEvent(new CustomEvent(AUDIO_EVENTS.STATE_CHANGE, {
       detail: { isPlaying, playerId }
     }));
-  },
-  
-  // 停止播放
-  stop() {
-    if (audioInstance) {
-      audioInstance.pause();
-      this.notifyStateChange(false, activePlayerId);
-    }
   }
 };
 

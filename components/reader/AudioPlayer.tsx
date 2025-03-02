@@ -39,7 +39,6 @@ export function AudioPlayer({
   const isSeekingRef = useRef(false);
   const [loopMode, setLoopMode] = useState(playMode || 'none');
   const [isReplaying, setIsReplaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
 
   // 处理外部时间更新
   useEffect(() => {
@@ -238,38 +237,33 @@ export function AudioPlayer({
   // 添加对循环模式的处理
   useEffect(() => {
     // 监听音频完成事件
-    const handleAudioEnd = async (e: CustomEvent) => {
+    const handleAudioEnd = (e: CustomEvent) => {
       const { playerId } = e.detail;
       
       // 只处理主播放器的结束事件
-      if (playerId === 'main-audio-player' && !isReplaying && !isLoading) {
-        // 防止重入
-        setIsReplaying(true);
-        setIsLoading(true);
-        
-        try {
-          if (loopMode === 'sentence' || loopMode === 'block') {
-            // 延迟一点时间，确保前一个音频已完全停止
-            await new Promise(resolve => setTimeout(resolve, 300));
-            
-            // 尝试重新播放
-            const success = await AudioController.play(
+      if (playerId === 'main-audio-player' && !isReplaying) {
+        // 根据循环模式决定行为
+        if (loopMode === 'sentence' || loopMode === 'block') {
+          // 防止重入
+          setIsReplaying(true);
+          
+          // 延迟播放下一个片段
+          setTimeout(() => {
+            // 重新播放当前音频
+            const success = AudioController.play(
               audioUrl,
-              0,
+              0, // 从头开始
               duration,
               'main-audio-player'
             );
             
-            console.log('循环播放结果:', success);
-          }
-        } catch (error) {
-          console.error('循环播放错误:', error);
-        } finally {
-          // 无论成功失败，都解除锁定状态
-          setTimeout(() => {
-            setIsReplaying(false);
-            setIsLoading(false);
-          }, 500);
+            console.log('尝试循环播放:', success);
+            
+            // 解除重入锁
+            setTimeout(() => {
+              setIsReplaying(false);
+            }, 500);
+          }, 200);
         }
       }
     };
@@ -279,7 +273,7 @@ export function AudioPlayer({
     return () => {
       window.removeEventListener('audio-playback-ended', handleAudioEnd as EventListener);
     };
-  }, [audioUrl, duration, loopMode, isReplaying, isLoading]);
+  }, [audioUrl, duration, loopMode, isReplaying]);
 
   // 当循环模式改变时，发送全局事件
   useEffect(() => {

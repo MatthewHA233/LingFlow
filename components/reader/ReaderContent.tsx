@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { AudioRecognizer } from './AudioRecognizer';
 import { DraggableAudioPlayer } from './DraggableAudioPlayer';
 import { Book } from '@/types/book';
@@ -30,7 +30,6 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
   const [selectedBlocks, setSelectedBlocks] = useState<Set<string>>(new Set());
   const [aligningBlocks, setAligningBlocks] = useState<Set<string>>(new Set());
   const [playMode, setPlayMode] = useState<'sentence' | 'block' | 'continuous'>('continuous');
-  const [isTransitioning, setIsTransitioning] = useState(false);
 
   // 添加块更新处理函数
   const handleBlockUpdate = async (blockId: string, newType: string, content: string) => {
@@ -417,66 +416,51 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
       });
   };
 
-  // 完全重写handlePlayNext函数
-  const handlePlayNext = useCallback((currentBlockId: string, lastSentenceIndex: number) => {
-    // 防止重复触发
-    if (isTransitioning) {
-      console.log('正在进行播放过渡，忽略此次请求');
-      return;
-    }
+  // 处理播放下一个块的函数
+  const handlePlayNext = (currentBlockId: string, lastSentenceIndex: number) => {
+    // 找到当前块的索引
+    const blockIndex = contextBlocks[currentChapter]?.findIndex(b => b.id === currentBlockId);
     
-    setIsTransitioning(true);
-    console.log('处理下一块播放:', {currentBlockId, lastSentenceIndex});
-    
-    // 查找当前块的索引
-    let currentBlockIndex = -1;
-    let targetBlock = null;
-    
-    if (contextBlocks[currentChapter]) {
-      currentBlockIndex = contextBlocks[currentChapter].findIndex(block => block.id === currentBlockId);
+    if (blockIndex !== undefined && blockIndex >= 0 && contextBlocks[currentChapter]) {
+      // 如果有下一个块且是音频对齐类型，则播放它的第一个句子
+      const nextBlockIndex = blockIndex + 1;
       
-      // 如果找到当前块并且不是最后一个块
-      if (currentBlockIndex >= 0 && currentBlockIndex < contextBlocks[currentChapter].length - 1) {
-        // 获取下一个块
-        targetBlock = contextBlocks[currentChapter][currentBlockIndex + 1];
-        console.log('找到下一个块:', targetBlock);
+      if (nextBlockIndex < contextBlocks[currentChapter].length) {
+        const nextBlock = contextBlocks[currentChapter][nextBlockIndex];
+        
+        if (nextBlock.block_type === 'audio_aligned') {
+          // 使用自定义事件通知下一个块开始播放
+          window.dispatchEvent(new CustomEvent('play-block-sentence', {
+            detail: {
+              blockId: nextBlock.id,
+              sentenceIndex: 0
+            }
+          }));
+        }
+      } else if (playMode === 'continuous') {
+        // 如果是最后一个块且处于连续播放模式，加载下一章
+        if (currentChapter < book.chapters.length - 1) {
+          // 切换到下一章
+          handleChapterChange(currentChapter + 1);
+          
+          // 使用延迟确保新章节加载后再播放第一个块
+          setTimeout(() => {
+            if (contextBlocks[currentChapter + 1]?.length > 0) {
+              const firstBlock = contextBlocks[currentChapter + 1][0];
+              if (firstBlock.block_type === 'audio_aligned') {
+                window.dispatchEvent(new CustomEvent('play-block-sentence', {
+                  detail: {
+                    blockId: firstBlock.id,
+                    sentenceIndex: 0
+                  }
+                }));
+              }
+            }
+          }, 1000);
+        }
       }
     }
-    
-    // 给系统一些时间来清理前一个播放实例
-    setTimeout(() => {
-      // 如果没有下一个块，考虑加载下一章节
-      if (!targetBlock) {
-        if (currentChapter < book.chapters.length - 1) {
-          console.log('当前章节已结束，准备加载下一章节');
-          handleChapterChange(currentChapter + 1);
-        } else {
-          console.log('已到达书籍末尾');
-          toast.info('已播放完全部内容');
-        }
-      } else {
-        // 如果找到下一个块，定位到它
-        const blockElement = document.getElementById(`block-${targetBlock.id}`);
-        if (blockElement) {
-          console.log('滚动到下一个块');
-          blockElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          
-          // 发送自定义事件通知该块开始播放
-          setTimeout(() => {
-            window.dispatchEvent(new CustomEvent('play-block', {
-              detail: { blockId: targetBlock.id, index: 0 }
-            }));
-            
-            // 重置过渡状态
-            setIsTransitioning(false);
-          }, 500);
-        } else {
-          console.error('找不到目标块元素');
-          setIsTransitioning(false);
-        }
-      }
-    }, 300); // 给一些时间让上一个音频完全停止
-  }, [contextBlocks, currentChapter, book.chapters.length, isTransitioning, handleChapterChange]);
+  };
 
   // 添加播放模式选择器UI
   const renderPlayModeSelector = () => (
@@ -555,41 +539,6 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     window.dispatchEvent(new CustomEvent('set-play-mode', {
       detail: { mode: newMode }
     }));
-  };
-
-  // 在 ReaderContent 组件中添加 loadParentIds 函数
-  const loadParentIds = async () => {
-    try {
-      console.log('重新加载章节父级ID, book.id:', book.id);
-      
-      const { data, error } = await supabase
-        .from('chapters')
-        .select('order_index, parent_id')
-        .eq('book_id', book.id)
-        .order('order_index');
-
-      if (error) {
-        console.error('加载章节父级ID失败:', error);
-        return;
-      }
-
-      if (!data || data.length === 0) {
-        console.error('未找到任何章节数据，book.id:', book.id);
-        return;
-      }
-
-      console.log('加载到的章节数据:', data);
-
-      const idMap = data.reduce((acc: Record<number, string>, chapter: { order_index: number; parent_id: string }) => {
-        acc[chapter.order_index] = chapter.parent_id;
-        return acc;
-      }, {});
-
-      setParentIds(idMap);
-      console.log('更新的parentIds:', idMap);
-    } catch (err) {
-      console.error('加载章节父级ID失败:', err);
-    }
   };
 
   return (

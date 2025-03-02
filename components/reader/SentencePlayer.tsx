@@ -52,7 +52,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 20 });
   const pageSize = 50;  // 增加每页加载的数量
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
-  const [activeSentenceIndex, setActiveSentenceIndex] = useState<number | null>(-1);
+  const [activeSentenceIndex, setActiveSentenceIndex] = useState<number>(-1);
   const lastClickTimeRef = useRef<number>(0);
   const MIN_CLICK_INTERVAL = 200;
   const loadingRef = useRef(false);  // 添加加载状态的 ref
@@ -75,7 +75,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
     setLoading(true);
     setError(null);
     setVisibleRange({ start: 0, end: 20 });
-    setActiveSentenceIndex(null);
+    setActiveSentenceIndex(-1);
     loadingRef.current = false;
     
     // 重置滚动位置
