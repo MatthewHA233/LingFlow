@@ -422,35 +422,47 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     const blockIndex = contextBlocks[currentChapter]?.findIndex(b => b.id === currentBlockId);
     
     if (blockIndex !== undefined && blockIndex >= 0 && contextBlocks[currentChapter]) {
-      // 如果有下一个块且是音频对齐类型，则播放它的第一个句子
-      const nextBlockIndex = blockIndex + 1;
+      // 寻找下一个音频对齐类型的块
+      let nextAlignedBlockIndex = -1;
       
-      if (nextBlockIndex < contextBlocks[currentChapter].length) {
-        const nextBlock = contextBlocks[currentChapter][nextBlockIndex];
-        
-        if (nextBlock.block_type === 'audio_aligned') {
-          // 使用自定义事件通知下一个块开始播放
-          window.dispatchEvent(new CustomEvent('play-block-sentence', {
-            detail: {
-              blockId: nextBlock.id,
-              sentenceIndex: 0
-            }
-          }));
+      // 从当前块的下一个开始查找
+      for (let i = blockIndex + 1; i < contextBlocks[currentChapter].length; i++) {
+        if (contextBlocks[currentChapter][i].block_type === 'audio_aligned') {
+          nextAlignedBlockIndex = i;
+          break;
         }
-      } else if (playMode === 'continuous') {
-        // 如果是最后一个块且处于连续播放模式，加载下一章
+      }
+      
+      // 如果找到了下一个音频对齐块
+      if (nextAlignedBlockIndex !== -1) {
+        const nextBlock = contextBlocks[currentChapter][nextAlignedBlockIndex];
+        // 使用自定义事件通知下一个块开始播放
+        window.dispatchEvent(new CustomEvent('play-block-sentence', {
+          detail: {
+            blockId: nextBlock.id,
+            sentenceIndex: 0
+          }
+        }));
+      }
+      // 如果当前章节没有更多音频对齐块且处于连续播放模式，则尝试下一章
+      else if (playMode === 'continuous') {
         if (currentChapter < book.chapters.length - 1) {
           // 切换到下一章
           handleChapterChange(currentChapter + 1);
           
-          // 使用延迟确保新章节加载后再播放第一个块
+          // 使用延迟确保新章节加载后再搜索第一个音频对齐块
           setTimeout(() => {
             if (contextBlocks[currentChapter + 1]?.length > 0) {
-              const firstBlock = contextBlocks[currentChapter + 1][0];
-              if (firstBlock.block_type === 'audio_aligned') {
+              // 在新章节中查找第一个音频对齐块
+              const firstAlignedBlockIndex = contextBlocks[currentChapter + 1].findIndex(
+                block => block.block_type === 'audio_aligned'
+              );
+              
+              if (firstAlignedBlockIndex !== -1) {
+                const firstAlignedBlock = contextBlocks[currentChapter + 1][firstAlignedBlockIndex];
                 window.dispatchEvent(new CustomEvent('play-block-sentence', {
                   detail: {
-                    blockId: firstBlock.id,
+                    blockId: firstAlignedBlock.id,
                     sentenceIndex: 0
                   }
                 }));
