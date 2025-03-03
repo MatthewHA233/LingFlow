@@ -952,7 +952,7 @@ export class TextAlignmentService {
       
       for (let i = 0; i < result.alignedSentences.length; i++) {
         const sentence = result.alignedSentences[i];
-        log(`\n# 句子 ${i+1}:`);
+        log(`\n## 句子 ${i+1}:`);
         log(`- 句子ID: ${sentence.sentenceId}`);
         log(`- 时间: ${sentence.beginTime} → ${sentence.endTime}`);
         log(`- 原始文本: "${sentence.originalText}"`);
@@ -971,15 +971,6 @@ export class TextAlignmentService {
       } else {
         log(`\n【剩余未对齐文本】: 无剩余文本，全部完成对齐`);
       }
-      
-      // 添加一个简洁版本便于复制
-      log(`\n========== 简洁对齐摘要(易复制) ==========`);
-      for (let i = 0; i < result.alignedSentences.length; i++) {
-        const s = result.alignedSentences[i];
-        log(`单词${i+1}: id=${s.sentenceId}, 内容="${s.alignedText}", 开始时间=${s.beginTime}, 结束时间=${s.endTime}`);
-      }
-      log(`========== 简洁摘要结束 ==========`);
-      
     } catch (error) {
       console.error('输出对齐摘要失败:', error);
     }
