@@ -218,7 +218,7 @@ export class TextAlignmentService {
         }
         
         // 确认是否真正执行更新
-        const shouldExecuteUpdates = true; // 这里可以根据需要设置为false
+        const shouldExecuteUpdates = false; // 这里可以根据需要设置为false
         if (shouldExecuteUpdates) {
           console.log('\n7. 执行实际数据库更新');
           await this.saveAlignmentResults(blockId, speechId, blockData.content, result);
@@ -232,6 +232,11 @@ export class TextAlignmentService {
         } else {
           console.log('\n7. 跳过实际数据库更新（仅记录日志）');
         }
+
+        // 在任何情况下，都输出对齐摘要到终端
+        console.log('\n========================= 对齐摘要 =========================');
+        await this.logAlignmentSummaryToTerminal(blockId, speechId, blockData.content, result);
+        console.log('=============================================================');
       } else {
         console.log('\n没有对齐成功的句子，跳过数据库更新');
       }
@@ -914,5 +919,107 @@ export class TextAlignmentService {
     // 匹配所有单词（连续的字母和数字，可能包含连字符和撇号）
     const wordMatches = text.match(/[a-zA-Z0-9]+(?:[''-][a-zA-Z0-9]+)*/g);
     return wordMatches || [];
+  }
+
+  /**
+   * 将对齐摘要输出到日志
+   */
+  private static async logAlignmentSummaryToTerminal(
+    blockId: string,
+    speechId: string,
+    originalBlockContent: string,
+    result: AlignmentResult
+  ) {
+    try {
+      // 使用安全的日志函数
+      const log = (text: string) => {
+        // 在浏览器环境中使用console.log
+        console.log(text);
+      };
+      
+      log(`- 时间: ${new Date().toLocaleString()}`);
+      log(`- 语境块ID: ${blockId}`);
+      log(`- 语音ID: ${speechId}`);
+      
+      // 打印原始语境块内容预览
+      const contentPreview = originalBlockContent.length > 200 
+        ? originalBlockContent.substring(0, 200) + '...' 
+        : originalBlockContent;
+      log(`\n【原始语境块内容预览】:\n${contentPreview}`);
+      
+      // 打印对齐的句子信息
+      log(`\n【对齐句子 (共${result.alignedSentences.length}个)】:`);
+      
+      for (let i = 0; i < result.alignedSentences.length; i++) {
+        const sentence = result.alignedSentences[i];
+        log(`\n# 句子 ${i+1}:`);
+        log(`- 句子ID: ${sentence.sentenceId}`);
+        log(`- 时间: ${sentence.beginTime} → ${sentence.endTime}`);
+        log(`- 原始文本: "${sentence.originalText}"`);
+        log(`- 对齐文本: "${sentence.alignedText}"`);
+        
+        // 获取并打印单词级变更
+        await this.logWordChangesToTerminal(sentence.sentenceId);
+      }
+      
+      // 打印剩余未对齐文本
+      if (result.remainingText) {
+        const remainingPreview = result.remainingText.length > 200 
+          ? result.remainingText.substring(0, 200) + '...' 
+          : result.remainingText;
+        log(`\n【剩余未对齐文本 (${result.remainingText.length}字符)】:\n${remainingPreview}`);
+      } else {
+        log(`\n【剩余未对齐文本】: 无剩余文本，全部完成对齐`);
+      }
+      
+      // 添加一个简洁版本便于复制
+      log(`\n========== 简洁对齐摘要(易复制) ==========`);
+      for (let i = 0; i < result.alignedSentences.length; i++) {
+        const s = result.alignedSentences[i];
+        log(`单词${i+1}: id=${s.sentenceId}, 内容="${s.alignedText}", 开始时间=${s.beginTime}, 结束时间=${s.endTime}`);
+      }
+      log(`========== 简洁摘要结束 ==========`);
+      
+    } catch (error) {
+      console.error('输出对齐摘要失败:', error);
+    }
+  }
+  
+  /**
+   * 将单词级变更输出到日志
+   */
+  private static async logWordChangesToTerminal(sentenceId: string) {
+    try {
+      // 使用安全的日志函数
+      const log = (text: string) => {
+        console.log(text);
+      };
+      
+      // 获取单词变更信息
+      const { data: words, error } = await supabase
+        .from('words')
+        .select('*')
+        .eq('sentence_id', sentenceId)
+        .order('begin_time');
+      
+      if (error || !words || words.length === 0) {
+        log(`- 单词变更: 无单词级数据`);
+        return;
+      }
+      
+      log(`- 单词变更 (${words.length}个):`);
+      
+      // 创建表格格式的输出
+      log(`  序号 | 原单词       | 对齐单词     | 开始时间  | 结束时间`);
+      log(`  -----|------------|------------|----------|----------`);
+      
+      words.forEach((word, index) => {
+        const originalWord = (word.original_word || '(无)').padEnd(12);
+        const alignedWord = (word.word || '(无)').padEnd(12);
+        log(`  ${(index+1).toString().padEnd(4)} | ${originalWord} | ${alignedWord} | ${word.begin_time.toString().padEnd(8)} | ${word.end_time}`);
+      });
+    } catch (error) {
+      console.log(`- 单词变更: 获取单词数据失败`);
+    }
   }
 } 
