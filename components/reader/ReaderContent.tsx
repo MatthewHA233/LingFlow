@@ -388,32 +388,101 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     });
   };
   
-  // 添加处理对齐完成的函数
-  const handleAlignmentComplete = (blockId: string) => {
+  // 添加用于获取单个块数据的函数
+  const loadSingleContextBlock = async (blockId: string) => {
+    try {
+      console.log(`加载单个语境块, blockId: ${blockId}`);
+      
+      const { data: block, error } = await supabase
+        .from('context_blocks')
+        .select('*')
+        .eq('id', blockId)
+        .single();
+      
+      if (error) {
+        console.error('加载单个语境块失败:', error);
+        return null;
+      }
+      
+      console.log('加载的单个语境块:', block);
+      return block;
+    } catch (err) {
+      console.error('加载单个语境块失败:', err);
+      return null;
+    }
+  };
+
+  // 添加获取句子详情的函数
+  const loadSentencesForBlock = async (blockId: string) => {
+    try {
+      // 获取块-句子关联
+      const { data: relations, error: relationsError } = await supabase
+        .from('block_sentences')
+        .select('sentence_id, order_index')
+        .eq('block_id', blockId)
+        .order('order_index');
+      
+      if (relationsError || !relations || relations.length === 0) {
+        return [];
+      }
+      
+      // 获取所有句子信息
+      const sentenceIds = relations.map(rel => rel.sentence_id);
+      const { data: sentences, error: sentencesError } = await supabase
+        .from('sentences')
+        .select('*, words(*)')
+        .in('id', sentenceIds);
+      
+      if (sentencesError) {
+        return [];
+      }
+      
+      // 按正确顺序排列句子
+      return relations.map(rel => {
+        const sentence = sentences.find(s => s.id === rel.sentence_id);
+        return sentence;
+      }).filter(Boolean);
+    } catch (err) {
+      console.error('加载句子数据失败:', err);
+      return [];
+    }
+  };
+
+  // 修改对齐完成处理函数 - 只更新单个块
+  const handleAlignmentComplete = async (blockId: string) => {
     console.log(`对齐完成，blockId: ${blockId}, 当前章节: ${currentChapter}`);
     
+    // 更新对齐状态
     setAligningBlocks(prev => {
       const newSet = new Set(prev);
       newSet.delete(blockId);
       return newSet;
     });
     
-    // 在更新UI前，先重新加载数据
-    loadContextBlocksForChapter(currentChapter)
-      .then(() => {
-        console.log('数据重新加载成功');
+    // 只加载被修改的块
+    const updatedBlock = await loadSingleContextBlock(blockId);
+    
+    if (updatedBlock) {
+      // 更新本地状态，只替换修改的块
+      setContextBlocks(prev => {
+        const updatedChapterBlocks = [...prev[currentChapter]].map(block => 
+          block.id === blockId ? updatedBlock : block
+        );
         
-        toast.success('文本对齐完成', {
-          description: '语境块已更新为音频点读模式'
-        });
-      })
-      .catch(err => {
-        console.error('重新加载数据失败:', err);
-        
-        toast.error('数据刷新失败', {
-          description: '请刷新页面查看最新结果'
-        });
+        return {
+          ...prev,
+          [currentChapter]: updatedChapterBlocks
+        };
       });
+      
+      toast.success('文本对齐完成', {
+        description: '语境块已更新为音频点读模式'
+      });
+    } else {
+      toast.error('获取更新后的块失败', {
+        description: '请尝试刷新页面'
+      });
+    }
   };
 
   // 处理播放下一个块的函数

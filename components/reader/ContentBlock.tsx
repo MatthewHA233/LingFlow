@@ -66,7 +66,6 @@ export function ContentBlock({
   const [isDragging, setIsDragging] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropPosition, setDropPosition] = useState<'before' | 'after' | null>(null);
-  const [alignedSentences, setAlignedSentences] = useState<any[]>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [localAligning, setLocalAligning] = useState(isAligning);
@@ -74,6 +73,8 @@ export function ContentBlock({
   const [currentAudioTime, setCurrentAudioTime] = useState(0);
   const [activeWordId, setActiveWordId] = useState<string | null>(null);
   const [isReplaying, setIsReplaying] = useState(false);
+  const [embeddedSentences, setEmbeddedSentences] = useState<Map<string, any>>(new Map());
+  const [isLoadingSentences, setIsLoadingSentences] = useState(false);
   
   const blockRef = useRef<HTMLDivElement>(null);
   const contentEditableRef = useRef<HTMLDivElement>(null);
@@ -81,33 +82,199 @@ export function ContentBlock({
   // 创建唯一ID用于标识当前块
   const blockId = useId();
 
-  const fetchAlignedSentences = useCallback(async () => {
-    if (block.block_type === 'audio_aligned' && block.speech_id) {
+  // 添加解析和加载嵌入式句子的函数 - 保持在组件顶部
+  const parseAndLoadEmbeddedSentences = useCallback(async () => {
+    // 仅处理音频对齐块或包含[[sentenceId]]格式的文本块
+    if (block.block_type === 'audio_aligned' || 
+        (block.content && block.content.includes('[['))) {
+      
+      // 提取所有句子ID
+      const sentenceIdMatches = block.content.match(/\[\[([a-f0-9-]+)\]\]/g) || [];
+      if (sentenceIdMatches.length === 0) return;
+      
+      setIsLoadingSentences(true);
+      
       try {
-        const { data: blockSentences, error: blockSentencesError } = await supabase
-          .from('block_sentences')
-          .select(`
-            *,
-            sentences (*, words (*))
-          `)
-          .eq('block_id', block.id)
-          .order('order_index');
-          
-        if (blockSentencesError) throw blockSentencesError;
+        // 从所有匹配中提取纯ID
+        const sentenceIds = sentenceIdMatches.map(match => 
+          match.replace('[[', '').replace(']]', '')
+        );
         
-        if (blockSentences && blockSentences.length > 0) {
-          const sentences = blockSentences.map((bs: any) => ({
-            ...bs.sentences,
-            order_index: bs.order_index
-          }));
-          
-          setAlignedSentences(sentences);
+        // 加载所有引用的句子
+        const { data: sentences, error } = await supabase
+          .from('sentences')
+          .select('*, words(*)')
+          .in('id', sentenceIds);
+        
+        if (error) {
+          console.error('加载嵌入式句子失败:', error);
+          return;
         }
-      } catch (error) {
-        console.error('加载对齐句子失败:', error);
+        
+        // 创建ID到句子的映射
+        const sentencesMap = new Map();
+        sentences?.forEach(sentence => {
+          sentencesMap.set(sentence.id, sentence);
+        });
+        
+        setEmbeddedSentences(sentencesMap);
+      } catch (err) {
+        console.error('处理嵌入式句子失败:', err);
+      } finally {
+        setIsLoadingSentences(false);
       }
     }
-  }, [block.id, block.block_type, block.speech_id]);
+  }, [block.block_type, block.content]);
+
+  // 1. 先定义playSentence函数
+  const playSentence = useCallback((sentence: any, index: number) => {
+    // 发送清除其他活动句子的事件
+    const clearEvent = new CustomEvent(CLEAR_ACTIVE_SENTENCE_EVENT, {
+      detail: { senderId: blockId }
+    });
+    window.dispatchEvent(clearEvent);
+    
+    // 如果正在播放同一个句子，则暂停
+    if (activeIndex === index && isPlaying) {
+      // 暂停当前播放
+      AudioController.pause();
+      setIsPlaying(false);
+      return;
+    }
+    
+    // 设置当前活动句子
+    setActiveIndex(index);
+    
+    // 检查是否有句子音频数据
+    if (!sentence || !audioUrl) {
+      console.error('无法播放：句子数据或音频URL缺失');
+      return;
+    }
+    
+    // 获取音频信息
+    const beginTime = sentence.begin_time;
+    const endTime = sentence.end_time;
+    
+    // 播放功能
+    const playbackCallback = () => {
+      console.log('句子播放结束');
+      
+      // 处理循环模式
+      if (playMode === 'sentence') {
+        // 句子循环 - 重播同一句子
+        setTimeout(() => {
+          console.log('重播句子', index);
+          setIsReplaying(true);
+          AudioController.play(audioUrl, beginTime, endTime, `block-${block.id}`, () => {
+            setIsReplaying(false);
+          });
+        }, 500); // 短暂延迟后重播
+      } else {
+        // 提取所有句子ID
+        const sentenceIds: string[] = [];
+        const pattern = /\[\[([a-f0-9-]+)\]\]/g;
+        let match;
+        const content = block.content || '';
+        while ((match = pattern.exec(content)) !== null) {
+          sentenceIds.push(match[1]);
+        }
+        
+        // 判断是否是最后一句
+        const isLastSentence = index >= sentenceIds.length - 1;
+        
+        if ((playMode === 'block' || playMode === 'continuous') && !isLastSentence) {
+          // 段落内下一句 - 播放下一个句子
+          setTimeout(() => {
+            console.log('播放下一句', index + 1);
+            
+            // 检查是否有下一个句子
+            if (index + 1 < sentenceIds.length) {
+              const nextSentenceId = sentenceIds[index + 1];
+              const nextSentence = embeddedSentences.get(nextSentenceId);
+              if (nextSentence) {
+                playSentence(nextSentence, index + 1);
+              }
+            }
+          }, 500);
+        } else if (playMode === 'continuous' && isLastSentence) {
+          // 连续模式下的最后一句 - 播放下一个块
+          setTimeout(() => {
+            console.log('播放下一个块');
+            onPlayNext?.(block.id, index);
+          }, 500);
+        }
+      }
+    };
+    
+    // 使用全局音频控制器播放
+    AudioController.play(audioUrl, beginTime, endTime, `block-${block.id}`, playbackCallback);
+    setIsPlaying(true);
+    
+    // 更新时间显示
+    onTimeChange?.(beginTime);
+  }, [activeIndex, isPlaying, blockId, audioUrl, block.id, block.content, embeddedSentences, onPlayNext, onTimeChange, playMode]);
+
+  // 2. 然后是其他函数和useEffect，保持原有顺序
+  useEffect(() => {
+    parseAndLoadEmbeddedSentences();
+  }, [parseAndLoadEmbeddedSentences]);
+  
+  // 处理句子播放事件
+  useEffect(() => {
+    const handlePlayBlockSentence = (e: CustomEvent) => {
+      const { blockId, sentenceIndex } = e.detail;
+      
+      if (blockId === block.id) {
+        console.log(`接收到播放事件: 块=${blockId}, 句子索引=${sentenceIndex}`);
+        
+        // 如果没有加载句子数据，需要先加载
+        if (embeddedSentences.size === 0) {
+          parseAndLoadEmbeddedSentences().then(() => {
+            triggerPlaySentence(sentenceIndex);
+          });
+        } else {
+          triggerPlaySentence(sentenceIndex);
+        }
+      }
+    };
+    
+    // 直接播放指定索引的句子
+    const triggerPlaySentence = (sentenceIndex: number) => {
+      // 从content中提取所有句子ID
+      const sentenceIds: string[] = [];
+      const pattern = /\[\[([a-f0-9-]+)\]\]/g;
+      let match;
+      while ((match = pattern.exec(block.content || '')) !== null) {
+        sentenceIds.push(match[1]);
+      }
+      
+      // 确保索引有效
+      if (sentenceIndex >= 0 && sentenceIndex < sentenceIds.length) {
+        const sentenceId = sentenceIds[sentenceIndex];
+        const sentence = embeddedSentences.get(sentenceId);
+        
+        if (sentence) {
+          // 实际开始播放
+          console.log(`开始播放句子: ${sentenceId}, 索引: ${sentenceIndex}`);
+          playSentence(sentence, sentenceIndex);
+        } else {
+          console.error(`句子数据未找到: ${sentenceId}`);
+        }
+      }
+    };
+    
+    window.addEventListener(
+      'play-block-sentence', 
+      handlePlayBlockSentence as EventListener
+    );
+    
+    return () => {
+      window.removeEventListener(
+        'play-block-sentence', 
+        handlePlayBlockSentence as EventListener
+      );
+    };
+  }, [block.id, block.content, embeddedSentences, parseAndLoadEmbeddedSentences, playSentence]);
 
   useEffect(() => {
     setLocalAligning(isAligning);
@@ -123,17 +290,13 @@ export function ContentBlock({
           setShowCompleteAnimation(false);
           onAlignmentComplete?.(block.id);
           
-          fetchAlignedSentences();
+          parseAndLoadEmbeddedSentences();
         }, 1500);
       }, 5000);
       
       return () => clearTimeout(timer);
     }
-  }, [localAligning, block.id, onAlignmentComplete, fetchAlignedSentences]);
-
-  useEffect(() => {
-    fetchAlignedSentences();
-  }, [block.id, block.block_type, block.speech_id, fetchAlignedSentences]);
+  }, [localAligning, block.id, onAlignmentComplete, parseAndLoadEmbeddedSentences]);
 
   // 添加一个事件监听器来清除活动句子
   useEffect(() => {
@@ -193,29 +356,6 @@ export function ContentBlock({
     };
   }, []);
 
-  // 添加事件监听器以接收播放指令
-  useEffect(() => {
-    const handlePlayBlockSentence = (e: CustomEvent) => {
-      const detail = e.detail;
-      
-      if (detail.blockId === block.id && alignedSentences.length > 0) {
-        // 确保句子索引有效
-        const sentenceIndex = Math.min(detail.sentenceIndex, alignedSentences.length - 1);
-        
-        // 播放指定的句子
-        if (sentenceIndex >= 0 && sentenceIndex < alignedSentences.length) {
-          playSentence(alignedSentences[sentenceIndex], sentenceIndex);
-        }
-      }
-    };
-    
-    window.addEventListener('play-block-sentence', handlePlayBlockSentence as EventListener);
-    
-    return () => {
-      window.removeEventListener('play-block-sentence', handlePlayBlockSentence as EventListener);
-    };
-  }, [alignedSentences, block.id]);
-
   // 添加全局音频控制监听
   useEffect(() => {
     const handleGlobalAudioControl = (e: CustomEvent) => {
@@ -255,9 +395,7 @@ export function ContentBlock({
         // 只在句子播放时更新活动句子
         if (activeIndex === null) {
           // 查找当前时间所在的句子
-          const matchingSentenceIndex = alignedSentences.findIndex(
-            sentence => currentTime >= sentence.begin_time && currentTime < sentence.end_time
-          );
+          const matchingSentenceIndex = embeddedSentences.size > 0 ? 0 : -1;
           
           if (matchingSentenceIndex !== -1) {
             setActiveIndex(matchingSentenceIndex);
@@ -315,8 +453,8 @@ export function ContentBlock({
       // 只处理与当前块相关的时间更新
       if (timeBlockId === block.id && activeIndex === sentenceIndex) {
         // 找到当前应该高亮的单词
-        if (alignedSentences[sentenceIndex]?.words) {
-          const words = alignedSentences[sentenceIndex].words;
+        if (embeddedSentences.size > 0) {
+          const words = embeddedSentences.values().next().value.words;
           
           // 遍历单词，找到当前时间点对应的单词
           for (const word of words) {
@@ -335,7 +473,7 @@ export function ContentBlock({
     return () => {
       window.removeEventListener(AUDIO_TIME_EVENT, handleAudioTimeUpdate as EventListener);
     };
-  }, [block.id, activeIndex, alignedSentences]);
+  }, [block.id, activeIndex, embeddedSentences]);
 
   // 处理块点击事件
   const handleClick = (e: React.MouseEvent) => {
@@ -446,87 +584,6 @@ export function ContentBlock({
         description: "处理拖放操作时出错",
         variant: "destructive",
       });
-    }
-  };
-
-  // 修改句子播放完成回调
-  const playSentence = (sentence: any, index: number) => {
-    // 如果已经在播放这个句子，则暂停
-    if (activeIndex === index && isPlaying) {
-      AudioController.pause();
-      return;
-    }
-    
-    // 播放新句子
-    const wasPlaying = AudioController.play(
-      audioUrl || '',
-      sentence.begin_time,
-      sentence.end_time,
-      `block-${block.id}-sentence-${index}`,
-      () => {
-        console.log('句子播放完成', index);
-        
-        // 如果正在重播中，不要触发新的重播
-        if (isReplaying) return;
-        
-        // 防止重入
-        setIsReplaying(true);
-        
-        // 句子播放完成时的处理
-        switch (playMode) {
-          case 'sentence':
-            // 延迟后再次播放当前句子
-            setTimeout(() => {
-              playSentence(sentence, index);
-              // 延迟后解除重入锁
-              setTimeout(() => {
-                setIsReplaying(false);
-              }, 500);
-            }, 300);
-            break;
-            
-          case 'block':
-            // 延迟播放下一句或回到第一句
-            setTimeout(() => {
-              if (index < alignedSentences.length - 1) {
-                playSentence(alignedSentences[index + 1], index + 1);
-              } else {
-                playSentence(alignedSentences[0], 0);
-              }
-              // 延迟后解除重入锁
-              setTimeout(() => {
-                setIsReplaying(false);
-              }, 500);
-            }, 300);
-            break;
-            
-          case 'continuous':
-            // 延迟播放下一句或下一块
-            setTimeout(() => {
-              if (index < alignedSentences.length - 1) {
-                playSentence(alignedSentences[index + 1], index + 1);
-              } else {
-                onPlayNext?.(block.id, index);
-              }
-              // 延迟后解除重入锁
-              setTimeout(() => {
-                setIsReplaying(false);
-              }, 500);
-            }, 300);
-            break;
-            
-          default:
-            // 默认不做操作，但要解除重入锁
-            setIsReplaying(false);
-            break;
-        }
-      }
-    );
-    
-    // 更新UI状态
-    if (wasPlaying) {
-      setActiveIndex(index);
-      setIsPlaying(true);
     }
   };
 
@@ -695,6 +752,105 @@ export function ContentBlock({
     return posY < rect.height / 2 ? 'before' : 'after';
   };
 
+  // 添加渲染嵌入式内容的函数
+  const renderEmbeddedContent = () => {
+    if (!block.content) return <span>内容为空</span>;
+    
+    // 如果没有嵌入式句子，直接返回内容
+    if (!block.content.includes('[[')) {
+      return <span>{block.content}</span>;
+    }
+    
+    // 拆分内容并替换嵌入式句子
+    const segments = [];
+    let lastIndex = 0;
+    let segmentIndex = 0;
+    
+    // 使用正则表达式找到所有嵌入式句子
+    const pattern = /\[\[([a-f0-9-]+)\]\]/g;
+    let match;
+    
+    while ((match = pattern.exec(block.content)) !== null) {
+      // 添加句子前的文本
+      if (match.index > lastIndex) {
+        segments.push(
+          <span key={`text-${segmentIndex}`} className="text-muted-foreground">
+            {block.content.substring(lastIndex, match.index)}
+          </span>
+        );
+        segmentIndex++;
+      }
+      
+      // 获取句子ID
+      const sentenceId = match[1];
+      const sentence = embeddedSentences.get(sentenceId);
+      
+      // 添加句子（如果已加载）
+      if (sentence) {
+        const sentenceIndex = segmentIndex;
+        segments.push(
+          <span 
+            key={`sentence-${sentenceId}`}
+            className={cn(
+              "sentence-inline relative rounded-sm px-0.5 mx-0.5 transition-colors cursor-pointer",
+              activeIndex === sentenceIndex 
+                ? "text-emerald-500 font-medium"
+                : "hover:bg-accent/10 group"
+            )}
+            onClick={(e) => {
+              // 阻止事件冒泡，确保点击事件被正确处理
+              e.stopPropagation();
+              playSentence(sentence, sentenceIndex);
+            }}
+          >
+            {/* 微型播放图标 */}
+            <span className={cn(
+              "inline-flex items-center justify-center w-3 h-3 mr-0.5 align-text-bottom rounded-full",
+              activeIndex === sentenceIndex && isPlaying
+                ? "bg-emerald-100" 
+                : "bg-transparent group-hover:bg-accent/5"
+            )}
+            onClick={(e) => {
+              // 为图标添加特定的点击处理
+              e.stopPropagation();
+              playSentence(sentence, sentenceIndex);
+            }}
+            >
+              {activeIndex === sentenceIndex && isPlaying ? (
+                <Pause className="w-2 h-2 text-emerald-600" />
+              ) : (
+                <Play className="w-2 h-2 text-muted-foreground opacity-50 group-hover:opacity-100" />
+              )}
+            </span>
+            
+            {renderSentenceWithWords(sentence, sentenceIndex)}
+          </span>
+        );
+      } else {
+        // 句子尚未加载时显示占位符
+        segments.push(
+          <span key={`loading-${sentenceId}`} className="px-1 text-muted-foreground italic">
+            [加载中...]
+          </span>
+        );
+      }
+      
+      segmentIndex++;
+      lastIndex = match.index + match[0].length;
+    }
+    
+    // 添加最后一段文本
+    if (lastIndex < block.content.length) {
+      segments.push(
+        <span key={`text-final`} className="text-muted-foreground">
+          {block.content.substring(lastIndex)}
+        </span>
+      );
+    }
+    
+    return <span>{segments}</span>;
+  };
+
   // 渲染内容
   const renderContent = () => {
     // 图片语境块
@@ -719,47 +875,38 @@ export function ContentBlock({
       return <div className="text-sm text-muted-foreground">图片未找到: {imgPath}</div>;
     }
     
-    // 音频对齐块
-    if (block.block_type === 'audio_aligned' && alignedSentences.length > 0) {
+    // 音频对齐块 - 使用新的渲染方式
+    if (block.block_type === 'audio_aligned') {
       return (
         <div className="audio-aligned-block py-2 px-3 text-sm leading-relaxed">
-          {/* 紧凑排版的句子流 */}
           <div className="prose prose-sm max-w-none">
-            {alignedSentences.map((sentence, index) => (
-              <span 
-                key={sentence.id}
-                className={cn(
-                  "sentence-inline relative rounded-sm px-0.5 mx-0.5 transition-colors cursor-pointer",
-                  activeIndex === index 
-                    ? "text-emerald-500 font-medium"
-                    : "hover:bg-accent/10 group"
-                )}
-                onClick={() => playSentence(sentence, index)}
-              >
-                {/* 微型播放图标 */}
-                <span className={cn(
-                  "inline-flex items-center justify-center w-3 h-3 mr-0.5 align-text-bottom rounded-full",
-                  activeIndex === index && isPlaying
-                    ? "bg-emerald-100" 
-                    : "bg-transparent group-hover:bg-accent/5"
-                )}>
-                  {activeIndex === index && isPlaying ? (
-                    <Pause className="w-2 h-2 text-emerald-600" />
-                  ) : (
-                    <Play className="w-2 h-2 text-muted-foreground opacity-50 group-hover:opacity-100" />
-                  )}
-                </span>
-                
-                {renderSentenceWithWords(sentence, index)}
-              </span>
-            ))}
+            {isLoadingSentences ? (
+              <span className="text-muted-foreground">加载句子内容中...</span>
+            ) : (
+              renderEmbeddedContent()
+            )}
+          </div>
+        </div>
+      );
+    }
+    
+    // 包含嵌入式句子的文本块 - 使用相同的渲染方式
+    if (block.block_type === 'text' && block.content && block.content.includes('[[')) {
+      return (
+        <div className="embedded-sentences-block py-2 px-3 text-sm leading-relaxed">
+          <div className="prose prose-sm max-w-none">
+            {isLoadingSentences ? (
+              <span className="text-muted-foreground">加载句子内容中...</span>
+            ) : (
+              renderEmbeddedContent()
+            )}
           </div>
         </div>
       );
     }
     
     // 普通文本块 - 直接可编辑
-        return (
+    return (
       <div
         ref={contentEditableRef}
         contentEditable={block.block_type === 'text'}
@@ -774,9 +921,9 @@ export function ContentBlock({
           }
         }}
       >
-            {block.content}
-          </div>
-        );
+        {renderEmbeddedContent()}
+      </div>
+    );
   };
 
   // 在ContentBlock中添加对全局循环模式的响应

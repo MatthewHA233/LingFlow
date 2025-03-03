@@ -472,7 +472,7 @@ export class TextAlignmentService {
     
     // 如果没有找到完整句子，尝试其他处理方法...
     // 处理右侧边界 - 向右扩展查找引号等成对标点
-    const rightExtensionChars = ['"', '"', ')', ']', '}', '\u2019', '\u00BB'];
+    const rightExtensionChars = ['"', '"', ')', ']', '}', '\u2019', '\u00BB', ':', ';'];
     const rightContextEnd = Math.min(originalText.length, optimizedEnd + 15);
     const rightContext = originalText.substring(optimizedEnd, rightContextEnd);
     
@@ -483,7 +483,7 @@ export class TextAlignmentService {
       if (firstIndex !== -1 && firstIndex < 5) { // 只考虑很近的标点
         const newEnd = optimizedEnd + firstIndex + 1; // +1 to include the char itself
         // 对于结束标点，扩展边界
-        if (this.isClosingPunctuation(char)) {
+        if (this.isClosingPunctuation(char) || char === ':' || char === ';') {
           console.log(`- 向右扩展边界，包含闭合标点 ${char} 字符`);
           optimizedEnd = newEnd;
           foundPunctuation = true;
@@ -616,14 +616,69 @@ export class TextAlignmentService {
     try {
       console.log('【开始保存对齐结果】');
       
-      // 1. 更新语境块类型为音频对齐
+      // 如果没有对齐成功，提前返回
+      if (!result.alignedSentences || result.alignedSentences.length === 0) {
+        console.log('没有对齐成功的句子，跳过保存');
+        return;
+      }
+      
+      // 1. 计算各个分段位置及区域
+      // 第一个句子的对齐位置用于确定"对齐前文本"
+      const firstSentence = result.alignedSentences[0];
+      const lastSentence = result.alignedSentences[result.alignedSentences.length - 1];
+      
+      // 查找第一个对齐句子在原文中的位置
+      const firstSentenceIndex = originalText.indexOf(firstSentence.alignedText);
+      
+      // 提取对齐前文本
+      const prefixText = firstSentenceIndex > 0 ? originalText.substring(0, firstSentenceIndex) : '';
+      
+      // 构建新的内容格式: 对齐前文本 + [[对齐的句子id]] + 剩余未对齐文本
+      let newContent = prefixText;
+      
+      // 添加所有对齐的句子标识符
+      for (const sentence of result.alignedSentences) {
+        newContent += `[[${sentence.sentenceId}]]`;
+      }
+      
+      // 添加剩余未对齐文本
+      if (result.remainingText) {
+        newContent += result.remainingText;
+      }
+      
+      // 确定转换状态
+      let conversionStatus = 'completed';
+      if ((prefixText && prefixText.trim().length > 0) || (result.remainingText && result.remainingText.trim().length > 0)) {
+        conversionStatus = 'partially_converted';
+      }
+      
+      // 创建转换元数据
+      const conversionMetadata = {
+        alignment_date: new Date().toISOString(),
+        alignment_method: 'string_similarity',
+        aligned_sentences_count: result.alignedSentences.length,
+        total_original_text_length: originalText.length,
+        aligned_text_length: result.alignedSentences.reduce((sum, s) => sum + s.alignedText.length, 0),
+        prefix_text_length: prefixText.length,
+        remaining_text_length: result.remainingText ? result.remainingText.length : 0
+      };
+      
+      // 2. 更新语境块
       console.log('更新语境块:', blockId);
       const updateData = {
         block_type: 'audio_aligned',
-        speech_id: speechId
+        speech_id: speechId,
+        begin_time: firstSentence.beginTime,
+        end_time: lastSentence.endTime,
+        original_content: originalText,
+        content: newContent,
+        conversion_status: conversionStatus,
+        conversion_metadata: conversionMetadata
       };
+      
       console.log('更新数据:', updateData);
       
+      // 使用单次数据库操作更新块
       const { data: blockUpdateData, error: blockUpdateError } = await supabase
         .from('context_blocks')
         .update(updateData)
@@ -636,55 +691,132 @@ export class TextAlignmentService {
       
       console.log('语境块更新成功');
       
-      // 2. 更新句子的文本内容
-      console.log('更新句子数据:');
+      // 3. 更新句子的文本内容和创建关联 - 使用批量更新以提高效率
+      console.log('更新句子数据和创建关联:');
+      
+      // 准备批量句子更新
+      const sentenceUpdates = [];
+      const blockSentenceLinks = [];
+      
       for (const sentence of result.alignedSentences) {
-        console.log(`处理句子 ${sentence.sentenceId}`);
+        // 添加句子更新任务
+        sentenceUpdates.push(
+          supabase
+            .from('sentences')
+            .update({
+              original_text_content: sentence.originalText,
+              text_content: sentence.alignedText,
+              conversion_status: 'converted'
+            })
+            .eq('id', sentence.sentenceId)
+        );
         
-        const sentenceUpdate = {
-          original_text_content: sentence.originalText,
-          text_content: sentence.alignedText,
-          conversion_status: 'converted'
+        // 计算句子在原始文本中的偏移量
+        const alignedTextIndex = originalText.indexOf(sentence.alignedText);
+        const segmentBeginOffset = alignedTextIndex >= 0 ? alignedTextIndex : 0;
+        const segmentEndOffset = alignedTextIndex >= 0 ? alignedTextIndex + sentence.alignedText.length : 0;
+        
+        // 获取对齐分数
+        const alignmentScore = stringSimilarity.compareTwoStrings(
+          this.normalizeText(sentence.originalText), 
+          this.normalizeText(sentence.alignedText)
+        );
+        
+        // 准备单词级变更的元数据
+        const wordChangesMetadata = await this.getWordChangeMetadata(sentence.sentenceId, sentence.alignedText);
+        
+        // 创建对齐元数据
+        const alignmentMetadata = {
+          alignment_summary: {
+            original_text: sentence.originalText,
+            aligned_text: sentence.alignedText,
+            time_range: `${sentence.beginTime}~${sentence.endTime}`,
+            character_count: sentence.alignedText.length,
+            alignment_date: new Date().toISOString()
+          },
+          word_changes: wordChangesMetadata,
+          alignment_method: "string_similarity",
+          algorithm_version: "1.0"
         };
-        console.log('句子更新数据:', sentenceUpdate);
         
-        const { data: sentenceUpdateData, error: sentenceUpdateError } = await supabase
-          .from('sentences')
-          .update(sentenceUpdate)
-          .eq('id', sentence.sentenceId);
-        
-        if (sentenceUpdateError) {
-          console.error('更新句子失败:', sentenceUpdateError);
-          throw new Error(`更新句子失败: ${sentenceUpdateError.message}`);
-        }
-        
-        console.log(`句子 ${sentence.sentenceId} 更新成功`);
-        
-        // 3. 创建句子和语境块的关联
-        console.log(`创建语境块-句子关联: 块=${blockId}, 句子=${sentence.sentenceId}`);
-        const linkData = {
-          block_id: blockId,
-          sentence_id: sentence.sentenceId,
-          order_index: sentence.orderIndex
-        };
-        console.log('关联数据:', linkData);
-        
-        const { data: linkData2, error: linkError } = await supabase
-          .from('block_sentences')
-          .insert(linkData);
-        
-        if (linkError) {
-          console.error('创建语境块-句子关联失败:', linkError);
-          throw new Error(`创建语境块-句子关联失败: ${linkError.message}`);
-        }
-        
-        console.log(`关联创建成功`);
+        // 创建块-句子关联
+        blockSentenceLinks.push(
+          supabase
+            .from('block_sentences')
+            .insert({
+              block_id: blockId,
+              sentence_id: sentence.sentenceId,
+              order_index: sentence.orderIndex,
+              alignment_score: alignmentScore,
+              segment_begin_offset: segmentBeginOffset,
+              segment_end_offset: segmentEndOffset,
+              alignment_metadata: alignmentMetadata
+            })
+        );
+      }
+      
+      // 并行执行所有更新以提高效率
+      console.log(`执行 ${sentenceUpdates.length} 个句子更新和 ${blockSentenceLinks.length} 个关联创建`);
+      
+      // 使用Promise.all同时处理所有更新
+      const [sentenceResults, linkResults] = await Promise.all([
+        Promise.all(sentenceUpdates),
+        Promise.all(blockSentenceLinks)
+      ]);
+      
+      console.log('所有句子更新和关联创建完成');
+      
+      // 检查更新结果
+      const sentenceErrors = sentenceResults.filter(r => r.error);
+      const linkErrors = linkResults.filter(r => r.error);
+      
+      if (sentenceErrors.length > 0) {
+        console.error(`${sentenceErrors.length} 个句子更新失败`);
+      }
+      
+      if (linkErrors.length > 0) {
+        console.error(`${linkErrors.length} 个关联创建失败`);
       }
       
       console.log('对齐结果保存成功');
     } catch (error) {
       console.error('保存对齐结果失败:', error);
       throw error;
+    }
+  }
+  
+  /**
+   * 获取单词级变更的元数据
+   */
+  private static async getWordChangeMetadata(sentenceId: string, alignedText: string) {
+    try {
+      // 获取单词数据
+      const { data: words, error } = await supabase
+        .from('words')
+        .select('*')
+        .eq('sentence_id', sentenceId)
+        .order('begin_time');
+      
+      if (error || !words || words.length === 0) {
+        return { word_count: 0, words: [] };
+      }
+      
+      // 构建单词变更信息
+      const wordChanges = words.map((word, index) => ({
+        index,
+        original: word.original_word || word.word,
+        aligned: word.word,
+        time_range: `${word.begin_time}~${word.end_time}`,
+        confidence: word.confidence || 1.0
+      }));
+      
+      return {
+        word_count: words.length,
+        words: wordChanges
+      };
+    } catch (error) {
+      console.error('获取单词变更元数据失败:', error);
+      return { word_count: 0, words: [] };
     }
   }
   
