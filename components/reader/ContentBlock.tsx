@@ -31,13 +31,14 @@ interface ContentBlockProps {
   onPlayNext?: (blockId: string, lastSentenceIndex: number) => void;
   onPlayModeChange?: (newMode: 'sentence' | 'block' | 'continuous') => void;
   onShowSplitView?: (blockId: string, type: 'source' | 'translation') => void;
+  activeBlockId: string | null;
 }
-
-// 创建一个自定义事件名称
-const CLEAR_ACTIVE_SENTENCE_EVENT = 'clear-active-sentences';
 
 // 添加一个全局活跃块ID事件
 const ACTIVE_BLOCK_CHANGED_EVENT = 'active-block-changed';
+
+// 添加这行代码，定义 CLEAR_ACTIVE_SENTENCE_EVENT
+const CLEAR_ACTIVE_SENTENCE_EVENT = 'clear-active-sentences';
 
 export function ContentBlock({ 
   block, 
@@ -53,7 +54,8 @@ export function ContentBlock({
   playMode,
   onPlayNext,
   onPlayModeChange,
-  onShowSplitView
+  onShowSplitView,
+  activeBlockId,
 }: ContentBlockProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -194,7 +196,12 @@ export function ContentBlock({
       endTime: endTime,
       context: 'sentence',
       loop: false,
-      playerId: `block-${block.id}-sentence-${index}`
+      onEnd: () => {
+          // 在句子播放结束时执行的操作，例如清除高亮
+          setActiveIndex(null);
+          setIsPlaying(false);
+          setActiveWordId(null);
+      }
     });
     
     // 更新父组件时间
@@ -226,6 +233,10 @@ export function ContentBlock({
           setActiveIndex(null);
           setIsPlaying(false);
           setActiveWordId(null);
+          // 同时清除 activeBlockId
+          if (activeBlockId === block.id) {
+            onSelect?.(null, {} as React.MouseEvent); // 使用 onSelect 传递 null
+          }
         }
         return;
       }
@@ -239,7 +250,7 @@ export function ContentBlock({
 
         if (!sentence) continue;
 
-        if (adjustedTime >= sentence.begin_time - 0.4 &&
+        if (adjustedTime >= sentence.begin_time + 0.4 - 0.4 &&
             adjustedTime <= sentence.end_time) {
           inAnySentenceRange = true;
 
@@ -247,6 +258,8 @@ export function ContentBlock({
             console.log(`高亮句子 ${i}: ${adjustedTime}秒在范围 ${sentence.begin_time}~${sentence.end_time}`);
             setActiveIndex(i);
             setIsPlaying(true);
+            // 更新 activeBlockId
+            onSelect?.(block.id, {} as React.MouseEvent);
           }
 
           foundSentence = true;
@@ -273,12 +286,17 @@ export function ContentBlock({
         }
       }
 
-      if (!inAnySentenceRange && context !== 'sentence') {
+      // 修改这部分逻辑，去掉 context 的判断
+      if (!inAnySentenceRange) {
         if (activeIndex !== null || isPlaying) {
           console.log('音频时间超出语境块句子范围，清除高亮');
           setActiveIndex(null);
           setIsPlaying(false);
           setActiveWordId(null);
+          // 同时清除 activeBlockId
+          if (activeBlockId === block.id) {
+            onSelect?.(null, {} as React.MouseEvent); // 使用 onSelect 传递 null
+          }
         }
       }
     };
@@ -288,7 +306,7 @@ export function ContentBlock({
     return () => {
       window.removeEventListener(AUDIO_EVENTS.TIME_UPDATE, handleTimeUpdate as EventListener);
     };
-  }, [activeIndex, isPlaying, embeddedSentences, getSentenceIdsFromContent]);
+  }, [activeIndex, isPlaying, embeddedSentences, getSentenceIdsFromContent, activeBlockId, block.id, onSelect, currentAudioTime]);
 
   // 2. 然后是其他函数和useEffect，保持原有顺序
   const parseAndLoadEmbeddedSentences = useCallback(async () => {
@@ -495,11 +513,7 @@ export function ContentBlock({
         } else {
             // 对齐失败处理
           setLocalAligning(false);
-          toast({
-            title: "对齐失败",
-            description: result.message || "文本对齐处理失败",
-            variant: "destructive",
-          });
+          toast.error(result.message || "文本对齐处理失败");
           }
         }
       } else {
@@ -514,11 +528,7 @@ export function ContentBlock({
     } catch (error) {
       console.error('处理拖放操作失败:', error);
       setLocalAligning(false);
-      toast({
-        title: "操作失败",
-        description: "处理拖放操作时出错",
-        variant: "destructive",
-      });
+      toast.error("处理拖放操作时出错");
     }
   };
 
@@ -533,13 +543,12 @@ export function ContentBlock({
     setActiveWordId(word.id);
     
     // 播放单词
-    AudioController.play(
-      audioUrl || '',
-      word.begin_time,
-      word.end_time,
-      `block-${block.id}-word-${word.id}`,
-      () => setActiveWordId(null)
-    );
+    AudioController.play({
+      url: audioUrl || '',
+      startTime: word.begin_time,
+      endTime: word.end_time,
+      onEnd: () => setActiveWordId(null)
+    });
   };
 
   // 添加这个函数来处理单词点击，但保留所有现有功能
@@ -590,7 +599,10 @@ export function ContentBlock({
         endTime: endTime,
         context: 'word',
         loop: false,
-        playerId: `block-${block.id}-word-${word.id}`
+        onEnd: () => {
+            // 单词播放结束后的操作
+            setActiveWordId(null);
+        }
       });
       
       // 更新父组件时间
@@ -1005,70 +1017,15 @@ export function ContentBlock({
     };
   }, [block.id, block.content, embeddedSentences, parseAndLoadEmbeddedSentences, playSentence]);
 
-  // 修改音频结束事件监听，增加精确的事件判断
-  useEffect(() => {
-    const handleAudioEnd = (e: CustomEvent) => {
-      const { context, playerId } = e.detail;
-      
-      // 检查是否是当前块的播放结束
-      const currentBlockRegex = new RegExp(`^block-${block.id}-sentence-`);
-      const isCurrentBlockAudio = currentBlockRegex.test(playerId || '');
-      
-      console.log(`音频结束事件 - playerId: ${playerId}, 匹配当前块: ${isCurrentBlockAudio}`);
-      
-      // 只有当是当前块的音频时才清除高亮
-      if (isCurrentBlockAudio) {
-        console.log(`清除块 ${block.id} 的高亮`);
-        setActiveIndex(null);
-        setActiveWordId(null);
-        setIsPlaying(false);
-      }
-    };
-    
-    window.addEventListener(AUDIO_EVENTS.END, handleAudioEnd as EventListener);
-    
-    return () => {
-      window.removeEventListener(AUDIO_EVENTS.END, handleAudioEnd as EventListener);
-    };
-  }, [block.id]);
-
-  // 组件卸载时清除自己的高亮
-  useEffect(() => {
-    return () => {
-      // 组件卸载时发送事件清除自己的高亮
-      window.dispatchEvent(new CustomEvent(CLEAR_ACTIVE_SENTENCE_EVENT, {
-        detail: { blockId: block.id, cleanup: true }
-      }));
-    };
-  }, [block.id]);
-
-  // 添加监听活跃块变化的事件
-  useEffect(() => {
-    const handleActiveBlockChanged = (e: CustomEvent) => {
-      const { activeBlockId } = e.detail;
-      
-      // 如果另一个块变为活跃，清除当前块的高亮
-      if (activeBlockId !== block.id) {
-        console.log(`块 ${block.id} 清除高亮 (活跃块变为 ${activeBlockId})`);
-        setActiveIndex(null);
-        setIsPlaying(false);
-        setActiveWordId(null);
-      }
-    };
-    
-    window.addEventListener(ACTIVE_BLOCK_CHANGED_EVENT, handleActiveBlockChanged as EventListener);
-    
-    return () => {
-      window.removeEventListener(ACTIVE_BLOCK_CHANGED_EVENT, handleActiveBlockChanged as EventListener);
-    };
-  }, [block.id]);
+  // 使用 isBlockActive 来区分 prop 中的 isSelected
+  const isBlockActive = activeBlockId === block.id;
 
   return (
     <div
       ref={blockRef}
       className={cn(
         'group relative my-1 p-2 rounded-md transition-all duration-300',
-        isSelected ? 'bg-accent/20 border border-primary/30' : 'hover:bg-accent/10 border border-transparent',
+        isBlockActive ? 'bg-accent/20 border border-primary/30' : 'hover:bg-accent/10 border border-transparent',
         isDragOver ? 'border-2 border-dashed border-primary/50 bg-primary/5' : '',
         dropPosition === 'before' ? 'border-t-2 border-t-primary' : '',
         dropPosition === 'after' ? 'border-b-2 border-b-primary' : '',
@@ -1111,4 +1068,4 @@ export function ContentBlock({
       )}
     </div>
   );
-} 
+}

@@ -65,6 +65,8 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
   const [detailsBlockId, setDetailsBlockId] = useState<string | null>(null);
   const [detailsPosition, setDetailsPosition] = useState({ x: 0, y: 0 });
   const [loadingSplitView, setLoadingSplitView] = useState(false);
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+  const blockRefs = useRef<{[key: string]: HTMLDivElement | null}>({});
 
   // 添加块更新处理函数
   const handleBlockUpdate = async (blockId: string, newType: string, content: string) => {
@@ -94,45 +96,29 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     }
   };
 
-  // 添加块选择处理函数
-  const handleBlockSelect = (blockId: string, event: React.MouseEvent) => {
-    if (event.shiftKey) {
-      // 范围选择
-      const blocks = contextBlocks[currentChapter];
-      const lastSelectedBlock = Array.from(selectedBlocks).pop();
-      if (lastSelectedBlock) {
-        const startIdx = blocks.findIndex(b => b.id === lastSelectedBlock);
-        const endIdx = blocks.findIndex(b => b.id === blockId);
-        if (startIdx !== -1 && endIdx !== -1) {
-          const start = Math.min(startIdx, endIdx);
-          const end = Math.max(startIdx, endIdx);
-          const newSelection = new Set(selectedBlocks);
-          for (let i = start; i <= end; i++) {
-            newSelection.add(blocks[i].id);
-          }
-          setSelectedBlocks(newSelection);
-          return;
-        }
-      }
+  // 修改 handleBlockSelect 函数
+  const handleBlockSelect = useCallback((blockId: string | null, _e: React.MouseEvent) => {
+    // 如果传入的 blockId 为 null，则清除 activeBlockId
+    if (blockId === null) {
+      setActiveBlockId(null);
+    } else {
+      // 否则，设置 activeBlockId 为传入的 blockId
+      setActiveBlockId(blockId);
     }
 
+    // 其余逻辑保持不变
     setSelectedBlocks(prev => {
-      const newSelection = new Set(prev);
-      if (event.metaKey || event.ctrlKey) {
-        // 多选
-        if (newSelection.has(blockId)) {
-          newSelection.delete(blockId);
-        } else {
-          newSelection.add(blockId);
-        }
+      const newSelected = new Set(prev);
+      if (!blockId) {
+        newSelected.clear();
+      } else if (newSelected.has(blockId)) {
+        newSelected.delete(blockId);
       } else {
-        // 单选
-        newSelection.clear();
-        newSelection.add(blockId);
+        newSelected.add(blockId);
       }
-      return newSelection;
+      return newSelected;
     });
-  };
+  }, []); // 移除多余的依赖
 
   // 更新块排序处理函数
   const handleBlockOrderChange = async (draggedId: string, droppedId: string, position: 'before' | 'after') => {
@@ -601,7 +587,9 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
       const hasSplitView = activeSplitViewBlockId === block.id;
       
       return (
-        <div key={block.id} className={`${hasSplitView ? 'grid grid-cols-2 gap-2' : ''}`}>
+        <div key={block.id} 
+        ref={(el) => { blockRefs.current[block.id] = el; }}
+        className={`${hasSplitView ? 'grid grid-cols-2 gap-2' : ''}`}>
           {/* 主语境块 */}
           <div className={hasSplitView ? 'col-span-1' : ''}>
       <ContentBlock
@@ -619,6 +607,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
         onPlayNext={handlePlayNext}
         onPlayModeChange={handlePlayModeChange}
               onShowSplitView={handleShowSplitView}
+              activeBlockId={activeBlockId}
             />
           </div>
           
@@ -837,6 +826,19 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     }
   }, []);
 
+  // 添加 useEffect，监听 activeBlockId 变化
+  useEffect(() => {
+    if (activeBlockId) {
+      const element = blockRefs.current[activeBlockId];
+      if (element) {
+        // 使用 scrollIntoView API 滚动到元素
+        element.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center', // 将元素滚动到视口的中心
+        });
+      }
+    }
+  }, [activeBlockId]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
