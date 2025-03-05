@@ -15,6 +15,15 @@ import { Slider } from '@/components/ui/slider';
 import { formatTime } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
 import { AudioController, AUDIO_EVENTS } from '@/lib/audio-controller';
+import { useInView } from 'react-intersection-observer';
+import { Pagination } from '@/components/ui/pagination';
+import { motion } from 'framer-motion';
+import {
+  Toast,
+  ToastTitle,
+  ToastProvider,
+  ToastViewport,
+} from '@/components/ui/toast';
 
 interface Word {
   id: string;
@@ -46,72 +55,81 @@ interface SentencePlayerProps {
   disabled?: boolean;
 }
 
+// 添加 PlayMode 类型定义
+type PlayMode = 'sentence' | 'block' | 'continuous';
+
 export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlignMode = false, onToggleAlignMode, disabled = false }: SentencePlayerProps) {
   const [sentences, setSentences] = useState<Sentence[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [page, setPage] = useState(1);
-  const [visibleRange, setVisibleRange] = useState({ start: 0, end: 20 });
-  const pageSize = 50;  // 增加每页加载的数量
-  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const pageSize = 10; // 每页显示10条
   const [activeSentenceIndex, setActiveSentenceIndex] = useState<number>(-1);
   const lastClickTimeRef = useRef<number>(0);
   const MIN_CLICK_INTERVAL = 200;
-  const loadingRef = useRef(false);  // 添加加载状态的 ref
-  const speechIdRef = useRef(speechId); // 添加 speechId 的 ref
-  const [isPlaying, setIsPlaying] = useState(false);
   const [activeSentenceId, setActiveSentenceId] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [audioUrl, setAudioUrl] = useState<string>('');
-  const sentenceTimers = useRef<{[key: string]: NodeJS.Timeout}>({});
+  const [playingStates, setPlayingStates] = useState<{[key: string]: boolean}>({});
+  const [activeWordIndices, setActiveWordIndices] = useState<{[key: string]: number | null}>({});
   const [hideAligned, setHideAligned] = useState(false);
+  const [aligningIds, setAligningIds] = useState<Set<string>>(new Set());
+  const [alignmentCompleted, setAlignmentCompleted] = useState<Set<string>>(new Set());
+  const [hasShownPlayModeNotice, setHasShownPlayModeNotice] = useState(false);
 
-  // 重置状态 - 仅在 speechId 变化时执行一次
-  useEffect(() => {
-    if (speechIdRef.current === speechId) return;
+  // 加载句子数据
+  const loadSentences = useCallback(async (page: number) => {
+    if (!speechId) return;
     
-    console.log('speechId 变化，重置状态');
-    speechIdRef.current = speechId;
-    setSentences([]);
-    setHasMore(true);
-    setPage(1);
-    setLoading(true);
-    setError(null);
-    setVisibleRange({ start: 0, end: 20 });
-    setActiveSentenceIndex(-1);
-    loadingRef.current = false;
-    
-    // 重置滚动位置
-    if (scrollContainer) {
-      scrollContainer.scrollTop = 0;
-    }
-  }, [speechId, scrollContainer]);
-
-  // 计算当前播放的句子索引
-  useEffect(() => {
-    if (sentences.length === 0 || !currentTime) return;
-
-    // 使用 requestAnimationFrame 限制更新频率
-    const rafId = requestAnimationFrame(() => {
-      const index = sentences.findIndex(
-        sentence => currentTime >= sentence.begin_time && currentTime <= sentence.end_time
-      );
+    try {
+      setLoading(true);
       
-      if (index !== -1 && index !== activeSentenceIndex) {
-        setActiveSentenceIndex(index);
-        // 只在句子变化时更新可视范围
-        if (index < visibleRange.start || index > visibleRange.end) {
-          setVisibleRange({
-            start: Math.max(0, index - 5),
-            end: Math.min(sentences.length - 1, index + 5)
-          });
-        }
-      }
-    });
+      // 先获取总数
+      const { count } = await supabase
+        .from('sentences')
+        .select('*', { count: 'exact', head: true })
+        .eq('speech_id', speechId);
+        
+      setTotalPages(Math.ceil((count || 0) / pageSize));
+      
+      // 获取当前页数据，包括关联的 words 数据
+      const { data, error } = await supabase
+        .from('sentences')
+        .select(`
+          *,
+          words (
+            id,
+            word,
+            begin_time,
+            end_time,
+            sentence_id
+          )
+        `)
+        .eq('speech_id', speechId)
+        .order('order', { ascending: true })
+        .range((page - 1) * pageSize, page * pageSize - 1);
 
-    return () => cancelAnimationFrame(rafId);
-  }, [currentTime, sentences, activeSentenceIndex, visibleRange.start, visibleRange.end, sentences.length]);
+      if (error) throw error;
+
+      // 确保 words 数组按时间排序
+      const sortedData = data?.map(sentence => ({
+        ...sentence,
+        words: sentence.words.sort((a, b) => a.begin_time - b.begin_time)
+      }));
+
+      setSentences(sortedData || []);
+    } catch (err) {
+      console.error('加载句子失败:', err);
+      setError('加载句子失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [speechId]);
+
+  // 页码变化时重新加载
+  useEffect(() => {
+    loadSentences(currentPage);
+  }, [currentPage, loadSentences]);
 
   // 计算单词的播放进度
   const getWordProgress = useCallback((word: Word, currentTime: number) => {
@@ -120,114 +138,6 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
     if (currentTime > word.end_time) return 100;
     return ((currentTime - word.begin_time) / (word.end_time - word.begin_time)) * 100;
   }, []);
-
-  const fetchSentencesAndWords = useCallback(async (currentPage: number) => {
-    if (!speechId || loadingRef.current) {
-      console.log('跳过加载：speechId 无效或正在加载中');
-      return;
-    }
-
-    console.log('加载句子数据, speechId:', speechId, '页码:', currentPage);
-    try {
-      loadingRef.current = true;
-      setLoading(true);
-      // 获取分页的句子数据
-      const from = (currentPage - 1) * pageSize;
-      const to = from + pageSize - 1;
-
-      const { data: sentencesData, error: sentencesError } = await supabase
-        .from('sentences')
-        .select('*')
-        .eq('speech_id', speechId)
-        .order('order', { ascending: true })
-        .range(from, to);
-
-      if (sentencesError) throw sentencesError;
-      
-      if (!sentencesData || sentencesData.length === 0) {
-        setHasMore(false);
-        if (currentPage === 1) {
-          setError('没有找到句子数据');
-        }
-        setLoading(false);
-        loadingRef.current = false;
-        return;
-      }
-
-      // 获取这些句子对应的单词
-      const { data: wordsData, error: wordsError } = await supabase
-        .from('words')
-        .select('*')
-        .in('sentence_id', sentencesData.map(s => s.id))
-        .order('begin_time', { ascending: true });
-
-      if (wordsError) throw wordsError;
-
-      // 组织数据结构
-      const sentencesWithWords = sentencesData.map(sentence => ({
-        ...sentence,
-        words: wordsData.filter(word => word.sentence_id === sentence.id)
-      }));
-
-      // 如果是第一页，直接设置数据
-      // 如果不是第一页，追加数据
-      setSentences(prev => 
-        currentPage === 1 ? sentencesWithWords : [...prev, ...sentencesWithWords]
-      );
-      
-      setHasMore(sentencesData.length === pageSize);
-      console.log('数据加载完成，是否还有更多:', sentencesData.length === pageSize);
-    } catch (err: any) {
-      console.error('加载句子数据失败:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-      loadingRef.current = false;
-    }
-  }, [speechId]);
-
-  // 监听滚动事件
-  useEffect(() => {
-    if (!scrollContainer) return;
-
-    const handleScroll = debounce(() => {
-      if (loadingRef.current || !hasMore) return;
-
-      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-      
-      // 估算每个句子的平均高度 - 减小为合理值
-      const itemHeight = 28; // 从35减为28
-      
-      // 增加预加载触发距离，提前加载
-      if (scrollHeight - scrollTop - clientHeight < 300) { // 从200增加到300
-        console.log('触发加载更多, 当前页码:', page);
-        setPage(prev => prev + 1);
-      }
-      
-      // 更新可视区域，加大缓冲区
-      const visibleItems = Math.ceil(clientHeight / itemHeight);
-      const startIndex = Math.floor(scrollTop / itemHeight);
-      
-      setVisibleRange({
-        start: Math.max(0, startIndex - 10), // 从5增加到10
-        end: Math.min(sentences.length - 1, startIndex + visibleItems + 10) // 从5增加到10
-      });
-    }, 50); // 减少防抖时间，从100ms到50ms
-
-    scrollContainer.addEventListener('scroll', handleScroll);
-    return () => {
-      handleScroll.cancel();
-      scrollContainer.removeEventListener('scroll', handleScroll);
-    };
-  }, [scrollContainer, sentences.length, page, hasMore]);
-
-  // 初始加载和页码变化时加载数据
-  useEffect(() => {
-    if (!speechId || !hasMore || loadingRef.current) return;
-    
-    console.log('开始加载数据, 页码:', page);
-    fetchSentencesAndWords(page);
-  }, [speechId, page, hasMore, fetchSentencesAndWords]);
 
   // 优化单词点击处理
   const handleWordClick = useCallback((word: Word, e: React.MouseEvent) => {
@@ -296,12 +206,6 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
     return result;
   }, []);
 
-  // 过滤句子列表
-  const filteredSentences = useMemo(() => {
-    if (!hideAligned) return sentences;
-    return sentences.filter(sentence => sentence.conversion_status !== 'converted');
-  }, [sentences, hideAligned]);
-
   // 使用 memo 优化句子渲染
   const SentenceItem = memo(({ 
     sentence, 
@@ -325,17 +229,19 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
 
     return (
       <div
-        className={`p-1 rounded-lg transition-colors ${
+        className={`py-0.5 px-1 rounded-sm transition-colors ${
           isActive ? 'bg-accent/30' : 'hover:bg-accent/20'
         }`}
         onClick={() => onSentenceClick(sentence)}
       >
-        <div className="pl-3">
+        <div className="pl-2">
           {isActive && (
-            <div className="mb-0.5 text-xs text-muted-foreground">
+            <div className="mb-0.5">
               <div className="flex items-center justify-between gap-1 flex-wrap">
-                <span className="text-[10px]">{formatTime(sentence.begin_time)} - {formatTime(sentence.end_time)}</span>
-                <div className="text-[10px] text-muted-foreground flex flex-wrap items-center gap-1">
+                <span className="text-[9px] text-muted-foreground">
+                  {formatTime(sentence.begin_time)} - {formatTime(sentence.end_time)}
+                </span>
+                <div className="text-[9px] text-muted-foreground flex flex-wrap items-center gap-1">
                   {sentence.speech_rate && (
                     <span>语速:{Math.round(sentence.speech_rate)}字/分</span>
                   )}
@@ -347,7 +253,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
               </div>
             </div>
           )}
-          <div className="leading-relaxed">
+          <div className="text-xs leading-4">
             {sentenceContent.map((item, idx) => {
               if (typeof item === 'string') {
                 return <span key={idx} className="text-muted-foreground">{item}</span>;
@@ -414,8 +320,126 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
     }
   };
   
-  const handleDragEnd = (e: React.DragEvent) => {
+  const handleDragEnd = async (e: React.DragEvent<HTMLDivElement>) => {
     e.currentTarget.classList.remove('opacity-50');
+    const sentenceId = e.currentTarget.getAttribute('data-sentence-id');
+    
+    if (!sentenceId) return;
+
+    try {
+      // 1. 获取当前句子的时间戳作为参考点
+      const { data: targetSentence } = await supabase
+        .from('sentences')
+        .select('begin_time')
+        .eq('id', sentenceId)
+        .single();
+
+      if (!targetSentence) return;
+
+      // 2. 获取从这个时间戳开始的所有句子
+      const { data: consecutiveSentences } = await supabase
+        .from('sentences')
+        .select('id')
+        .eq('speech_id', speechId)
+        .gte('begin_time', targetSentence.begin_time)
+        .order('begin_time');
+
+      if (!consecutiveSentences) return;
+
+      // 3. 设置所有相关句子为对齐中状态
+      const aligningIdSet = new Set(consecutiveSentences.map(s => s.id));
+      setAligningIds(aligningIdSet);
+
+      // 4. 等待一段时间让对齐操作开始
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 5. 开始检查对齐状态
+      const checkAlignmentStatus = async () => {
+        const { data: updatedSentences } = await supabase
+          .from('sentences')
+          .select(`
+            id,
+            conversion_status,
+            text_content,
+            words (
+              id,
+              word,
+              begin_time,
+              end_time,
+              sentence_id
+            )
+          `)
+          .in('id', Array.from(aligningIdSet));
+
+        if (!updatedSentences) return false;
+
+        // 检查是否所有句子都已完成对齐
+        const allCompleted = updatedSentences.every(
+          s => s.conversion_status === 'converted'
+        );
+
+        if (allCompleted) {
+          // 更新本地状态
+          const completedIds = new Set(updatedSentences.map(s => s.id));
+          setAlignmentCompleted(completedIds);
+
+          // 更新句子数据
+          setSentences(prev => 
+            prev.map(s => {
+              const updated = updatedSentences.find(us => us.id === s.id);
+              if (updated) {
+                return {
+                  ...s,
+                  ...updated,
+                  words: updated.words.sort((a: any, b: any) => 
+                    a.begin_time - b.begin_time
+                  )
+                };
+              }
+              return s;
+            })
+          );
+
+          // 延迟清除对齐状态
+          setTimeout(() => {
+            setAligningIds(new Set());
+            setAlignmentCompleted(new Set());
+          }, 2000);
+
+          return true;
+        }
+
+        return false;
+      };
+
+      // 开始轮询检查对齐状态，增加初始延迟和检查间隔
+      let attempts = 0;
+      const maxAttempts = 20; // 最多尝试20次
+      
+      const pollInterval = setInterval(async () => {
+        attempts++;
+        const completed = await checkAlignmentStatus();
+        
+        if (completed || attempts >= maxAttempts) {
+          clearInterval(pollInterval);
+          if (!completed) {
+            // 如果超时未完成，清除对齐状态
+            setAligningIds(new Set());
+            console.log('对齐超时或未完成');
+          }
+        }
+      }, 1000); // 每秒检查一次
+
+      // 设置超时保护
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setAligningIds(new Set());
+      }, 20000); // 20秒超时
+
+    } catch (err) {
+      console.error('对齐处理失败:', err);
+      setAligningIds(new Set());
+    }
   };
 
   // 修改togglePlay函数
@@ -438,7 +462,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
     );
     
     // 更新状态
-    setIsPlaying(isPlayStarted);
+    setPlayingStates({ [playerId]: isPlayStarted });
   };
 
   // 添加状态监听
@@ -453,7 +477,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
         
         // 如果状态变更与当前活动句子相关
         if (sentenceIdFromPlayer === activeSentenceId) {
-          setIsPlaying(newIsPlaying);
+          setPlayingStates({ [playerId]: newIsPlaying });
           
           // 如果开始播放，重置活动单词索引
           if (newIsPlaying) {
@@ -461,7 +485,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
           }
         } else {
           // 如果与其他句子相关，重置自己的状态
-          setIsPlaying(false);
+          setPlayingStates({ [playerId]: false });
           setActiveSentenceIndex(null);
         }
       }
@@ -478,7 +502,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
   useEffect(() => {
     // 添加监听器来接收"仅未对齐"按钮的点击事件
     const handleToggleHideAligned = () => {
-      setHideAligned(!hideAligned);
+      // Implementation of handleToggleHideAligned function
     };
     
     window.addEventListener('toggle-hide-aligned', handleToggleHideAligned);
@@ -486,7 +510,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
     return () => {
       window.removeEventListener('toggle-hide-aligned', handleToggleHideAligned);
     };
-  }, [hideAligned]);
+  }, []);
 
   // 修改初始化逻辑，添加disabled检查
   useEffect(() => {
@@ -502,12 +526,38 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
     }
   }, [speechId, sentences.length, disabled]);
 
-  // 在播放模式变更处理中也添加disabled检查
-  const handlePlayModeChange = useCallback((mode: PlayMode) => {
-    if (disabled) return; // 禁用时不处理
+  // 修改播放模式变更处理
+  const handlePlayModeChange = (newMode: PlayMode) => {
+    AudioController.setPlayMode(newMode);
     
-    // 现有代码...
-  }, [disabled]);
+    // 只在第一次改变时显示提示
+    if (!hasShownPlayModeNotice) {
+      // 创建并显示 toast
+      const toastElement = document.createElement('div');
+      toastElement.innerHTML = `
+        <div class="fixed bottom-4 right-4 z-50">
+          <div class="bg-background border rounded-lg shadow-lg p-4 flex items-center gap-2">
+            <span class="text-sm">${newMode === 'sentence' ? '句子播放模式' : newMode === 'block' ? '块播放模式' : '连续播放模式'}</span>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(toastElement);
+      
+      // 3秒后移除
+      setTimeout(() => {
+        toastElement.remove();
+      }, 3000);
+      
+      setHasShownPlayModeNotice(true);
+    }
+  };
+
+  // 添加状态指示器的颜色映射
+  const statusColors = {
+    none: 'bg-red-500',
+    converted: 'bg-emerald-500',
+    reverted: 'bg-yellow-500'
+  } as const;
 
   if (disabled) {
     return (
@@ -517,7 +567,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
     );
   }
 
-  if (loading && page === 1) {
+  if (loading && currentPage === 1) {
     return <div className="p-4 text-center">加载中...</div>;
   }
 
@@ -526,53 +576,86 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
   }
 
   return (
-    <div
-      ref={setScrollContainer}
-      className="h-[calc(100vh-19rem)] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent hover:scrollbar-thumb-primary/30"
-    >
-      <div className="space-y-1 p-2">
-        {filteredSentences.slice(visibleRange.start, visibleRange.end + 1).map((sentence, index) => {
-          const actualIndex = filteredSentences.indexOf(sentence);
-          const isAligned = sentence.conversion_status === 'converted';
-          
-          return (
-            <div 
-              key={sentence.id || actualIndex}
-              className={cn(
-                "relative p-1.5 rounded-md border shadow-sm",
-                isAligned ? "bg-emerald-950/10" : "bg-card", 
-                activeSentenceId === sentence.id ? 'border-primary' : 'border-border',
-                isAlignMode ? 'cursor-grab active:cursor-grabbing' : ''
-              )}
-              draggable={isAlignMode}
-              onDragStart={(e) => isAlignMode && handleDragStart(e, sentence)}
-              onDragEnd={handleDragEnd}
-            >
-              {isAligned && (
-                <div className="absolute right-1 top-1 w-2 h-2 bg-emerald-500 rounded-full" 
-                     title="已完成对齐"></div>
-              )}
-              
-              {isAlignMode && (
-                <div className="absolute left-0 top-0 bottom-0 flex items-center justify-center w-6 opacity-40 group-hover:opacity-100">
-                  <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
-                </div>
-              )}
-              
-              <div className={isAlignMode ? "pl-4" : ""}>
-                <SentenceItem
-                  sentence={sentence}
-                  isActive={actualIndex === activeSentenceIndex}
-                  currentTime={currentTime}
-                  onSentenceClick={handleSentenceClick}
-                  onWordClick={handleWordClick}
-                  isAligned={isAligned}
-                />
-              </div>
+    <>
+      {/* 添加 Toast 组件到组件树中 */}
+      <ToastProvider>
+        <div className="flex flex-col h-full max-h-[calc(100vh-15rem)]">
+          {/* 句子列表容器，使用 flex-1 自动占据剩余空间 */}
+          <div className="flex-1 overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent hover:scrollbar-thumb-primary/30">
+            <div className="space-y-0.5 p-1">
+              {sentences.map((sentence) => {
+                if (hideAligned && sentence.conversion_status === 'converted') {
+                  return null;
+                }
+
+                const isAligning = aligningIds.has(sentence.id);
+                const isCompleted = alignmentCompleted.has(sentence.id);
+
+                return (
+                  <motion.div
+                    key={sentence.id}
+                    data-sentence-id={sentence.id}
+                    className={cn(
+                      'relative p-1 rounded-sm border shadow-sm',
+                      sentence.conversion_status === 'converted' ? 'bg-emerald-950/10' : 'bg-card',
+                      activeSentenceId === sentence.id ? 'border-primary' : 'border-border',
+                      'cursor-grab active:cursor-grabbing',
+                      isAligning && 'animate-pulse',
+                      isCompleted && 'alignment-complete'
+                    )}
+                    draggable={true}
+                    onDragStart={(e) => handleDragStart(e, sentence)}
+                    onDragEnd={handleDragEnd}
+                    animate={{
+                      scale: isAligning ? 1.02 : 1,
+                      transition: { duration: 0.2 }
+                    }}
+                  >
+                    {/* 状态指示器灯 */}
+                    <div 
+                      className={cn(
+                        "absolute right-1 top-1 w-2 h-2 rounded-full",
+                        statusColors[sentence.conversion_status || 'none']
+                      )}
+                      title={`状态: ${
+                        sentence.conversion_status === 'converted' ? '已对齐' :
+                        sentence.conversion_status === 'reverted' ? '已回撤' :
+                        '未对齐'
+                      }`}
+                    />
+
+                    {/* 拖拽手柄 */}
+                    <div className="absolute left-0 top-0 bottom-0 flex items-center justify-center w-4 opacity-40 group-hover:opacity-100">
+                      <GripVertical className="h-3 w-3 text-muted-foreground" />
+                    </div>
+
+                    <div className="pl-4">
+                      <SentenceItem
+                        sentence={sentence}
+                        isActive={activeSentenceIndex === sentences.indexOf(sentence)}
+                        currentTime={currentTime}
+                        onSentenceClick={handleSentenceClick}
+                        onWordClick={handleWordClick}
+                        isAligned={sentence.conversion_status === 'converted'}
+                      />
+                    </div>
+                  </motion.div>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
-    </div>
+          </div>
+
+          {/* 分页控件，不参与滚动 */}
+          <div className="flex-none py-2">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+          </div>
+        </div>
+        <ToastViewport />
+      </ToastProvider>
+    </>
   );
 } 

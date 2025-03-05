@@ -5,7 +5,7 @@ import { AudioRecognizer } from './AudioRecognizer';
 import { DraggableAudioPlayer } from './DraggableAudioPlayer';
 import { Book } from '@/types/book';
 import { supabase } from '@/lib/supabase-client';
-import { X, Mic, Menu, ChevronLeft, ChevronRight, Info } from 'lucide-react';
+import { X, Mic, Menu, ChevronLeft, ChevronRight, Info, Undo } from 'lucide-react';
 import { ContentBlock } from './ContentBlock';
 import { toast } from 'sonner';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -14,6 +14,20 @@ import Image from 'next/image';
 import { AudioController } from '@/lib/audio-controller';
 import { cn } from '@/lib/utils';
 import { throttle } from 'lodash';
+import { confirmAlert } from 'react-confirm-alert';
+import 'react-confirm-alert/src/react-confirm-alert.css';
+import { generateWordsFromAlignmentMetadata } from '@/lib/utils';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
+import { Upload } from 'lucide-react';
+import { AudioUploader } from './AudioUploader';
 
 
 export function formatWordTime(timeRange?: string) {
@@ -66,6 +80,10 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
   const [detailsPosition, setDetailsPosition] = useState({ x: 0, y: 0 });
   const [loadingSplitView, setLoadingSplitView] = useState(false);
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [undoProgress, setUndoProgress] = useState(0);
+  const [undoStatus, setUndoStatus] = useState('');
+  const [isUndoing, setIsUndoing] = useState(false);
   const blockRefs = useRef<{[key: string]: HTMLDivElement | null}>({});
 
   // 添加块更新处理函数
@@ -183,67 +201,43 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     }
   };
 
-  // 预加载相邻章节的数据
-  const preloadAdjacentChapters = async (currentIndex: number) => {
-    const adjacentIndices = [currentIndex - 1, currentIndex + 1].filter(
-      index => index >= 0 && index < book.chapters.length
-    );
-
-    for (const index of adjacentIndices) {
-      if (!contextBlocks[index] && parentIds[index]) {
-        const { data } = await supabase
-          .from('context_blocks')
-          .select('*')
-          .eq('parent_id', parentIds[index])
-          .order('order_index');
-
-        if (data) {
-          setContextBlocks(prev => ({
-            ...prev,
-            [index]: data
-          }));
-        }
-      }
-    }
-  };
-
   // 一次性加载所有章节的 parent_id
-  useEffect(() => {
-    async function loadAllParentIds() {
-      try {
-        console.log('当前book对象:', book);
-        console.log('正在加载章节，book.id:', book.id);
-        
-        const { data, error } = await supabase
-          .from('chapters')
-          .select('order_index, parent_id')
-          .eq('book_id', book.id)
-          .order('order_index');
+  async function loadAllParentIds() {
+    try {
+      console.log('当前book对象:', book);
+      console.log('正在加载章节，book.id:', book.id);
+      
+      const { data, error } = await supabase
+        .from('chapters')
+        .select('order_index, parent_id')
+        .eq('book_id', book.id)
+        .order('order_index');
 
-        if (error) {
-          console.error('加载章节父级ID失败:', error);
-          return;
-        }
-
-        if (!data || data.length === 0) {
-          console.error('未找到任何章节数据，book.id:', book.id);
-          return;
-        }
-
-        console.log('加载到的章节数据:', data);
-
-        const idMap = data.reduce((acc: Record<number, string>, chapter: { order_index: number; parent_id: string }) => {
-          acc[chapter.order_index] = chapter.parent_id;
-          return acc;
-        }, {});
-
-        setParentIds(idMap);
-        console.log('设置的parentIds:', idMap);
-      } catch (err) {
-        console.error('加载章节父级ID失败:', err);
+      if (error) {
+        console.error('加载章节父级ID失败:', error);
+        return;
       }
-    }
 
+      if (!data || data.length === 0) {
+        console.error('未找到任何章节数据，book.id:', book.id);
+        return;
+      }
+
+      console.log('加载到的章节数据:', data);
+
+      const idMap = data.reduce((acc: Record<number, string>, chapter: { order_index: number; parent_id: string }) => {
+        acc[chapter.order_index] = chapter.parent_id;
+        return acc;
+      }, {});
+
+      setParentIds(idMap);
+      console.log('设置的parentIds:', idMap);
+    } catch (err) {
+      console.error('加载章节父级ID失败:', err);
+    }
+  }
+
+  useEffect(() => {
     loadAllParentIds();
   }, [book.id]);
 
@@ -576,6 +570,344 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     </div>
   );
 
+  // 首先添加一个进度对话框组件
+  const ProgressDialog = ({ 
+    isOpen, 
+    title, 
+    message, 
+    progress, 
+    status,
+    onCancel,
+    onConfirm 
+  }: {
+    isOpen: boolean;
+    title: string;
+    message: string;
+    progress: number;
+    status: string;
+    onCancel: () => void;
+    onConfirm: () => void;
+  }) => {
+    return (
+      <Dialog open={isOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{message}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="relative w-full h-2 bg-secondary rounded-full overflow-hidden">
+              <div 
+                className="absolute left-0 top-0 h-full bg-primary transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">{status}</p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 rounded-md hover:bg-accent"
+            >
+              取消
+            </button>
+            <button
+              onClick={onConfirm}
+              className="px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              确认
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
+  // 修改 handleUndoAlignment 函数
+  const handleUndoAlignment = useCallback(async (blockId: string) => {
+    confirmAlert({
+      title: '确认撤销对齐',
+      message: '此操作将删除所有对齐数据，并恢复到原始文本。是否继续？',
+      buttons: [
+        {
+          label: '确认',
+          onClick: async () => {
+            try {
+              setIsUndoing(true);
+              setUndoProgress(0);
+              setUndoStatus('正在获取句子信息...');
+
+              // 1. 获取所有相关的 sentence IDs
+              const { data: sentenceIds, error: sentenceIdsError } = await supabase
+                .from('block_sentences')
+                .select('sentence_id')
+                .eq('block_id', blockId);
+
+              if (sentenceIdsError) throw sentenceIdsError;
+              setUndoProgress(5);
+
+              // 2. 批量获取所有句子的 metadata
+              setUndoStatus('正在获取句子元数据...');
+              const { data: sentencesData, error: sentencesError } = await supabase
+                .from('sentences')
+                .select('id, alignment_metadata, original_text_content')
+                .in('id', sentenceIds?.map(s => s.sentence_id) || []);
+
+              if (sentencesError) throw sentencesError;
+              setUndoProgress(15);
+
+              // 3. 批量删除所有相关的 words
+              setUndoStatus('正在删除旧的单词数据...');
+              const { error: deleteWordsError } = await supabase
+                .from('words')
+                .delete()
+                .in('sentence_id', sentenceIds?.map(s => s.sentence_id) || []);
+
+              if (deleteWordsError) throw deleteWordsError;
+              setUndoProgress(30);
+
+              // 4. 准备新的 words 数据
+              setUndoStatus('正在准备新的单词数据...');
+              const allNewWords = sentencesData?.flatMap(sentence => {
+                const wordHistory = sentence.alignment_metadata?.word_history || [];
+                return wordHistory.map(word => ({
+                  id: crypto.randomUUID(),
+                  sentence_id: sentence.id,
+                  word: word.word,
+                  begin_time: word.begin_time,
+                  end_time: word.end_time,
+                  created_at: new Date().toISOString(),
+                  original_word: word.original_word,
+                  manual_correction: false
+                }));
+              }) || [];
+              setUndoProgress(50);
+
+              // 5. 批量插入新的 words
+              setUndoStatus('正在恢复单词数据...');
+              if (allNewWords.length > 0) {
+                // 分批插入以避免数据量过大
+                const batchSize = 100;
+                for (let i = 0; i < allNewWords.length; i += batchSize) {
+                  const batch = allNewWords.slice(i, i + batchSize);
+                  const { error: insertError } = await supabase
+                    .from('words')
+                    .insert(batch);
+
+                  if (insertError) throw insertError;
+                  
+                  const batchProgress = 50 + (i / allNewWords.length) * 20;
+                  setUndoProgress(batchProgress);
+                }
+              }
+              setUndoProgress(70);
+
+              // 6. 批量更新 sentences
+              setUndoStatus('正在更新句子状态...');
+              
+              // 为每个句子准备更新数据
+              const sentenceUpdates = sentencesData?.map(sentence => ({
+                id: sentence.id,
+                conversion_status: 'reverted',
+                text_content: sentence.original_text_content || '', // 使用原始文本
+                original_text_content: '',
+                alignment_metadata: null
+              })) || [];
+
+              // 批量更新所有句子
+              for (const update of sentenceUpdates) {
+                const { error: updateError } = await supabase
+                  .from('sentences')
+                  .update({
+                    conversion_status: update.conversion_status,
+                    text_content: update.text_content,
+                    original_text_content: update.original_text_content,
+                    alignment_metadata: update.alignment_metadata
+                  })
+                  .eq('id', update.id);
+
+                if (updateError) throw updateError;
+              }
+
+              setUndoProgress(85);
+
+              // 7. 删除 block_sentences 关联
+              setUndoStatus('正在清理关联数据...');
+              const { error: deleteError } = await supabase
+                .from('block_sentences')
+                .delete()
+                .eq('block_id', blockId);
+
+              if (deleteError) throw deleteError;
+              setUndoProgress(90);
+
+              // 8. 更新 context_block
+              setUndoStatus('正在更新语境块...');
+              const { data: blockData, error: blockError } = await supabase
+                .from('context_blocks')
+                .select('original_content')
+                .eq('id', blockId)
+                .single();
+
+              if (blockError) throw blockError;
+
+              const { error: updateError } = await supabase
+                .from('context_blocks')
+                .update({
+                  conversion_status: 'reverted',
+                  content: blockData?.original_content || '',
+                  original_content: '',
+                  block_type: 'text',
+                })
+                .eq('id', blockId);
+
+              if (updateError) throw updateError;
+              setUndoProgress(95);
+
+              // 9. 更新本地状态
+              setUndoStatus('正在更新界面...');
+              setContextBlocks(prev => ({
+                ...prev,
+                [currentChapter]: prev[currentChapter].map(block =>
+                  block.id === blockId
+                    ? {
+                        ...block,
+                        conversion_status: 'reverted',
+                        content: blockData?.original_content || '',
+                        original_content: '',
+                        block_type: 'text',
+                      }
+                    : block
+                ),
+              }));
+
+              setUndoProgress(100);
+              setUndoStatus('撤销完成');
+              
+              // 先显示完成状态，然后关闭分栏视图
+              setTimeout(() => {
+                setIsUndoing(false);
+                setUndoProgress(0);
+                setUndoStatus('');
+                // 关闭分栏视图
+                setActiveSplitViewBlockId(null);
+                setSplitViewType(null);
+                setSplitViewData(null);
+              }, 500);
+
+            } catch (error) {
+              console.error('撤销对齐失败:', error);
+              toast.error('撤销对齐失败');
+              setIsUndoing(false);
+              setUndoProgress(0);
+              setUndoStatus('');
+            }
+          },
+        },
+        {
+          label: '取消',
+          onClick: () => {},
+        },
+      ],
+    });
+  }, [currentChapter, setContextBlocks]);
+
+  const renderSplitViewBlock = (block: any) => (
+    <div className="col-span-1">
+      <div className={cn(
+        'group relative my-1 p-2 rounded-md border transition-all duration-300',
+        'bg-primary/5 border-primary/20',
+        'hover:bg-primary/10',
+        'h-full flex flex-col'
+      )}>
+        {/* 小标签 - 只在非撤销状态下显示 */}
+        {!isUndoing && (
+          <div className="absolute -top-3 left-0 right-0 mx-auto w-fit px-3 py-0.5 bg-background text-[14px] font-medium text-muted-foreground">
+            对齐原文
+          </div>
+        )}
+        
+        {/* 右上角操作按钮组 */}
+        <div className="absolute right-2 top-2 flex space-x-2">
+          {/* 撤销按钮 - 使用 Undo 图标替换 X */}
+          <button
+            onClick={() => {
+              if (activeSplitViewBlockId) {
+                handleUndoAlignment(activeSplitViewBlockId);
+              }
+            }}
+            className="p-0.5 rounded-full opacity-0 group-hover:opacity-60 hover:opacity-100 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors"
+            title="撤销对齐"
+          >
+            <Undo className="h-3.5 w-3.5" />
+          </button>
+
+          {/* 详情按钮 */}
+          <button
+            onClick={() => {
+              if (activeSplitViewBlockId) {
+                handleShowAlignmentDetails(activeSplitViewBlockId);
+              }
+            }}
+            className="p-0.5 rounded-full opacity-0 group-hover:opacity-60 hover:opacity-100 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+            title="查看详细对齐信息"
+          >
+            <Info className="h-3.5 w-3.5" />
+          </button>
+          
+          {/* 关闭按钮 */}
+          <button
+            onClick={() => {
+              setActiveSplitViewBlockId(null);
+              setSplitViewType(null);
+              setSplitViewData(null);
+            }}
+            className="p-0.5 rounded-full opacity-0 group-hover:opacity-60 hover:opacity-100 hover:bg-muted/80 text-muted-foreground hover:text-primary transition-colors"
+            title="关闭"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        
+        {/* 进度显示 - 仅在处理中显示 */}
+        {isUndoing && block.id === activeSplitViewBlockId && (
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex flex-col items-center justify-center z-10">
+            <div className="w-64 space-y-4">
+              <div className="relative w-full h-2 bg-secondary rounded-full overflow-hidden">
+                <div 
+                  className="absolute left-0 top-0 h-full bg-primary transition-all duration-300"
+                  style={{ width: `${undoProgress}%` }}
+                />
+              </div>
+              <p className="text-sm text-center text-muted-foreground">
+                {undoStatus}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* 内容部分 */}
+        <div className="pl-6 pt-3 flex-grow overflow-auto">
+          <div className="py-2 px-3 text-sm leading-relaxed h-full">
+            <div className="prose prose-sm max-w-none h-full">
+              {loadingSplitView ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                </div>
+              ) : (
+                <div className="whitespace-pre-wrap user-select-all h-full">
+                  {splitViewType === 'source' 
+                    ? (splitViewData?.original_content || '')
+                    : '翻译内容将在此显示'}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderBlocks = () => {
     if (!contextBlocks[currentChapter]) {
       return <div className="p-4 text-muted-foreground">无内容</div>;
@@ -583,100 +915,36 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
 
     const blocks = contextBlocks[currentChapter];
     return blocks.map((block) => {
-      // 检查是否有活动的分栏视图
       const hasSplitView = activeSplitViewBlockId === block.id;
       
       return (
         <div key={block.id} 
-        ref={(el) => { blockRefs.current[block.id] = el; }}
-        className={`${hasSplitView ? 'grid grid-cols-2 gap-2' : ''}`}>
+          ref={(el) => { blockRefs.current[block.id] = el; }}
+          className={`${hasSplitView ? 'grid grid-cols-2 gap-2' : ''}`}
+        >
           {/* 主语境块 */}
           <div className={hasSplitView ? 'col-span-1' : ''}>
-      <ContentBlock
-        block={block}
-        resources={resources}
-        onBlockUpdate={handleBlockUpdate}
-        onOrderChange={handleBlockOrderChange}
-        isSelected={selectedBlocks.has(block.id)}
-        onSelect={handleBlockSelect}
-        audioUrl={audioUrl}
-        onTimeChange={setCurrentTime}
-        isAligning={aligningBlocks.has(block.id)}
-        onAlignmentComplete={handleAlignmentComplete}
-        playMode={playMode}
-        onPlayNext={handlePlayNext}
-        onPlayModeChange={handlePlayModeChange}
+            <ContentBlock
+              block={block}
+              resources={resources}
+              onBlockUpdate={handleBlockUpdate}
+              onOrderChange={handleBlockOrderChange}
+              isSelected={selectedBlocks.has(block.id)}
+              onSelect={handleBlockSelect}
+              audioUrl={audioUrl}
+              onTimeChange={setCurrentTime}
+              isAligning={aligningBlocks.has(block.id)}
+              onAlignmentComplete={handleAlignmentComplete}
+              playMode={playMode}
+              onPlayNext={handlePlayNext}
+              onPlayModeChange={handlePlayModeChange}
               onShowSplitView={handleShowSplitView}
               activeBlockId={activeBlockId}
             />
           </div>
           
-          {/* 分栏视图块 - 修改为与语境块相匹配的大小 */}
-          {hasSplitView && (
-            <div className="col-span-1">
-              <div 
-                className={cn(
-                  'group relative my-1 p-2 rounded-md border transition-all duration-300',
-                  'bg-primary/5 border-primary/20',
-                  'hover:bg-primary/10',
-                  'h-full flex flex-col' // 添加flex和h-full使其高度与语境块匹配
-                )}
-              >
-                {/* 小标签 - 更大且居中 */}
-                <div className="absolute -top-3 left-0 right-0 mx-auto w-fit px-3 py-0.5 bg-background text-[14px] font-medium text-muted-foreground">
-                  对齐原文
-                </div>
-                
-                {/* 右上角操作按钮组 */}
-                <div className="absolute right-2 top-2 flex space-x-2">
-                  {/* 详情按钮 */}
-                  <button
-                    onClick={() => {
-                      if (activeSplitViewBlockId) {
-                        handleShowAlignmentDetails(activeSplitViewBlockId);
-                      }
-                    }}
-                    className="p-0.5 rounded-full opacity-0 group-hover:opacity-60 hover:opacity-100 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
-                    title="查看详细对齐信息"
-                  >
-                    <Info className="h-3.5 w-3.5" />
-                  </button>
-                  
-                  {/* 关闭按钮 */}
-                  <button
-                    onClick={() => {
-                      setActiveSplitViewBlockId(null);
-                      setSplitViewType(null);
-                      setSplitViewData(null);
-                    }}
-                    className="p-0.5 rounded-full opacity-0 group-hover:opacity-60 hover:opacity-100 hover:bg-muted/80 text-muted-foreground hover:text-primary transition-colors"
-                    title="关闭"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                
-                {/* 内容部分 - 添加flex-grow使其填充可用空间 */}
-                <div className="pl-6 pt-3 flex-grow overflow-auto">
-                  <div className="py-2 px-3 text-sm leading-relaxed h-full">
-                    <div className="prose prose-sm max-w-none h-full">
-                      {loadingSplitView ? (
-                        <div className="flex items-center justify-center h-full">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                        </div>
-                      ) : (
-                        <div className="whitespace-pre-wrap user-select-all h-full">
-                          {splitViewType === 'source' 
-                            ? (splitViewData?.original_content || '')
-                            : '翻译内容将在此显示'}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* 分栏视图块 */}
+          {hasSplitView && renderSplitViewBlock(block)}
         </div>
       );
     });
@@ -840,6 +1108,15 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     }
   }, [activeBlockId]);
 
+  const handleUploadSuccess = async (newAudioUrl: string, newSpeechId: string) => {
+    // ... 之前的逻辑 ...
+    setIsUploadDialogOpen(false); // 关闭对话框
+  };
+
+  const handleUploadError = (error: string) => {
+    //错误逻辑
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* 阅读器导航栏 */}
@@ -942,13 +1219,15 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
       </div>
 
       {/* 音频处理抽屉面板 */}
-      <div className={`
-        fixed right-0 top-28 w-[400px] h-[calc(100vh-7rem)]
-        transform transition-all duration-300 ease-in-out
-        bg-card/95 backdrop-blur border-l shadow-lg z-30
-        ${showAudioPanel ? 'translate-x-0' : 'translate-x-full'}
-        group
-      `}>
+      <div
+        className={`
+          fixed right-0 top-28 w-[400px] h-[calc(100vh-7rem)]
+          transform transition-all duration-300 ease-in-out
+          bg-card/95 backdrop-blur border-l shadow-lg z-30
+          ${showAudioPanel ? 'translate-x-0' : 'translate-x-full'}
+          group
+        `}
+      >
         {/* 拖拽调整宽度的把手 */}
         <div
           className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-primary/20 group-hover:bg-primary/10"
@@ -975,23 +1254,40 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
           }}
         />
 
-        {/* 音频处理区域 */}
-        <div className="flex-1 flex flex-col h-full">
+        {/* 音频处理区域 - 标题栏 */}
+        <div className="flex flex-col h-full">
           <div className="p-2 border-b bg-card/95 backdrop-blur sticky top-0 z-30">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1">
                 <Mic className="w-4 h-4 text-primary/80" />
                 <h2 className="text-sm font-medium">音频处理</h2>
               </div>
-              <button
-                onClick={() => setShowAudioPanel(false)}
-                className="p-1 hover:bg-accent rounded-md"
-              >
-                <X className="w-4 h-4" />
-              </button>
+
+              {/* 上传按钮 - 只在有历史记录时显示 */}
+              {audioUrl && (
+                <>
+                  <HoverBorderGradient
+                    containerClassName="rounded-md"
+                    className="flex items-center gap-1.5 text-xs px-2 py-1 hover:bg-accent/50 transition-colors"
+                    onClick={() => setIsUploadDialogOpen(true)}
+                  >
+                    <Upload className="w-3 h-3" />
+                    <span>上传音频</span>
+                  </HoverBorderGradient>
+
+                  <AudioUploader
+                    bookId={book.id}
+                    onUploadSuccess={handleUploadSuccess}
+                    onUploadError={handleUploadError}
+                    isOpen={isUploadDialogOpen}
+                    onOpenChange={setIsUploadDialogOpen}
+                    isProcessing={status === 'processing'}
+                  />
+                </>
+              )}
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="flex-1 overflow-y-hidden p-2">
             <AudioRecognizer
               bookContent={book.chapters[currentChapter]?.content || ''}
               bookId={book.id}

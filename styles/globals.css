@@ -118,4 +118,21 @@
 
 .alignment-complete {
   animation: completion-flash 1.5s ease-out;
+}
+
+@keyframes bounce-dots {
+  0%, 20% {
+    content: ".";
+  }
+  40% {
+    content: "..";
+  }
+  60%, 100% {
+    content: "...";
+  }
+}
+
+.animate-bounce-dots::after {
+  content: "...";
+  animation: bounce-dots 1.4s infinite;
 } 

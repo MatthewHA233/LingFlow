@@ -5,11 +5,26 @@ import { Wand2, Upload, X, AlignCenter } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { SentencePlayer } from './SentencePlayer';
 import { AudioUploader } from './AudioUploader';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { formatDateTime } from '@/lib/utils/date';
-import { SpeechRecognitionService, AlignmentResult } from '@/lib/services/speech-recognition';
+import { SpeechRecognitionService } from '@/lib/services/speech-recognition';
 import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { cn } from '@/lib/utils';
 
 interface AudioRecognizerProps {
   bookContent: string;
@@ -43,12 +58,13 @@ export function AudioRecognizer({
   const [speechId, setSpeechId] = useState<string>('');
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [speechResults, setSpeechResults] = useState<SpeechResult[]>([]);
-  const [showUploader, setShowUploader] = useState(false);  // 添加上传界面显示状态
   const [isAlignMode, setIsAlignMode] = useState(false);
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [hideAligned, setHideAligned] = useState(false);
 
   // 加载书籍的所有音频记录
   useEffect(() => {
-    async function loadBookAudios() {
+    async function loadInitialData() {
       try {
         const { data, error } = await supabase
           .from('speech_results')
@@ -76,7 +92,7 @@ export function AudioRecognizer({
     }
 
     if (bookId) {
-      loadBookAudios();
+      loadInitialData();
     }
   }, [bookId, onAudioUrlChange]);
 
@@ -113,32 +129,59 @@ export function AudioRecognizer({
   };
 
   const handleUploadSuccess = async (newAudioUrl: string, newSpeechId: string) => {
-    // 先更新状态
-    setAudioUrl(newAudioUrl);
-    onAudioUrlChange?.(newAudioUrl);
-    setSpeechId(newSpeechId);
-    setStatus('completed');
-    setShowUploader(false);  // 上传成功后立即隐藏上传界面
-    
-    // 重新加载音频记录列表
-    const { data: newResults } = await supabase
-      .from('speech_results')
-      .select('*')
-      .eq('book_id', bookId)
-      .eq('status', 'completed')
-      .order('created_at', { ascending: false });
-      
-    if (newResults) {
-      setSpeechResults(newResults);
-      // 不自动选择，因为我们已经设置了当前音频
-    }
-    
-    // 延迟启动识别过程，避免UI状态错误
-    setTimeout(() => {
-      // 开始识别前先将状态设为processing
+    try {
+      // 先更新状态
+      setAudioUrl(newAudioUrl);
+      onAudioUrlChange?.(newAudioUrl);
+      setSpeechId(newSpeechId);
       setStatus('processing');
-      handleRecognition(newAudioUrl, newSpeechId);
-    }, 100);
+      
+      // 等待识别完成
+      let attempts = 0;
+      const maxAttempts = 30;
+      
+      while (attempts < maxAttempts) {
+        const { data: result, error } = await supabase
+          .from('speech_results')
+          .select('*')
+          .eq('id', newSpeechId)
+          .single();
+          
+        if (error) throw error;
+        
+        if (result.status === 'completed') {
+          // 重新加载最新的历史记录
+          const { data: results, error: loadError } = await supabase
+            .from('speech_results')
+            .select('*')
+            .eq('book_id', bookId)
+            .eq('status', 'completed')
+            .order('created_at', { ascending: false });
+
+          if (loadError) throw loadError;
+          
+          // 更新历史记录
+          setSpeechResults(results || []);
+          setStatus('completed');
+          
+          // 等待2秒后关闭对话框
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          setIsUploadDialogOpen(false);
+          return;
+        }
+        
+        // 等待2秒后继续检查
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        attempts++;
+      }
+      
+      throw new Error('识别超时');
+      
+    } catch (err) {
+      console.error('处理失败:', err);
+      setErrorMessage('处理失败');
+      setStatus('error');
+    }
   };
 
   const handleUploadError = (error: string) => {
@@ -151,28 +194,33 @@ export function AudioRecognizer({
     const currentAudioUrl = audioUrlToUse || audioUrl;
     const currentSpeechId = speechIdToUse || speechId;
     
-    // 确保不会重复设置状态
-    if (status !== 'processing') {
-      setStatus('processing');
-    }
+    if (status === 'processing') return; // 防止重复处理
+    
+    setStatus('processing');
     setErrorMessage('');
     
     try {
-      // 临时将speechId设为空，防止SentencePlayer在处理过程中初始化
-      if (!audioUrlToUse) {
-        setSpeechId('');
-      }
-      
       // 识别过程
       await SpeechRecognitionService.recognize(currentAudioUrl, currentSpeechId);
       
       // 识别完成后更新状态
       setStatus('completed');
       
-      // 恢复speechId
-      if (!audioUrlToUse) {
-        setSpeechId(currentSpeechId);
+      // 重新加载最新的历史记录
+      const { data: updatedResults } = await supabase
+        .from('speech_results')
+        .select('*')
+        .eq('book_id', bookId)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false });
+        
+      if (updatedResults) {
+        setSpeechResults(updatedResults);
       }
+
+      // 确保当前记录被选中
+      setSpeechId(currentSpeechId);
+      
     } catch (error: any) {
       console.error('识别失败:', error);
       setStatus('error');
@@ -186,70 +234,8 @@ export function AudioRecognizer({
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* 音频记录选择器和上传按钮 */}
-      <div className="flex flex-col gap-4 p-4">
-        {/* 历史记录选择器 */}
-        {(speechResults.length > 0 || status === 'completed') && (
-          <div className="w-full">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-muted-foreground">历史记录</h3>
-              <HoverBorderGradient
-                containerClassName="rounded-full"
-                onClick={() => setShowUploader(!showUploader)}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-primary/10 hover:bg-primary/15 transition-colors"
-              >
-                <Upload className="w-3 h-3" />
-                <span>上传新音频</span>
-              </HoverBorderGradient>
-            </div>
-            {!showUploader && (
-              <Select
-                value={speechId}
-                onValueChange={handleAudioChange}
-              >
-                <SelectTrigger className="w-full h-9 border-muted-foreground/20">
-                  <SelectValue placeholder="选择历史音频记录" />
-                </SelectTrigger>
-                <SelectContent>
-                  {speechResults.map((result) => (
-                    <SelectItem 
-                      key={result.id} 
-                      value={result.id}
-                    >
-                      {formatDateTime(result.created_at, 'yyyy-MM-dd HH:mm')} 的音频
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-        )}
-
-        {/* 上传组件 */}
-        {(showUploader || (!speechResults.length && status !== 'completed')) && (
-          <div className="w-full">
-            {showUploader && (
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium text-muted-foreground">上传音频</h3>
-                <button 
-                  onClick={() => setShowUploader(false)}
-                  className="text-xs text-muted-foreground hover:text-foreground p-1 rounded-md"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
-            <AudioUploader
-              bookId={bookId}
-              onUploadSuccess={handleUploadSuccess}
-              onUploadError={handleUploadError}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* 错误提示 */}
+    <div className="h-full flex flex-col">
+      {/* 错误提示 - 顶部 */}
       {errorMessage && (
         <div className="mx-4 p-3 bg-destructive/10 text-destructive rounded-md border border-destructive/20 text-sm">
           {errorMessage}
@@ -257,77 +243,83 @@ export function AudioRecognizer({
       )}
 
       {/* 音频处理区域 */}
-      {audioUrl && (
-        <div className="space-y-4 px-4">
-          {/* 智慧语音识别按钮 - 仅在未识别时显示 */}
-          {status !== 'completed' && (
-            <HoverBorderGradient
-              containerClassName="w-full rounded-lg"
-              onClick={() => status !== 'processing' && handleRecognition()}
-              className={`w-full flex items-center justify-center gap-2 py-2 ${
-                status === 'processing' ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-            >
-              <Wand2 className="h-4 w-4" />
-              {status === 'processing' ? '识别中...' : '智慧语音识别'}
-            </HoverBorderGradient>
-          )}
+      <div className="space-y-4 px-4 flex-1 flex flex-col">
+        {/* 智慧语音识别/上传音频按钮 - 只在没有完成的记录时显示 */}
+        {!speechId && (
+          <HoverBorderGradient
+            containerClassName="w-full rounded-lg mt-4"
+            onClick={() => !status.startsWith('process') && setIsUploadDialogOpen(true)}
+            className={cn(
+              "w-full flex items-center justify-center gap-2 py-2 transition-all duration-300",
+              status.startsWith('process') && "cursor-not-allowed"
+            )}
+          >
+            {status.startsWith('process') ? (
+              <>
+                <Wand2 className="h-4 w-4 animate-pulse" />
+                <span className="relative">
+                  正在智慧识别
+                  <span className="absolute -right-4 animate-bounce-dots">...</span>
+                </span>
+              </>
+            ) : (
+              <>
+                <Upload className="h-4 w-4" />
+                上传音频
+              </>
+            )}
+          </HoverBorderGradient>
+        )}
 
-          {/* 句子播放器 - 只在状态为completed时显示 */}
-          {speechId && status === 'completed' && (
-            <div className="border-t pt-3 mt-1">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-muted-foreground">逐句点读</h3>
-                
-                {/* 将按钮从SentencePlayer移到这里 */}
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => {
-                      window.dispatchEvent(new CustomEvent('toggle-hide-aligned'));
-                    }}
-                    className="flex items-center gap-0.5 text-xs px-1.5 py-1 rounded-md bg-accent/30 hover:bg-accent/50 transition-all duration-300"
-                    title="隐藏已对齐句子"
-                  >
-                    <span className="inline-block w-2 h-2 rounded-full mr-1 bg-foreground"></span>
-                    <span className="text-xs">仅未对齐</span>
-                  </button>
-                  
-                  <button
-                    onClick={toggleAlignMode}
-                    className={`flex items-center gap-0.5 text-xs px-1.5 py-1 rounded-md transition-all duration-300 ${
-                      isAlignMode 
-                        ? 'bg-primary/15 text-primary' 
-                        : 'bg-accent/30 hover:bg-accent/50 text-foreground'
-                    }`}
-                    title={isAlignMode ? "退出文本对齐模式" : "开始文本对齐"}
-                  >
-                    <AlignCenter className={`h-3 w-3 ${isAlignMode ? 'animate-pulse' : ''}`} />
-                    <span className="text-xs">{isAlignMode ? "退出对齐" : "语境块对齐"}</span>
-                  </button>
-                </div>
-              </div>
-              <div className="bg-background/50 rounded-md border border-border/50">
-                <SentencePlayer
-                  speechId={speechId}
-                  onTimeChange={setCurrentTime}
-                  currentTime={currentTime}
-                  isAlignMode={isAlignMode}
-                  onToggleAlignMode={toggleAlignMode}
-                  disabled={status === 'processing'}
-                />
-              </div>
-            </div>
-          )}
+        {/* 上传对话框 */}
+        <AudioUploader
+          bookId={bookId}
+          onUploadSuccess={handleUploadSuccess}
+          onUploadError={handleUploadError}
+          isOpen={isUploadDialogOpen}
+          onOpenChange={setIsUploadDialogOpen}
+        />
 
-          {/* 处理状态显示 */}
-          {status === 'processing' && (
-            <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-b-transparent"></div>
-              正在识别语音内容，请稍候...
+        {/* 句子播放器和历史记录 */}
+        {speechId && (
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-muted-foreground">
+                历史记录
+              </h3>
+              {status === 'completed' && (
+                <Select
+                  value={speechId}
+                  onValueChange={handleAudioChange}
+                >
+                  <SelectTrigger className="w-32 h-6 text-xs border-muted-foreground/50">
+                    <SelectValue placeholder="选择记录" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {speechResults.map((result) => (
+                      <SelectItem
+                        key={result.id}
+                        value={result.id}
+                        className="text-xs"
+                      >
+                        {formatDateTime(result.created_at, 'MM-dd HH:mm')}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
-          )}
-        </div>
-      )}
+            <div className="bg-background/50 rounded-md border border-border/50">
+              <SentencePlayer
+                speechId={speechId}
+                onTimeChange={setCurrentTime}
+                currentTime={currentTime}
+                disabled={status === 'processing'}
+              />
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
