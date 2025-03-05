@@ -1,16 +1,44 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { AudioRecognizer } from './AudioRecognizer';
 import { DraggableAudioPlayer } from './DraggableAudioPlayer';
 import { Book } from '@/types/book';
 import { supabase } from '@/lib/supabase-client';
-import { X, Mic, Menu, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Mic, Menu, ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import { ContentBlock } from './ContentBlock';
 import { toast } from 'sonner';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import Image from 'next/image';
 import { AudioController } from '@/lib/audio-controller';
+import { cn } from '@/lib/utils';
+import { throttle } from 'lodash';
+
+// 定义格式化工具函数 - 移到文件顶层
+function formatTime(beginTime?: number, endTime?: number) {
+  if (beginTime === undefined) return '无时间信息';
+  
+  const formatMs = (ms: number) => {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+  
+  return `${formatMs(beginTime)} - ${endTime ? formatMs(endTime) : '?'}`;
+}
+
+function formatWordTime(timeRange?: string) {
+  if (!timeRange) return '';
+  
+  const [start, end] = timeRange.split('~');
+  if (!start) return '';
+  
+  const startMs = parseInt(start, 10);
+  const startSec = (startMs / 1000).toFixed(1);
+  
+  return `${startSec}s`;
+}
 
 interface ReaderContentProps {
   book: Book;
@@ -30,6 +58,13 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
   const [selectedBlocks, setSelectedBlocks] = useState<Set<string>>(new Set());
   const [aligningBlocks, setAligningBlocks] = useState<Set<string>>(new Set());
   const [playMode, setPlayMode] = useState<'sentence' | 'block' | 'continuous'>('continuous');
+  const [activeSplitViewBlockId, setActiveSplitViewBlockId] = useState<string | null>(null);
+  const [splitViewType, setSplitViewType] = useState<'source' | 'translation' | null>(null);
+  const [splitViewData, setSplitViewData] = useState<any>(null);
+  const [showAlignmentDetails, setShowAlignmentDetails] = useState(false);
+  const [detailsBlockId, setDetailsBlockId] = useState<string | null>(null);
+  const [detailsPosition, setDetailsPosition] = useState({ x: 0, y: 0 });
+  const [loadingSplitView, setLoadingSplitView] = useState(false);
 
   // 添加块更新处理函数
   const handleBlockUpdate = async (blockId: string, newType: string, content: string) => {
@@ -560,9 +595,16 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
       return <div className="p-4 text-muted-foreground">无内容</div>;
     }
 
-    return contextBlocks[currentChapter].map((block) => (
+    const blocks = contextBlocks[currentChapter];
+    return blocks.map((block) => {
+      // 检查是否有活动的分栏视图
+      const hasSplitView = activeSplitViewBlockId === block.id;
+      
+      return (
+        <div key={block.id} className={`${hasSplitView ? 'grid grid-cols-2 gap-2' : ''}`}>
+          {/* 主语境块 */}
+          <div className={hasSplitView ? 'col-span-1' : ''}>
       <ContentBlock
-        key={block.id}
         block={block}
         resources={resources}
         onBlockUpdate={handleBlockUpdate}
@@ -576,8 +618,79 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
         playMode={playMode}
         onPlayNext={handlePlayNext}
         onPlayModeChange={handlePlayModeChange}
-      />
-    ));
+              onShowSplitView={handleShowSplitView}
+            />
+          </div>
+          
+          {/* 分栏视图块 - 修改为与语境块相匹配的大小 */}
+          {hasSplitView && (
+            <div className="col-span-1">
+              <div 
+                className={cn(
+                  'group relative my-1 p-2 rounded-md border transition-all duration-300',
+                  'bg-primary/5 border-primary/20',
+                  'hover:bg-primary/10',
+                  'h-full flex flex-col' // 添加flex和h-full使其高度与语境块匹配
+                )}
+              >
+                {/* 小标签 - 更大且居中 */}
+                <div className="absolute -top-3 left-0 right-0 mx-auto w-fit px-3 py-0.5 bg-background text-[14px] font-medium text-muted-foreground">
+                  对齐原文
+                </div>
+                
+                {/* 右上角操作按钮组 */}
+                <div className="absolute right-2 top-2 flex space-x-2">
+                  {/* 详情按钮 */}
+                  <button
+                    onClick={() => {
+                      if (activeSplitViewBlockId) {
+                        handleShowAlignmentDetails(activeSplitViewBlockId);
+                      }
+                    }}
+                    className="p-0.5 rounded-full opacity-0 group-hover:opacity-60 hover:opacity-100 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+                    title="查看详细对齐信息"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                  
+                  {/* 关闭按钮 */}
+                  <button
+                    onClick={() => {
+                      setActiveSplitViewBlockId(null);
+                      setSplitViewType(null);
+                      setSplitViewData(null);
+                    }}
+                    className="p-0.5 rounded-full opacity-0 group-hover:opacity-60 hover:opacity-100 hover:bg-muted/80 text-muted-foreground hover:text-primary transition-colors"
+                    title="关闭"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                
+                {/* 内容部分 - 添加flex-grow使其填充可用空间 */}
+                <div className="pl-6 pt-3 flex-grow overflow-auto">
+                  <div className="py-2 px-3 text-sm leading-relaxed h-full">
+                    <div className="prose prose-sm max-w-none h-full">
+                      {loadingSplitView ? (
+                        <div className="flex items-center justify-center h-full">
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                        </div>
+                      ) : (
+                        <div className="whitespace-pre-wrap user-select-all h-full">
+                          {splitViewType === 'source' 
+                            ? (splitViewData?.original_content || '')
+                            : '翻译内容将在此显示'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    });
   };
 
   // 添加事件监听器以接收循环模式变更
@@ -603,23 +716,133 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
   // 在组件挂载和卸载时清理音频
   useEffect(() => {
     // 组件挂载时强制清理
-    AudioController.emergencyCleanup();
+    AudioController.stop();
     
     // 组件卸载时也清理
     return () => {
-      AudioController.emergencyCleanup();
+      AudioController.stop();
     };
   }, []);
 
-  // 添加函数以处理播放模式变更
+  // 修改播放模式
   const handlePlayModeChange = (newMode: 'sentence' | 'block' | 'continuous') => {
-    console.log('设置全局播放模式为:', newMode);
     setPlayMode(newMode);
     
-    // 通知其他可能需要知道的组件
-    window.dispatchEvent(new CustomEvent('set-play-mode', {
-      detail: { mode: newMode }
-    }));
+    // 通知AudioController
+    AudioController.setPlayMode(newMode);
+    
+    // 修正toast的用法
+    toast(`已设置全局播放模式为: ${
+      newMode === 'continuous' ? '连续播放' :
+      newMode === 'block' ? '段落循环' : '句子循环'
+    }`);
+  };
+
+  // 如果你在多个地方调用，也可以添加节流逻辑
+  const throttledSetPlayMode = useCallback(
+    throttle((newMode: 'sentence' | 'block' | 'continuous') => {
+      handlePlayModeChange(newMode);
+    }, 2000), // 2秒内不重复显示
+    [handlePlayModeChange]
+  );
+
+  // 修改分栏视图显示函数，添加加载状态控制
+  const handleShowSplitView = useCallback(async (blockId: string, type: 'source' | 'translation') => {
+    // 先重置视图数据，避免显示旧数据
+    setSplitViewData(null);
+    
+    // 设置加载状态为true
+    setLoadingSplitView(true);
+    
+    try {
+      setActiveSplitViewBlockId(blockId);
+      setSplitViewType(type);
+      
+      if (type === 'source') {
+        // 获取原始内容
+        const { data, error } = await supabase
+          .from('context_blocks')
+          .select('original_content')
+          .eq('id', blockId)
+          .single();
+          
+        if (error) {
+          console.error('获取原始内容失败:', error);
+          return;
+        }
+        
+        setSplitViewData(data);
+      } else {
+        // 处理翻译内容...
+      }
+    } catch (err) {
+      console.error('加载分栏视图数据失败:', err);
+      toast.error('加载失败');
+    } finally {
+      // 无论成功与否，都设置加载状态为false
+      setLoadingSplitView(false);
+    }
+  }, []);
+
+  // 修改显示对齐详情的方法
+  const handleShowAlignmentDetails = (blockId: string) => {
+    // 不再使用FloatingPanel，改为在当前位置显示悬浮窗
+    setDetailsBlockId(blockId);
+    setShowAlignmentDetails(true);
+    
+    // 将当前点击位置记录下来，用于定位悬浮窗
+    const clickEvent = window.event as MouseEvent;
+    if (clickEvent) {
+      setDetailsPosition({
+        x: clickEvent.clientX,
+        y: clickEvent.clientY
+      });
+    }
+  };
+
+  // 修复播放单词或句子的函数
+  const playAudio = (startTime: number, endTime?: number) => {
+    if (!audioUrl) return;
+    
+    // 先停止所有正在播放的音频
+    AudioController.stop();
+    
+    // 使用新的AudioController API
+    const context = endTime ? 'sentence' : 'word';
+    
+    AudioController.play({
+      url: audioUrl,
+      startTime, 
+      endTime,
+      context,
+      loop: false
+    }).catch(error => {
+      console.error('播放失败:', error);
+    });
+  };
+
+  // 初始化播放模式时
+  useEffect(() => {
+    // 从localStorage读取用户偏好
+    try {
+      if (typeof window !== 'undefined') {
+        const savedMode = localStorage.getItem('reader_play_mode');
+        if (savedMode && ['continuous', 'block', 'sentence'].includes(savedMode)) {
+          // 使用节流版本避免初始化时的多次通知
+          setPlayMode(savedMode as any); // 只设置状态，不通知
+        }
+      }
+    } catch (e) {
+      console.error('读取播放模式失败', e);
+    }
+  }, []);
+
+  // 修正翻译功能toast
+  const handleTranslate = () => {
+    // 未来实现翻译功能...
+    toast("翻译功能开发中", {
+      description: "敬请期待"
+    });
   };
 
   return (
@@ -796,6 +1019,17 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
         />
       )}
 
+      {/* 替换FloatingPanel为自定义悬浮窗 */}
+      {showAlignmentDetails && detailsBlockId && (
+        <TerminalPopover
+          blockId={detailsBlockId}
+          contextBlocks={contextBlocks[currentChapter] || []}
+          position={detailsPosition}
+          onClose={() => setShowAlignmentDetails(false)}
+          audioUrl={audioUrl}
+        />
+      )}
+
       {/* 全局导航栏控制 */}
       <style jsx global>{`
         nav.fixed {
@@ -823,6 +1057,331 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
           });
         `
       }} />
+    </div>
+  );
+}
+
+// 添加自定义终端风格悬浮窗组件
+function TerminalPopover({ 
+  blockId, 
+  contextBlocks,
+  position,
+  onClose,
+  audioUrl
+}: { 
+  blockId: string, 
+  contextBlocks: any[],
+  position: { x: number, y: number },
+  onClose: () => void,
+  audioUrl?: string
+}) {
+  const [alignmentData, setAlignmentData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [hovering, setHovering] = useState(true);
+  
+  // 自动关闭逻辑
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!hovering) {
+        onClose();
+      }
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [hovering, onClose]);
+  
+  // 数据加载逻辑保持不变...
+  useEffect(() => {
+    async function loadAlignmentData() {
+      try {
+        setIsLoading(true);
+        console.log('开始加载块的音频对齐数据, blockId:', blockId);
+        
+        // 从block_sentences表直接获取对齐数据
+        const { data: blockSentencesData, error: blockSentencesError } = await supabase
+          .from('block_sentences')
+          .select(`
+            block_id,
+            sentence_id,
+            order_index,
+            alignment_score,
+            segment_begin_offset,
+            segment_end_offset,
+            alignment_metadata,
+            sentences (id, text_content, begin_time, end_time)
+          `)
+          .eq('block_id', blockId)
+          .order('order_index');
+        
+        if (blockSentencesError) {
+          console.error('获取block_sentences对齐数据失败:', blockSentencesError);
+          return;
+        }
+        
+        console.log('从block_sentences表获取的数据:', blockSentencesData);
+        
+        if (!blockSentencesData || blockSentencesData.length === 0) {
+          console.log('未找到块相关的句子对齐数据');
+          return;
+        }
+        
+        // 处理获取到的数据
+        const processedData = blockSentencesData.map(item => ({
+          id: item.sentence_id,
+          order_index: item.order_index,
+          alignment_score: item.alignment_score,
+          segment_begin_offset: item.segment_begin_offset,
+          segment_end_offset: item.segment_end_offset,
+          alignment_metadata: item.alignment_metadata || {},
+          // 句子信息
+          text_content: item.sentences?.text_content || '',
+          begin_time: item.sentences?.begin_time || 0,
+          end_time: item.sentences?.end_time || 0
+        }));
+        
+        console.log('处理后的对齐数据:', processedData);
+        setAlignmentData(processedData);
+      } catch (err) {
+        console.error('加载音频对齐数据失败:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    if (blockId) {
+      loadAlignmentData();
+    }
+  }, [blockId]);
+  
+  // 修复播放单词或句子的函数
+  const playAudio = (startTime: number, endTime?: number) => {
+    if (!audioUrl) return;
+    
+    // 先停止所有正在播放的音频
+    AudioController.stop();
+    
+    // 使用新的AudioController API
+    const context = endTime ? 'sentence' : 'word';
+    
+    AudioController.play({
+      url: audioUrl,
+      startTime, 
+      endTime,
+      context,
+      loop: false
+    }).catch(error => {
+      console.error('播放失败:', error);
+    });
+  };
+  
+  // 复制功能
+  const copyToClipboard = () => {
+    const textContent = alignmentData.map((item, idx) => {
+      // 创建纯文本内容
+      let result = `[句子 ${idx + 1}] ${item.text_content}\n`;
+      result += `时间范围: ${item.begin_time.toFixed(2)}s - ${item.end_time.toFixed(2)}s\n`;
+      
+      if (item.alignment_metadata?.alignment_summary) {
+        const summary = item.alignment_metadata.alignment_summary;
+        result += `原始文本: ${summary.original_text || ''}\n`;
+        result += `对齐文本: ${summary.aligned_text || ''}\n`;
+      }
+      
+      if (item.alignment_metadata?.word_changes?.words) {
+        result += "词语对齐:\n";
+        item.alignment_metadata.word_changes.words.forEach((word: any, widx: number) => {
+          result += `  ${widx.toString().padStart(2, ' ')}: ${word.time_range} "${word.original}"${
+            word.original !== word.aligned ? ` → "${word.aligned}"` : ""
+          } 置信度:${word.confidence}\n`;
+        });
+      }
+      
+      if (item.alignment_metadata?.alignment_method) {
+        result += `\n对齐方法: ${item.alignment_metadata.alignment_method}\n`;
+        result += `算法版本: ${item.alignment_metadata.algorithm_version || '未知'}\n`;
+        if (item.alignment_metadata?.alignment_summary?.alignment_date) {
+          result += `对齐日期: ${item.alignment_metadata.alignment_summary.alignment_date}\n`;
+        }
+      }
+      
+      return result + "\n";
+    }).join("");
+    
+    navigator.clipboard.writeText(textContent);
+    toast.success("已复制到剪贴板");
+  };
+
+  if (isLoading) {
+    return (
+      <div 
+        ref={popoverRef}
+        className="fixed z-50 bg-[#1e1e1e] text-[#d4d4d4] p-3 rounded shadow-lg w-96 h-48"
+        style={{ 
+          top: `${position.y}px`, 
+          left: `${position.x}px`,
+          transform: 'translate(-50%, -50%)'
+        }}
+      >
+        <div className="flex items-center justify-center h-full">
+          <div className="text-gray-400">正在加载对齐数据...</div>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!alignmentData.length) {
+    return (
+      <div 
+        ref={popoverRef}
+        className="fixed z-50 bg-[#1e1e1e] text-[#d4d4d4] p-3 rounded shadow-lg w-96 h-48"
+        style={{ 
+          top: `${position.y}px`, 
+          left: `${position.x}px`,
+          transform: 'translate(-50%, -50%)'
+        }}
+      >
+        <div className="flex items-center justify-center h-full">
+          <div className="text-gray-400">未找到对齐数据</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      ref={popoverRef}
+      className="fixed z-50 bg-[#1e1e1e] text-[#d4d4d4] p-2 rounded shadow-lg 
+                 w-[420px] max-h-[380px] overflow-auto custom-scrollbar border border-gray-700"
+      style={{ 
+        top: `${position.y - 140}px`,
+        left: `${position.x - 210}px`
+      }}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+    >
+      {/* 标题和复制按钮 - 增加padding */}
+      <div className="flex justify-between items-center mb-3 sticky top-0 bg-[#1e1e1e] py-2 border-b border-gray-700 z-10">
+        <span className="text-sm font-medium text-gray-300">对齐细节表</span>
+        <button 
+          onClick={copyToClipboard}
+          className="text-gray-400 hover:text-white p-1 rounded"
+          title="复制全部"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+        </button>
+      </div>
+      
+      {/* 句子对齐详情 */}
+      <div className="space-y-3">
+        {alignmentData.map((item, idx) => {
+          // 从alignment_metadata中获取原始文本和对齐文本
+          const originalText = item.alignment_metadata?.alignment_summary?.original_text || item.text_content;
+          const alignedText = item.alignment_metadata?.alignment_summary?.aligned_text || item.text_content;
+          
+          return (
+            <div key={idx} className="pb-2 mb-1 border-b border-gray-700">
+              {/* 句子标题和播放按钮 */}
+              <div className="flex justify-between items-center mb-1">
+                <div className="text-green-300 font-bold flex items-center">
+                  <span>[句子 {idx + 1}]</span>
+                  {item.alignment_score && (
+                    <span className="ml-2 text-[10px] text-yellow-400">
+                      匹配度: {(parseFloat(item.alignment_score) * 100).toFixed(1)}%
+                    </span>
+                  )}
+                  {item.alignment_status && (
+                    <span className="ml-2 text-[10px] text-blue-400">
+                      {item.alignment_status === 'automated' ? '自动' : '人工'}
+                    </span>
+                  )}
+                  {audioUrl && item.begin_time !== undefined && (
+                    <button 
+                      onClick={() => playAudio(item.begin_time, item.end_time)}
+                      className="ml-2 text-gray-400 hover:text-white"
+                      title="播放句子"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                <span className="text-yellow-300 text-[10px]">
+                  {formatTime(item.begin_time, item.end_time)}
+                </span>
+              </div>
+              
+              {/* 添加句子文本显示区域 */}
+              <div className="mb-2 pl-1">
+                {originalText !== alignedText ? (
+                  <>
+                    <div className="flex">
+                      <span className="text-gray-500 w-10 text-[10px]">原文:</span>
+                      <span className="text-red-300 text-[10px]">{originalText}</span>
+                    </div>
+                    <div className="flex">
+                      <span className="text-gray-500 w-10 text-[10px]">对齐:</span>
+                      <span className="text-green-300 text-[10px]">{alignedText}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-white text-[10px]">{alignedText}</div>
+                )}
+              </div>
+              
+              {/* 词语对齐表 - 终端风格 */}
+              {item.alignment_metadata?.word_changes?.words && (
+                <div className="mt-1 text-[10px]">
+                  <div className="font-mono">
+                    <div className="grid grid-cols-10 text-gray-500 border-b border-gray-700 pb-1">
+                      <span className="col-span-1">序号</span>
+                      <span className="col-span-2 text-cyan-300">时间</span>
+                      <span className="col-span-3 text-gray-500">原词</span>
+                      <span className="col-span-3 text-green-300">对齐词</span>
+                      <span className="col-span-1"></span>
+                    </div>
+                    {item.alignment_metadata.word_changes.words.map((word: any, widx: number) => {
+                      const timeRange = word.time_range?.split('~');
+                      const startTime = timeRange?.[0] ? parseInt(timeRange[0], 10) : null;
+                      const isDifferent = word.original !== word.aligned;
+                      
+                      return (
+                        <div key={widx} className="grid grid-cols-10 items-center hover:bg-gray-800 border-b border-gray-900">
+                          <span className="col-span-1 text-gray-500">{widx}</span>
+                          <span className="col-span-2 text-cyan-300">{formatWordTime(word.time_range)}</span>
+                          <span className={`col-span-3 ${isDifferent ? 'text-red-400' : 'text-white'} truncate`} title={word.original}>
+                            {word.original !== null && word.original !== undefined ? word.original : '(空)'}
+                          </span>
+                          <span className={`col-span-3 ${isDifferent ? 'text-green-400' : 'text-white'} truncate`} title={word.aligned}>
+                            {word.aligned}
+                          </span>
+                          <span className="col-span-1 text-right">
+                            {audioUrl && startTime && (
+                              <button
+                                onClick={() => playAudio(startTime)}
+                                className="text-gray-500 hover:text-white"
+                                title="播放单词"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                </svg>
+                              </button>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 } 

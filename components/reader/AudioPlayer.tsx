@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Volume2, ChevronDown, ChevronUp, ArrowRight } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { supabase } from '@/lib/supabase-client';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
-import { AudioController, AUDIO_EVENTS } from '@/lib/audio-controller';
+import { AudioController, AUDIO_EVENTS, PlayMode } from '@/lib/audio-controller';
 
 interface AudioPlayerProps {
   bookId: string;
@@ -16,7 +16,7 @@ interface AudioPlayerProps {
   onDurationChange?: (duration: number) => void;
   compact?: boolean;
   passiveMode?: boolean;
-  playMode?: 'sentence' | 'block' | 'continuous';
+  playMode?: PlayMode;
 }
 
 export function AudioPlayer({ 
@@ -35,51 +35,63 @@ export function AudioPlayer({
   const [volume, setVolume] = useState(1);
   const [coverUrl, setCoverUrl] = useState<string>('');
   const [isExpanded, setIsExpanded] = useState(true);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const [loopMode, setLoopMode] = useState<PlayMode>(playMode || 'continuous');
   const isSeekingRef = useRef(false);
-  const [loopMode, setLoopMode] = useState(playMode || 'none');
-  const [isReplaying, setIsReplaying] = useState(false);
+
+  // 初始化音频源
+  useEffect(() => {
+    if (audioUrl) {
+      AudioController.setSource(audioUrl).catch(console.error);
+    }
+  }, [audioUrl]);
+
+  // 监听音频控制器事件
+  useEffect(() => {
+    const handleStateChange = (e: CustomEvent) => {
+      const { isPlaying: newIsPlaying, volume: newVolume } = e.detail;
+      setIsPlaying(newIsPlaying);
+      setVolume(newVolume);
+    };
+    
+    const handleTimeUpdate = (e: CustomEvent) => {
+      if (!isSeekingRef.current) {
+        const { currentTime: newTime } = e.detail;
+        setCurrentTime(newTime);
+        onTimeUpdate?.(newTime);
+      }
+    };
+    
+    const handleDurationChange = (e: CustomEvent) => {
+      const { duration: newDuration } = e.detail;
+      setDuration(newDuration);
+      onDurationChange?.(newDuration);
+    };
+    
+    window.addEventListener(AUDIO_EVENTS.STATE_CHANGE, handleStateChange as EventListener);
+    window.addEventListener(AUDIO_EVENTS.TIME_UPDATE, handleTimeUpdate as EventListener);
+    window.addEventListener(AUDIO_EVENTS.DURATION_CHANGE, handleDurationChange as EventListener);
+    
+    return () => {
+      window.removeEventListener(AUDIO_EVENTS.STATE_CHANGE, handleStateChange as EventListener);
+      window.removeEventListener(AUDIO_EVENTS.TIME_UPDATE, handleTimeUpdate as EventListener);
+      window.removeEventListener(AUDIO_EVENTS.DURATION_CHANGE, handleDurationChange as EventListener);
+    };
+  }, [onTimeUpdate, onDurationChange]);
 
   // 处理外部时间更新
   useEffect(() => {
-    if (!audioRef.current || externalTime === undefined) return;
-
-    const currentTimeMs = audioRef.current.currentTime * 1000;
-    if (Math.abs(externalTime - currentTimeMs) > 100) {
-      audioRef.current.currentTime = externalTime / 1000;
-      setCurrentTime(externalTime);
+    if (externalTime === undefined) return;
+    
+    const currentState = AudioController.getState();
+    if (Math.abs(externalTime - currentState.currentTime) > 100) {
+      AudioController.seek(externalTime);
       
       // 只有在非被动模式下才自动播放
       if (!isPlaying && !passiveMode) {
-        audioRef.current.play()
-          .then(() => setIsPlaying(true))
-          .catch(console.error);
+        AudioController.play().catch(console.error);
       }
     }
   }, [externalTime, isPlaying, passiveMode]);
-
-  // 监听音频时间更新
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const handleTimeUpdate = () => {
-      if (!isSeekingRef.current) {
-        // 使用 requestAnimationFrame 限制更新频率
-        requestAnimationFrame(() => {
-          const time = Math.floor(audio.currentTime * 1000);
-          // 只有当时间差异超过 100ms 时才更新
-          if (Math.abs(time - currentTime) > 100) {
-            setCurrentTime(time);
-            onTimeUpdate?.(time);
-          }
-        });
-      }
-    };
-
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    return () => audio.removeEventListener('timeupdate', handleTimeUpdate);
-  }, [onTimeUpdate, currentTime]);
 
   // 获取书籍封面
   useEffect(() => {
@@ -105,195 +117,66 @@ export function AudioPlayer({
     }
   }, [bookId]);
 
+  // 当循环模式改变时，通知控制器
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = volume;
-    }
-  }, [volume]);
-
-  const handleLoadedMetadata = useCallback(() => {
-    if (audioRef.current) {
-      const audioDuration = audioRef.current.duration * 1000;
-      setDuration(audioDuration);
-      onDurationChange?.(audioDuration);
-    }
-  }, [onDurationChange]);
-
-  useEffect(() => {
-    // 监听状态变更
-    const handleStateChange = (e: CustomEvent) => {
-      const { isPlaying: newIsPlaying } = e.detail;
-      setIsPlaying(newIsPlaying);
-    };
+    AudioController.setPlayMode(loopMode);
     
-    // 监听时间更新，但限制更新频率
-    let lastTimeUpdate = 0;
-    const handleTimeUpdate = (e: CustomEvent) => {
-      const now = Date.now();
-      if (now - lastTimeUpdate > 100) { // 限制更新频率
-        lastTimeUpdate = now;
-        const { currentTime } = e.detail;
-        setCurrentTime(currentTime);
-        onTimeUpdate?.(currentTime);
-      }
-    };
-    
-    window.addEventListener(AUDIO_EVENTS.STATE_CHANGE, handleStateChange as EventListener);
-    window.addEventListener(AUDIO_EVENTS.TIME_UPDATE, handleTimeUpdate as EventListener);
-    
-    return () => {
-      window.removeEventListener(AUDIO_EVENTS.STATE_CHANGE, handleStateChange as EventListener);
-      window.removeEventListener(AUDIO_EVENTS.TIME_UPDATE, handleTimeUpdate as EventListener);
-    };
-  }, [onTimeUpdate]);
+    // 广播循环模式变更
+    window.dispatchEvent(new CustomEvent('global-loop-mode-change', {
+      detail: { mode: loopMode }
+    }));
+  }, [loopMode]);
 
   const handleSeek = (value: number[]) => {
     const newTime = value[0];
-    if (audioRef.current) {
-      audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
-      // 同步到全局控制器
-      if (isPlaying) {
-        AudioController.play(
-          audioUrl,
-          newTime * 1000,
-          duration * 1000,
-          'main-audio-player'
-        );
-      }
-    }
+    isSeekingRef.current = true;
+    
+    // 立即更新UI，减少延迟感
+    setCurrentTime(newTime);
+    
+    // 防抖处理，减少频繁更新
+    setTimeout(() => {
+      AudioController.seek(newTime);
+      isSeekingRef.current = false;
+    }, 50);
   };
 
   const handleSkipBack = () => {
-    if (audioRef.current) {
-      const newTime = Math.max(0, audioRef.current.currentTime - 10);
-      audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime * 1000);
-      onTimeUpdate?.(newTime * 1000);
-    }
+    const newTime = Math.max(0, currentTime - 10000); // 回退10秒
+    AudioController.seek(newTime);
   };
 
   const handleSkipForward = () => {
-    if (audioRef.current) {
-      const newTime = Math.min(
-        audioRef.current.duration,
-        audioRef.current.currentTime + 10
-      );
-      audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime * 1000);
-      onTimeUpdate?.(newTime * 1000);
-    }
+    const newTime = Math.min(duration, currentTime + 10000); // 前进10秒
+    AudioController.seek(newTime);
   };
 
   const togglePlay = () => {
     if (isPlaying) {
       AudioController.pause();
     } else {
-      // 添加调试日志
-      console.log('播放音频:', {
-        audioUrl,
-        startTime: currentTime,
-        endTime: duration,
-        playerId: 'main-audio-player'
-      });
-      
-      // 确保设置了endTime
-      const endTimeToUse = duration > 0 ? duration : 9999999; // 如果没有duration则使用一个大值
-      
-      AudioController.play(
-        audioUrl,
-        currentTime,
-        endTimeToUse,
-        'main-audio-player'
-      );
+      AudioController.play().catch(console.error);
     }
   };
 
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (audio) {
-      const handleEnded = () => {
-        setIsPlaying(false);
-        // 在被动模式下，发送播放结束通知
-        if (passiveMode) {
-          // 发送自定义事件通知ContentBlock播放结束
-          const event = new CustomEvent('audio-playback-ended');
-          window.dispatchEvent(event);
-        }
-      };
-      
-      audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.addEventListener('ended', handleEnded);
-      
-      return () => {
-        audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-        audio.removeEventListener('ended', handleEnded);
-      };
-    }
-  }, [handleLoadedMetadata, passiveMode]);
+  const handleVolumeChange = (value: number[]) => {
+    const newVolume = value[0] / 100;
+    AudioController.setVolume(newVolume);
+  };
 
-  // 修改音频播放循环功能实现
-
-  // 添加对循环模式的处理
-  useEffect(() => {
-    // 监听音频完成事件
-    const handleAudioEnd = (e: CustomEvent) => {
-      const { playerId } = e.detail;
-      
-      // 只处理主播放器的结束事件
-      if (playerId === 'main-audio-player' && !isReplaying) {
-        // 根据循环模式决定行为
-        if (loopMode === 'sentence' || loopMode === 'block') {
-          // 防止重入
-          setIsReplaying(true);
-          
-          // 延迟播放下一个片段
-          setTimeout(() => {
-            // 重新播放当前音频
-            const success = AudioController.play(
-              audioUrl,
-              0, // 从头开始
-              duration,
-              'main-audio-player'
-            );
-            
-            console.log('尝试循环播放:', success);
-            
-            // 解除重入锁
-            setTimeout(() => {
-              setIsReplaying(false);
-            }, 500);
-          }, 200);
-        }
-      }
-    };
+  // 格式化时间显示
+  const formatTime = (ms: number): string => {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
     
-    window.addEventListener('audio-playback-ended', handleAudioEnd as EventListener);
+    const pad = (n: number) => n.toString().padStart(2, '0');
     
-    return () => {
-      window.removeEventListener('audio-playback-ended', handleAudioEnd as EventListener);
-    };
-  }, [audioUrl, duration, loopMode, isReplaying]);
-
-  // 当循环模式改变时，发送全局事件
-  useEffect(() => {
-    if (loopMode !== 'none') {
-      // 广播循环模式变更
-      window.dispatchEvent(new CustomEvent('global-loop-mode-change', {
-        detail: { mode: loopMode }
-      }));
-    }
-  }, [loopMode]);
+    return `${pad(hours)}:${pad(minutes % 60)}:${pad(seconds % 60)}`;
+  };
 
   return (
     <div className={`bg-card rounded-lg ${compact ? 'p-4' : 'p-6'} space-y-4`}>
-      {/* 音频元素 */}
-      <audio 
-        ref={audioRef}
-        src={audioUrl}
-        preload="metadata"
-      />
-      
       {/* 展开/收起按钮 */}
       <div className="flex justify-between items-center">
         <button
@@ -388,7 +271,7 @@ export function AudioPlayer({
               min={0}
               max={100}
               step={1}
-              onValueChange={(value) => setVolume(value[0] / 100)}
+              onValueChange={handleVolumeChange}
               className="w-20"
             />
           </div>
@@ -454,14 +337,4 @@ export function AudioPlayer({
       )}
     </div>
   );
-}
-
-function formatTime(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  
-  return `${pad(hours)}:${pad(minutes % 60)}:${pad(seconds % 60)}`;
 }

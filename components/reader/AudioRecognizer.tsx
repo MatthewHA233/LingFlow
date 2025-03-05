@@ -113,11 +113,12 @@ export function AudioRecognizer({
   };
 
   const handleUploadSuccess = async (newAudioUrl: string, newSpeechId: string) => {
+    // 先更新状态
     setAudioUrl(newAudioUrl);
     onAudioUrlChange?.(newAudioUrl);
     setSpeechId(newSpeechId);
     setStatus('completed');
-    setShowUploader(false);  // 上传成功后隐藏上传界面
+    setShowUploader(false);  // 上传成功后立即隐藏上传界面
     
     // 重新加载音频记录列表
     const { data: newResults } = await supabase
@@ -129,17 +130,15 @@ export function AudioRecognizer({
       
     if (newResults) {
       setSpeechResults(newResults);
-      // 自动选择最新上传的音频
-      const latestResult = newResults[0];
-      if (latestResult) {
-        setAudioUrl(latestResult.audio_url);
-        onAudioUrlChange?.(latestResult.audio_url);
-        setSpeechId(latestResult.id);
-      }
+      // 不自动选择，因为我们已经设置了当前音频
     }
     
-    // 自动开始识别
-    handleRecognition(newAudioUrl, newSpeechId);
+    // 延迟启动识别过程，避免UI状态错误
+    setTimeout(() => {
+      // 开始识别前先将状态设为processing
+      setStatus('processing');
+      handleRecognition(newAudioUrl, newSpeechId);
+    }, 100);
   };
 
   const handleUploadError = (error: string) => {
@@ -152,12 +151,28 @@ export function AudioRecognizer({
     const currentAudioUrl = audioUrlToUse || audioUrl;
     const currentSpeechId = speechIdToUse || speechId;
     
-    setStatus('processing');
+    // 确保不会重复设置状态
+    if (status !== 'processing') {
+      setStatus('processing');
+    }
     setErrorMessage('');
     
     try {
+      // 临时将speechId设为空，防止SentencePlayer在处理过程中初始化
+      if (!audioUrlToUse) {
+        setSpeechId('');
+      }
+      
+      // 识别过程
       await SpeechRecognitionService.recognize(currentAudioUrl, currentSpeechId);
+      
+      // 识别完成后更新状态
       setStatus('completed');
+      
+      // 恢复speechId
+      if (!audioUrlToUse) {
+        setSpeechId(currentSpeechId);
+      }
     } catch (error: any) {
       console.error('识别失败:', error);
       setStatus('error');
@@ -258,7 +273,7 @@ export function AudioRecognizer({
             </HoverBorderGradient>
           )}
 
-          {/* 句子播放器 - 传递对齐模式状态和切换函数 */}
+          {/* 句子播放器 - 只在状态为completed时显示 */}
           {speechId && status === 'completed' && (
             <div className="border-t pt-3 mt-1">
               <div className="flex items-center justify-between mb-2">
@@ -268,7 +283,6 @@ export function AudioRecognizer({
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => {
-                      // 通过事件通知SentencePlayer切换状态
                       window.dispatchEvent(new CustomEvent('toggle-hide-aligned'));
                     }}
                     className="flex items-center gap-0.5 text-xs px-1.5 py-1 rounded-md bg-accent/30 hover:bg-accent/50 transition-all duration-300"
@@ -299,6 +313,7 @@ export function AudioRecognizer({
                   currentTime={currentTime}
                   isAlignMode={isAlignMode}
                   onToggleAlignMode={toggleAlignMode}
+                  disabled={status === 'processing'}
                 />
               </div>
             </div>

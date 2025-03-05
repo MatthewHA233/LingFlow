@@ -43,9 +43,10 @@ interface SentencePlayerProps {
   currentTime?: number;
   isAlignMode?: boolean;
   onToggleAlignMode?: () => void;
+  disabled?: boolean;
 }
 
-export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlignMode = false, onToggleAlignMode }: SentencePlayerProps) {
+export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlignMode = false, onToggleAlignMode, disabled = false }: SentencePlayerProps) {
   const [sentences, setSentences] = useState<Sentence[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -380,22 +381,18 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
 
   // 添加拖拽处理函数
   const handleDragStart = (e: React.DragEvent, sentence: Sentence) => {
-    if (!isAlignMode) return; // 只在对齐模式下可拖拽
-    
-    // 设置拖拽数据
-    const dragData = {
-      type: 'sentence',
-      sentenceId: sentence.id,
-      speechId: speechId,
-      text: sentence.text_content,
-      beginTime: sentence.begin_time,
-      endTime: sentence.end_time
-    };
-    
     try {
-      // 确保数据格式正确
-      e.dataTransfer.setData('application/json', JSON.stringify(dragData));
-      e.dataTransfer.effectAllowed = 'copy';
+      // 设置句子数据
+      const data = JSON.stringify({
+        type: 'sentence',
+        speechId: speechId,
+        sentenceId: sentence.id,
+        text: sentence.text_content
+      });
+      e.dataTransfer.setData('application/json', data);
+      
+      // 添加标识类型 - 这是关键!
+      e.dataTransfer.setData('sentence-align-drag', 'true');
       
       // 创建拖拽预览效果
       const dragPreview = document.createElement('div');
@@ -490,6 +487,35 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
       window.removeEventListener('toggle-hide-aligned', handleToggleHideAligned);
     };
   }, [hideAligned]);
+
+  // 修改初始化逻辑，添加disabled检查
+  useEffect(() => {
+    // 如果被禁用，跳过初始化
+    if (disabled) return;
+    
+    // 只有当speechId存在且数据有效时初始化
+    if (speechId && sentences.length > 0) {
+      // 设置默认播放模式
+      AudioController.setPlayMode('continuous');
+      
+      // 其余初始化代码...
+    }
+  }, [speechId, sentences.length, disabled]);
+
+  // 在播放模式变更处理中也添加disabled检查
+  const handlePlayModeChange = useCallback((mode: PlayMode) => {
+    if (disabled) return; // 禁用时不处理
+    
+    // 现有代码...
+  }, [disabled]);
+
+  if (disabled) {
+    return (
+      <div className="p-4 text-center text-muted-foreground">
+        加载中...
+      </div>
+    );
+  }
 
   if (loading && page === 1) {
     return <div className="p-4 text-center">加载中...</div>;

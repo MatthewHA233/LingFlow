@@ -51,6 +51,19 @@ export class TextAlignmentService {
         metadata: blockData.metadata
       });
       
+      // 对齐前恢复块文本内容（如果是带标记的内容需要还原）
+      let cleanBlockContent = blockData.content;
+      
+      // 处理已经包含句子标记的情况，移除所有[[id]]标记
+      if (blockData.content.includes('[[') && blockData.content.includes(']]')) {
+        cleanBlockContent = blockData.content.replace(/\[\[[^\]]+\]\]/g, '');
+        console.log('清理了已有句子标记，恢复原始文本:', cleanBlockContent);
+      }
+      
+      // 更新当前文本为清理后的内容
+      let currentText = cleanBlockContent;
+      console.log('当前块文本:', currentText);
+      
       // 2. 获取句子及后续句子数据（为支持多句对齐）
       console.log('2. 正在获取句子数据...');
       
@@ -111,9 +124,6 @@ export class TextAlignmentService {
       
       // 3. 从当前块开始，对每个句子执行对齐
       console.log('4. 开始逐句对齐');
-      let currentText = blockData.content;
-      console.log('当前块文本:', currentText);
-      
       let offset = 0;
       let orderIndex = 0;
       
@@ -182,63 +192,31 @@ export class TextAlignmentService {
       console.log(`成功对齐 ${result.alignedSentences.length} 个句子`);
       console.log('剩余未对齐文本长度:', result.remainingText ? result.remainingText.length : 0);
       
-      // 4. 如果确认对齐有效，模拟保存操作（但实际不执行）
-      if (result.alignedSentences.length > 0) {
-        console.log('\n6. 【预期数据库更新操作】:');
+      // 确认是否真正执行更新
+      const shouldExecuteUpdates = true; // 这里可以根据需要设置为false
+      if (shouldExecuteUpdates) {
+        console.log('\n7. 执行实际数据库更新');
         
-        // 模拟更新语境块
-        console.log('6.1 更新语境块:', {
-          blockId: blockId,
-          更新内容: {
-            block_type: 'audio_aligned',
-            speech_id: speechId,
-            begin_time: result.alignedSentences[0].beginTime,
-            end_time: result.alignedSentences[result.alignedSentences.length - 1].endTime
-          }
-        });
+        // 1. 先更新语境块和句子基础数据，但不包括元数据关联
+        await this.saveBlockAndSentencesData(blockId, speechId, blockData.content, result);
         
-        // 模拟更新每个句子
-        console.log('6.2 更新句子:');
+        // 2. 然后立即处理单词级对齐
+        console.log('\n8. 处理单词级对齐');
         for (const sentence of result.alignedSentences) {
-          console.log(`  句子ID ${sentence.sentenceId}:`, {
-            original_text_content: sentence.originalText,
-            text_content: sentence.alignedText,
-            conversion_status: 'converted'
-          });
+          console.log(`处理句子 ${sentence.sentenceId} 的单词对齐`);
+          await this.alignWordsForSentence(sentence.sentenceId, sentence.alignedText);
         }
         
-        // 模拟创建关联记录
-        console.log('6.3 创建句子-块关联:');
-        for (const sentence of result.alignedSentences) {
-          console.log(`  关联记录:`, {
-            block_id: blockId,
-            sentence_id: sentence.sentenceId,
-            order_index: sentence.orderIndex
-          });
-        }
-        
-        // 确认是否真正执行更新
-        const shouldExecuteUpdates = true; // 这里可以根据需要设置为false
-        if (shouldExecuteUpdates) {
-          console.log('\n7. 执行实际数据库更新');
-          await this.saveAlignmentResults(blockId, speechId, blockData.content, result);
-          
-          // 5. 处理单词级对齐（如果需要）
-          console.log('\n8. 处理单词级对齐');
-          for (const sentence of result.alignedSentences) {
-            console.log(`处理句子 ${sentence.sentenceId} 的单词对齐`);
-            await this.alignWordsForSentence(sentence.sentenceId, sentence.alignedText);
-          }
-        } else {
-          console.log('\n7. 跳过实际数据库更新（仅记录日志）');
-        }
+        // 3. 最后创建元数据关联，此时单词数据已更新
+        console.log('\n9. 创建句子-块关联和元数据');
+        await this.createMetadataAndLinksAfterAlignment(blockId, speechId, blockData.content, result);
 
         // 在任何情况下，都输出对齐摘要到终端
         console.log('\n========================= 对齐摘要 =========================');
         await this.logAlignmentSummaryToTerminal(blockId, speechId, blockData.content, result);
         console.log('=============================================================');
       } else {
-        console.log('\n没有对齐成功的句子，跳过数据库更新');
+        console.log('\n7. 跳过实际数据库更新（仅记录日志）');
       }
       
       console.log('================== 文本对齐结束 ===================');
@@ -257,124 +235,130 @@ export class TextAlignmentService {
   }
   
   /**
-   * 寻找句子文本在目标文本中的最佳匹配位置
-   * 改进版：更好地处理标点符号，特别是成对的引号等
+   * 寻找句子在文本中的最佳匹配位置
    */
-  private static findBestTextMatch(sentenceText: string, targetText: string): {
-    startIndex: number;
-    matchedText: string;
-    score: number;
-  } {
-    console.log('【文本匹配计算】:');
-    console.log(`- 句子文本: ${sentenceText}`);
-    console.log(`- 块文本长度: ${targetText.length}`);
-    
-    // 处理目标文本为空的情况
-    if (!targetText || targetText.length === 0) {
-      console.log('- 目标文本为空，无法匹配');
-      return { startIndex: 0, matchedText: '', score: 0 };
-    }
-    
-    // 预处理文本 - 规范化空白字符和标点符号
-    console.log('- 预处理文本...');
-    const normalizedSentence = this.normalizeText(sentenceText);
-    const normalizedTarget = this.normalizeText(targetText);
-    
-    console.log(`- 规范化后句子长度: ${normalizedSentence.length}`);
-    console.log(`- 规范化后块文本长度: ${normalizedTarget.length}`);
-    
-    // 检查长度情况
-    if (normalizedSentence.length > normalizedTarget.length) {
-      console.log('- 句子长度超过块文本长度，返回低匹配度');
-      return { startIndex: 0, matchedText: '', score: 0.3 };
-    }
-    
-    let bestScore = 0;
-    let bestStartIndex = 0;
-    let bestEndIndex = 0;
-    
-    // 滑动窗口方法查找最佳匹配
-    console.log('- 尝试不同窗口大小进行匹配');
-    const windowSizes = [
-      normalizedSentence.length,
-      normalizedSentence.length + 5,
-      normalizedSentence.length + 10,
-      Math.round(normalizedSentence.length * 1.2)
-    ];
-    
-    console.log(`- 窗口大小: ${windowSizes.join(', ')}`);
-    
-    // 存储匹配详情的数组，用于调试
-    const matchDetails: Array<{
-      windowSize: number;
-      bestScoreForWindow: number;
-      bestStartForWindow: number;
-      bestEndForWindow: number;
-      candidateText: string;
-    }> = [];
-    
-    // 对每个窗口大小尝试匹配
-    for (const windowSize of windowSizes) {
-      let localBestScore = 0;
-      let localBestStart = 0;
-      let localBestEnd = 0;
+  private static findBestTextMatch(sentenceText, blockText) {
+    try {
+      console.log('【文本匹配计算】:');
+      console.log(`- 句子文本: ${sentenceText}`);
+      console.log(`- 块文本长度: ${blockText.length}`);
       
-      // 滑动窗口
-      for (let i = 0; i <= normalizedTarget.length - windowSize; i++) {
-        const candidateText = normalizedTarget.substring(i, i + windowSize);
-        const score = stringSimilarity.compareTwoStrings(
-          normalizedSentence, 
-          candidateText
+      // 预处理文本
+      const normalizedSentence = this.normalizeText(sentenceText);
+      const normalizedBlock = this.normalizeText(blockText);
+      
+      console.log(`- 规范化后句子长度: ${normalizedSentence.length}`);
+      console.log(`- 规范化后块文本长度: ${normalizedBlock.length}`);
+      
+      // 句子比块文本长的处理
+      if (normalizedSentence.length > normalizedBlock.length) {
+        // 与整个块比较相似度
+        const similarity = stringSimilarity.compareTwoStrings(
+          normalizedSentence.substring(0, normalizedBlock.length),
+          normalizedBlock
         );
         
-        if (score > localBestScore) {
-          localBestScore = score;
-          localBestStart = i;
-          localBestEnd = i + windowSize;
+        if (similarity >= 0.6) {
+          return {
+            score: similarity,
+            startIndex: 0,
+            matchedText: blockText
+          };
+        }
+        
+        return { score: 0.4, startIndex: 0, matchedText: null };
+      }
+      
+      let bestScore = 0;
+      let bestStartIndex = 0;
+      let bestEndIndex = 0;
+      
+      // 滑动窗口方法查找最佳匹配
+      console.log('- 尝试不同窗口大小进行匹配');
+      const windowSizes = [
+        normalizedSentence.length,
+        normalizedSentence.length + 5,
+        normalizedSentence.length + 10,
+        Math.round(normalizedSentence.length * 1.2)
+      ];
+      
+      console.log(`- 窗口大小: ${windowSizes.join(', ')}`);
+      
+      // 存储匹配详情的数组，用于调试
+      const matchDetails: Array<{
+        windowSize: number;
+        bestScoreForWindow: number;
+        bestStartForWindow: number;
+        bestEndForWindow: number;
+        candidateText: string;
+      }> = [];
+      
+      // 对每个窗口大小尝试匹配
+      for (const windowSize of windowSizes) {
+        let localBestScore = 0;
+        let localBestStart = 0;
+        let localBestEnd = 0;
+        
+        // 滑动窗口
+        for (let i = 0; i <= normalizedBlock.length - windowSize; i++) {
+          const candidateText = normalizedBlock.substring(i, i + windowSize);
+          const score = stringSimilarity.compareTwoStrings(
+            normalizedSentence, 
+            candidateText
+          );
+          
+          if (score > localBestScore) {
+            localBestScore = score;
+            localBestStart = i;
+            localBestEnd = i + windowSize;
+          }
+        }
+        
+        // 记录当前窗口大小的最佳匹配
+        if (localBestScore > 0) {
+          matchDetails.push({
+            windowSize,
+            bestScoreForWindow: localBestScore,
+            bestStartForWindow: localBestStart,
+            bestEndForWindow: localBestEnd,
+            candidateText: normalizedBlock.substring(localBestStart, localBestEnd)
+          });
+        }
+        
+        // 更新全局最佳匹配
+        if (localBestScore > bestScore) {
+          bestScore = localBestScore;
+          bestStartIndex = localBestStart;
+          bestEndIndex = localBestEnd;
         }
       }
       
-      // 记录当前窗口大小的最佳匹配
-      if (localBestScore > 0) {
-        matchDetails.push({
-          windowSize,
-          bestScoreForWindow: localBestScore,
-          bestStartForWindow: localBestStart,
-          bestEndForWindow: localBestEnd,
-          candidateText: normalizedTarget.substring(localBestStart, localBestEnd)
+      // 输出匹配详情以便调试
+      if (matchDetails.length > 0) {
+        console.log('- 各窗口最佳匹配:');
+        matchDetails.forEach(detail => {
+          console.log(`  窗口大小 ${detail.windowSize}: 分数 ${detail.bestScoreForWindow.toFixed(2)}, 匹配文本: "${detail.candidateText.substring(0, 50)}${detail.candidateText.length > 50 ? '...' : ''}"`);
         });
       }
       
-      // 更新全局最佳匹配
-      if (localBestScore > bestScore) {
-        bestScore = localBestScore;
-        bestStartIndex = localBestStart;
-        bestEndIndex = localBestEnd;
-      }
+      console.log(`- 最终最佳匹配: 分数 ${bestScore.toFixed(2)}, 位置 ${bestStartIndex}~${bestEndIndex}`);
+      
+      // 优化匹配边界处理成对标点符号
+      const matchedText = this.optimizeMatchBoundaries(
+        blockText, 
+        bestStartIndex, 
+        bestEndIndex
+      );
+      
+      return {
+        score: bestScore,
+        startIndex: bestStartIndex,
+        matchedText: matchedText
+      };
+    } catch (error) {
+      console.error('文本匹配计算失败:', error);
+      return { score: 0, startIndex: 0, matchedText: null };
     }
-    
-    // 输出匹配详情以便调试
-    if (matchDetails.length > 0) {
-      console.log('- 各窗口最佳匹配:');
-      matchDetails.forEach(detail => {
-        console.log(`  窗口大小 ${detail.windowSize}: 分数 ${detail.bestScoreForWindow.toFixed(2)}, 匹配文本: "${detail.candidateText.substring(0, 50)}${detail.candidateText.length > 50 ? '...' : ''}"`);
-      });
-    }
-    
-    console.log(`- 最终最佳匹配: 分数 ${bestScore.toFixed(2)}, 位置 ${bestStartIndex}~${bestEndIndex}`);
-    
-    // 优化匹配边界处理成对标点符号
-    const matchedText = this.optimizeMatchBoundaries(
-      targetText, 
-      bestStartIndex, 
-      bestEndIndex
-    );
-    
-    return {
-      startIndex: bestStartIndex,
-      matchedText: matchedText,
-      score: bestScore
-    };
   }
   
   /**
@@ -605,16 +589,16 @@ export class TextAlignmentService {
   }
   
   /**
-   * 保存文本对齐结果
+   * 保存语境块和句子基础数据（不包括元数据关联）
    */
-  private static async saveAlignmentResults(
+  private static async saveBlockAndSentencesData(
     blockId: string,
     speechId: string,
     originalText: string,
     result: AlignmentResult
   ) {
     try {
-      console.log('【开始保存对齐结果】');
+      console.log('【开始保存基础数据】');
       
       // 如果没有对齐成功，提前返回
       if (!result.alignedSentences || result.alignedSentences.length === 0) {
@@ -691,12 +675,11 @@ export class TextAlignmentService {
       
       console.log('语境块更新成功');
       
-      // 3. 更新句子的文本内容和创建关联 - 使用批量更新以提高效率
-      console.log('更新句子数据和创建关联:');
+      // 3. 更新句子的文本内容
+      console.log('更新句子数据:');
       
       // 准备批量句子更新
       const sentenceUpdates = [];
-      const blockSentenceLinks = [];
       
       for (const sentence of result.alignedSentences) {
         // 添加句子更新任务
@@ -710,7 +693,42 @@ export class TextAlignmentService {
             })
             .eq('id', sentence.sentenceId)
         );
-        
+      }
+      
+      // 并行执行所有句子更新
+      console.log(`执行 ${sentenceUpdates.length} 个句子更新`);
+      const sentenceResults = await Promise.all(sentenceUpdates);
+      
+      // 检查更新结果
+      const sentenceErrors = sentenceResults.filter(r => r.error);
+      if (sentenceErrors.length > 0) {
+        console.error(`${sentenceErrors.length} 个句子更新失败`);
+      }
+      
+      console.log('基础数据保存成功');
+    } catch (error) {
+      console.error('保存基础数据失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 创建元数据和句子-块关联（在单词对齐之后）
+   */
+  private static async createMetadataAndLinksAfterAlignment(
+    blockId: string,
+    speechId: string,
+    originalText: string,
+    result: AlignmentResult
+  ) {
+    try {
+      console.log('【开始创建元数据和关联】');
+      
+      // 创建句子-块关联
+      console.log('创建句子-块关联:');
+      const blockSentenceLinks = [];
+      
+      for (const sentence of result.alignedSentences) {
         // 计算句子在原始文本中的偏移量
         const alignedTextIndex = originalText.indexOf(sentence.alignedText);
         const segmentBeginOffset = alignedTextIndex >= 0 ? alignedTextIndex : 0;
@@ -722,7 +740,7 @@ export class TextAlignmentService {
           this.normalizeText(sentence.alignedText)
         );
         
-        // 准备单词级变更的元数据
+        // 现在单词对齐已完成，获取最新的单词元数据
         const wordChangesMetadata = await this.getWordChangeMetadata(sentence.sentenceId, sentence.alignedText);
         
         // 创建对齐元数据
@@ -755,32 +773,19 @@ export class TextAlignmentService {
         );
       }
       
-      // 并行执行所有更新以提高效率
-      console.log(`执行 ${sentenceUpdates.length} 个句子更新和 ${blockSentenceLinks.length} 个关联创建`);
-      
-      // 使用Promise.all同时处理所有更新
-      const [sentenceResults, linkResults] = await Promise.all([
-        Promise.all(sentenceUpdates),
-        Promise.all(blockSentenceLinks)
-      ]);
-      
-      console.log('所有句子更新和关联创建完成');
+      // 并行执行所有关联创建
+      console.log(`执行 ${blockSentenceLinks.length} 个关联创建`);
+      const linkResults = await Promise.all(blockSentenceLinks);
       
       // 检查更新结果
-      const sentenceErrors = sentenceResults.filter(r => r.error);
       const linkErrors = linkResults.filter(r => r.error);
-      
-      if (sentenceErrors.length > 0) {
-        console.error(`${sentenceErrors.length} 个句子更新失败`);
-      }
-      
       if (linkErrors.length > 0) {
         console.error(`${linkErrors.length} 个关联创建失败`);
       }
       
-      console.log('对齐结果保存成功');
+      console.log('元数据和关联创建成功');
     } catch (error) {
-      console.error('保存对齐结果失败:', error);
+      console.error('创建元数据和关联失败:', error);
       throw error;
     }
   }
@@ -801,13 +806,12 @@ export class TextAlignmentService {
         return { word_count: 0, words: [] };
       }
       
-      // 构建单词变更信息
+      // 构建单词变更信息 - 修改后不再使用后备值
       const wordChanges = words.map((word, index) => ({
         index,
-        original: word.original_word || word.word,
+        original: word.original_word,  // 直接使用original_word，可能为null
         aligned: word.word,
-        time_range: `${word.begin_time}~${word.end_time}`,
-        confidence: word.confidence || 1.0
+        time_range: `${word.begin_time}~${word.end_time}`
       }));
       
       return {

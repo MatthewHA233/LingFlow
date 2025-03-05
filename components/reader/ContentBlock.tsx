@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { DragHandleDots2Icon } from '@radix-ui/react-icons';
-import { Play, Pause, Loader2 } from 'lucide-react';
+import { Play, Pause, Loader2, Music2, Globe, Network } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TextAlignmentService } from '@/lib/services/text-alignment';
 import { supabase } from '@/lib/supabase-client';
 import { toast } from '@/hooks/use-toast';
 import Image from 'next/image';
 import { AudioController, AUDIO_EVENTS } from '@/lib/audio-controller';
+import { AnimatePresence, motion } from "framer-motion";
 
 interface ContentBlockProps {
   block: {
@@ -29,24 +30,14 @@ interface ContentBlockProps {
   playMode?: 'sentence' | 'block' | 'continuous';
   onPlayNext?: (blockId: string, lastSentenceIndex: number) => void;
   onPlayModeChange?: (newMode: 'sentence' | 'block' | 'continuous') => void;
+  onShowSplitView?: (blockId: string, type: 'source' | 'translation') => void;
 }
 
 // 创建一个自定义事件名称
 const CLEAR_ACTIVE_SENTENCE_EVENT = 'clear-active-sentences';
 
-// 添加全局音频管理
-const AUDIO_CONTROLLER_EVENT = 'global-audio-control';
-
-// 创建统一的音频控制系统 
-// 添加在文件顶部与其他常量一起
-const AUDIO_STATE_EVENT = 'audio-state-update';
-const AUDIO_TIME_EVENT = 'audio-time-update';
-
-// 在文件开头添加全局音频实例管理
-// 确保整个应用中只有一个活动的音频实例
-let GLOBAL_AUDIO_INSTANCE: HTMLAudioElement | null = null;
-const AUDIO_BLOCKER_TIMEOUT = 50; // 毫秒
-let isAudioBlocked = false;
+// 添加一个全局活跃块ID事件
+const ACTIVE_BLOCK_CHANGED_EVENT = 'active-block-changed';
 
 export function ContentBlock({ 
   block, 
@@ -61,7 +52,8 @@ export function ContentBlock({
   onAlignmentComplete,
   playMode,
   onPlayNext,
-  onPlayModeChange
+  onPlayModeChange,
+  onShowSplitView
 }: ContentBlockProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -75,6 +67,9 @@ export function ContentBlock({
   const [isReplaying, setIsReplaying] = useState(false);
   const [embeddedSentences, setEmbeddedSentences] = useState<Map<string, any>>(new Map());
   const [isLoadingSentences, setIsLoadingSentences] = useState(false);
+  const [showAlignmentPanel, setShowAlignmentPanel] = useState(false);
+  const [showSplitView, setShowSplitView] = useState(false);
+  const [sentences, setSentences] = useState<any[]>([]);
   
   const blockRef = useRef<HTMLDivElement>(null);
   const contentEditableRef = useRef<HTMLDivElement>(null);
@@ -82,7 +77,234 @@ export function ContentBlock({
   // 创建唯一ID用于标识当前块
   const blockId = useId();
 
-  // 添加解析和加载嵌入式句子的函数 - 保持在组件顶部
+  // 添加缺失的ref
+  const isClicking = useRef(false);
+
+  // 先定义辅助函数，不依赖其他函数
+  const getSentenceIdsFromContent = useCallback(() => {
+    const ids: string[] = [];
+    const pattern = /\[\[([a-f0-9-]+)\]\]/g;
+    let match;
+    
+    while ((match = pattern.exec(block.content || '')) !== null) {
+      ids.push(match[1]);
+    }
+    
+    return ids;
+  }, [block.content]);
+
+  // 声明playSentence函数引用，使用useRef解决循环引用问题
+  const playSentenceRef = useRef<any>(null);
+
+  // 定义handleSentenceEnd函数，使用ref引用playSentence
+  const handleSentenceEnd = useCallback((index: number) => {
+    if (!embeddedSentences || embeddedSentences.size === 0) return;
+    
+    // 提取句子IDs
+    const sentenceIds = getSentenceIdsFromContent();
+    if (index < 0 || index >= sentenceIds.length) return;
+    
+    // 判断是否为最后一句
+    const isLastSentence = index >= sentenceIds.length - 1;
+    
+    // 如果是连续播放模式且是最后一句，在转向下一个块前清除当前高亮
+    if (playMode === 'continuous' && isLastSentence) {
+      console.log(`${block.id}: 最后一句播放完毕，清除高亮并准备下一个块`);
+      
+      // 先清除当前高亮
+      setActiveIndex(null);
+      setIsPlaying(false);
+      setActiveWordId(null);
+      
+      // 然后再播放下一个块
+      setTimeout(() => {
+        onPlayNext?.(block.id, index);
+      }, 50);
+    } else if (playMode === 'sentence') {
+      // 重播当前句子
+      const sentenceId = sentenceIds[index];
+      const sentence = embeddedSentences.get(sentenceId);
+      if (sentence) {
+        setTimeout(() => playSentenceRef.current(sentence, index), 300);
+      }
+    } else if (playMode === 'block' && isLastSentence) {
+      // 段落循环 - 回到第一句
+      const firstId = sentenceIds[0];
+      const firstSentence = embeddedSentences.get(firstId);
+      if (firstSentence) {
+        setTimeout(() => playSentenceRef.current(firstSentence, 0), 600);
+      }
+    } else if ((playMode === 'block' || playMode === 'continuous') && !isLastSentence) {
+      // 播放下一句
+      const nextIndex = index + 1;
+      const nextId = sentenceIds[nextIndex];
+      const nextSentence = embeddedSentences.get(nextId);
+      if (nextSentence) {
+        setTimeout(() => playSentenceRef.current(nextSentence, nextIndex), 300);
+      }
+    }
+  }, [embeddedSentences, playMode, getSentenceIdsFromContent, block.id, blockId, onPlayNext]);
+
+  // 完全重写的playSentence函数
+  const playSentence = useCallback((sentence: any, index: number) => {
+    console.log('播放句子', index, sentence);
+    
+    // 如果点击当前播放的句子，则停止播放
+    if (activeIndex === index && isPlaying) {
+      AudioController.stop();
+      setIsPlaying(false);
+      setActiveIndex(null);
+      setActiveWordId(null);
+      return;
+    }
+    
+    // 广播当前活跃块ID - 这会通知其他块清除高亮
+    window.dispatchEvent(new CustomEvent(ACTIVE_BLOCK_CHANGED_EVENT, {
+      detail: { activeBlockId: block.id }
+    }));
+    
+    // 始终先停止所有播放
+    AudioController.stop();
+    
+    // 检查句子数据
+    if (!sentence || !audioUrl) {
+      console.error('无法播放：句子数据或音频URL缺失', sentence);
+      return;
+    }
+    
+    // 获取时间范围
+    const beginTime = sentence.begin_time;
+    const endTime = sentence.end_time;
+    
+    if (beginTime === undefined || endTime === undefined) {
+      console.error('句子缺少时间信息', sentence);
+      return;
+    }
+    
+    console.log(`播放句子 ${index}:`, beginTime, endTime);
+    
+    // 先设置状态，确保UI立即反应
+    setActiveIndex(index);
+    setIsPlaying(true);
+    
+    // 使用AudioController播放
+    AudioController.play({
+      url: audioUrl,
+      startTime: beginTime,
+      endTime: endTime,
+      context: 'sentence',
+      loop: false,
+      playerId: `block-${block.id}-sentence-${index}`
+    });
+    
+    // 更新父组件时间
+    onTimeChange?.(beginTime);
+  }, [activeIndex, isPlaying, audioUrl, block.id, onTimeChange]);
+
+  // 更新引用
+  useEffect(() => {
+    playSentenceRef.current = playSentence;
+  }, [playSentence]);
+  
+  // 修改音频事件监听，增加范围外检测清除逻辑
+  useEffect(() => {
+    // 只在浏览器环境中添加事件监听
+    if (typeof window === 'undefined') return;
+    
+    // 监听音频时间更新事件 - 用于句子和单词高亮
+    const handleTimeUpdate = (e: CustomEvent) => {
+      const { currentTime, playerId, context } = e.detail;
+      
+      // 添加提前量（500毫秒 = 0.5秒）
+      const adjustedTime = currentTime + 0.5;
+      
+      // 更新当前时间
+      setCurrentAudioTime(adjustedTime);
+      
+      // 如果手动点击状态，不自动切换高亮句子
+      if (isClicking.current) return;
+      
+      // 查找当前时间对应的句子
+      const sentenceIds = getSentenceIdsFromContent();
+      
+      // 没有句子数据，清除高亮
+      if (sentenceIds.length === 0 || embeddedSentences.size === 0) {
+        if (activeIndex !== null || isPlaying) {
+          setActiveIndex(null);
+          setIsPlaying(false);
+          setActiveWordId(null);
+        }
+        return;
+      }
+      
+      // 确定当前音频是否在任何句子的时间范围内
+      let inAnySentenceRange = false;
+      let foundSentence = false;
+      
+      for (let i = 0; i < sentenceIds.length; i++) {
+        const sentenceId = sentenceIds[i];
+        const sentence = embeddedSentences.get(sentenceId);
+        
+        if (!sentence) continue;
+        
+        // 检查是否在整个块的时间范围内(宽松检查)
+        if (adjustedTime >= sentence.begin_time && 
+            adjustedTime <= sentence.end_time) {
+          inAnySentenceRange = true;
+          
+          // 找到了当前句子，设置高亮
+          if (activeIndex !== i) {
+            console.log(`高亮句子 ${i}: ${adjustedTime}秒在范围 ${sentence.begin_time}~${sentence.end_time}`);
+            setActiveIndex(i);
+            setIsPlaying(true);
+          }
+          
+          foundSentence = true;
+          
+          // 处理单词高亮
+          if (sentence.words && Array.isArray(sentence.words)) {
+            let foundWord = false;
+            
+            for (const word of sentence.words) {
+              if (adjustedTime >= word.begin_time && 
+                  adjustedTime <= word.end_time) {
+                setActiveWordId(word.id);
+                foundWord = true;
+                break;
+              }
+            }
+            
+            if (!foundWord) {
+              setActiveWordId(null);
+            }
+          }
+          
+          break;
+        }
+      }
+      
+      // 清除高亮的关键 - 如果不在任何句子范围内，且不是句子播放上下文
+      if (!inAnySentenceRange && context !== 'sentence') {
+        if (activeIndex !== null || isPlaying) {
+          console.log('音频时间超出语境块句子范围，清除高亮');
+      setActiveIndex(null);
+          setIsPlaying(false);
+          setActiveWordId(null);
+        }
+      }
+      
+      // 如果没找到任何句子匹配当前时间，但仍在范围内，保持当前高亮
+      // 这解决了句子间空隙的问题
+    };
+    
+    window.addEventListener(AUDIO_EVENTS.TIME_UPDATE, handleTimeUpdate as EventListener);
+    
+    return () => {
+      window.removeEventListener(AUDIO_EVENTS.TIME_UPDATE, handleTimeUpdate as EventListener);
+    };
+  }, [activeIndex, isPlaying, embeddedSentences, getSentenceIdsFromContent]);
+
+  // 2. 然后是其他函数和useEffect，保持原有顺序
   const parseAndLoadEmbeddedSentences = useCallback(async () => {
     // 仅处理音频对齐块或包含[[sentenceId]]格式的文本块
     if (block.block_type === 'audio_aligned' || 
@@ -126,155 +348,28 @@ export function ContentBlock({
     }
   }, [block.block_type, block.content]);
 
-  // 1. 先定义playSentence函数
-  const playSentence = useCallback((sentence: any, index: number) => {
-    // 发送清除其他活动句子的事件
-    const clearEvent = new CustomEvent(CLEAR_ACTIVE_SENTENCE_EVENT, {
-      detail: { senderId: blockId }
-    });
-    window.dispatchEvent(clearEvent);
-    
-    // 如果正在播放同一个句子，则暂停
-    if (activeIndex === index && isPlaying) {
-      // 暂停当前播放
-      AudioController.pause();
-      setIsPlaying(false);
-      return;
-    }
-    
-    // 设置当前活动句子
-    setActiveIndex(index);
-    
-    // 检查是否有句子音频数据
-    if (!sentence || !audioUrl) {
-      console.error('无法播放：句子数据或音频URL缺失');
-      return;
-    }
-    
-    // 获取音频信息
-    const beginTime = sentence.begin_time;
-    const endTime = sentence.end_time;
-    
-    // 播放功能
-    const playbackCallback = () => {
-      console.log('句子播放结束');
+  // 在embeddedSentences变更时更新sentences数组
+  useEffect(() => {
+    if (embeddedSentences.size > 0) {
+      // 从嵌入式句子映射中提取句子数组并按顺序排列
+      const extractedSentences: any[] = [];
+      const sentenceIdMatches = block.content.match(/\[\[([a-f0-9-]+)\]\]/g) || [];
       
-      // 处理循环模式
-      if (playMode === 'sentence') {
-        // 句子循环 - 重播同一句子
-        setTimeout(() => {
-          console.log('重播句子', index);
-          setIsReplaying(true);
-          AudioController.play(audioUrl, beginTime, endTime, `block-${block.id}`, () => {
-            setIsReplaying(false);
-          });
-        }, 500); // 短暂延迟后重播
-      } else {
-        // 提取所有句子ID
-        const sentenceIds: string[] = [];
-        const pattern = /\[\[([a-f0-9-]+)\]\]/g;
-        let match;
-        const content = block.content || '';
-        while ((match = pattern.exec(content)) !== null) {
-          sentenceIds.push(match[1]);
+      sentenceIdMatches.forEach(match => {
+        const id = match.replace('[[', '').replace(']]', '');
+        const sentence = embeddedSentences.get(id);
+        if (sentence) {
+          extractedSentences.push(sentence);
         }
-        
-        // 判断是否是最后一句
-        const isLastSentence = index >= sentenceIds.length - 1;
-        
-        if ((playMode === 'block' || playMode === 'continuous') && !isLastSentence) {
-          // 段落内下一句 - 播放下一个句子
-          setTimeout(() => {
-            console.log('播放下一句', index + 1);
-            
-            // 检查是否有下一个句子
-            if (index + 1 < sentenceIds.length) {
-              const nextSentenceId = sentenceIds[index + 1];
-              const nextSentence = embeddedSentences.get(nextSentenceId);
-              if (nextSentence) {
-                playSentence(nextSentence, index + 1);
-              }
-            }
-          }, 500);
-        } else if (playMode === 'continuous' && isLastSentence) {
-          // 连续模式下的最后一句 - 播放下一个块
-          setTimeout(() => {
-            console.log('播放下一个块');
-            onPlayNext?.(block.id, index);
-          }, 500);
-        }
-      }
-    };
-    
-    // 使用全局音频控制器播放
-    AudioController.play(audioUrl, beginTime, endTime, `block-${block.id}`, playbackCallback);
-    setIsPlaying(true);
-    
-    // 更新时间显示
-    onTimeChange?.(beginTime);
-  }, [activeIndex, isPlaying, blockId, audioUrl, block.id, block.content, embeddedSentences, onPlayNext, onTimeChange, playMode]);
+      });
+      
+      setSentences(extractedSentences);
+    }
+  }, [embeddedSentences, block.content]);
 
-  // 2. 然后是其他函数和useEffect，保持原有顺序
   useEffect(() => {
     parseAndLoadEmbeddedSentences();
   }, [parseAndLoadEmbeddedSentences]);
-  
-  // 处理句子播放事件
-  useEffect(() => {
-    const handlePlayBlockSentence = (e: CustomEvent) => {
-      const { blockId, sentenceIndex } = e.detail;
-      
-      if (blockId === block.id) {
-        console.log(`接收到播放事件: 块=${blockId}, 句子索引=${sentenceIndex}`);
-        
-        // 如果没有加载句子数据，需要先加载
-        if (embeddedSentences.size === 0) {
-          parseAndLoadEmbeddedSentences().then(() => {
-            triggerPlaySentence(sentenceIndex);
-          });
-        } else {
-          triggerPlaySentence(sentenceIndex);
-        }
-      }
-    };
-    
-    // 直接播放指定索引的句子
-    const triggerPlaySentence = (sentenceIndex: number) => {
-      // 从content中提取所有句子ID
-      const sentenceIds: string[] = [];
-      const pattern = /\[\[([a-f0-9-]+)\]\]/g;
-      let match;
-      while ((match = pattern.exec(block.content || '')) !== null) {
-        sentenceIds.push(match[1]);
-      }
-      
-      // 确保索引有效
-      if (sentenceIndex >= 0 && sentenceIndex < sentenceIds.length) {
-        const sentenceId = sentenceIds[sentenceIndex];
-        const sentence = embeddedSentences.get(sentenceId);
-        
-        if (sentence) {
-          // 实际开始播放
-          console.log(`开始播放句子: ${sentenceId}, 索引: ${sentenceIndex}`);
-          playSentence(sentence, sentenceIndex);
-        } else {
-          console.error(`句子数据未找到: ${sentenceId}`);
-        }
-      }
-    };
-    
-    window.addEventListener(
-      'play-block-sentence', 
-      handlePlayBlockSentence as EventListener
-    );
-    
-    return () => {
-      window.removeEventListener(
-        'play-block-sentence', 
-        handlePlayBlockSentence as EventListener
-      );
-    };
-  }, [block.id, block.content, embeddedSentences, parseAndLoadEmbeddedSentences, playSentence]);
 
   useEffect(() => {
     setLocalAligning(isAligning);
@@ -298,183 +393,6 @@ export function ContentBlock({
     }
   }, [localAligning, block.id, onAlignmentComplete, parseAndLoadEmbeddedSentences]);
 
-  // 添加一个事件监听器来清除活动句子
-  useEffect(() => {
-    // 当收到清除事件且不是发送者时，清除自己的活动状态
-    const handleClearActive = (e: CustomEvent) => {
-      const senderId = e.detail?.senderId;
-      if (senderId !== blockId) {
-        setActiveIndex(null);
-        setIsPlaying(false);
-      }
-    };
-    
-    // 添加事件监听器
-    window.addEventListener(
-      CLEAR_ACTIVE_SENTENCE_EVENT, 
-      handleClearActive as EventListener
-    );
-    
-    return () => {
-      window.removeEventListener(
-        CLEAR_ACTIVE_SENTENCE_EVENT, 
-        handleClearActive as EventListener
-      );
-    };
-  }, [blockId]);
-
-  // 在ContentBlock组件中添加音频结束事件监听
-  useEffect(() => {
-    // 音频播放结束处理函数
-    const handleAudioEnded = () => {
-      setIsPlaying(false);
-      setActiveIndex(null);
-    };
-    
-    // 添加事件监听
-    window.addEventListener('audio-playback-ended', handleAudioEnded);
-    
-    return () => {
-      window.removeEventListener('audio-playback-ended', handleAudioEnded);
-    };
-  }, []);
-
-  // 添加音频状态变更事件监听
-  useEffect(() => {
-    const handleAudioStateChange = (e: CustomEvent) => {
-      const detail = e.detail;
-      // 只处理不是自己发送的状态变更
-      if (detail.sender !== 'contentBlock') {
-        setIsPlaying(detail.isPlaying);
-      }
-    };
-    
-    window.addEventListener('audio-state-change', handleAudioStateChange as EventListener);
-    
-    return () => {
-      window.removeEventListener('audio-state-change', handleAudioStateChange as EventListener);
-    };
-  }, []);
-
-  // 添加全局音频控制监听
-  useEffect(() => {
-    const handleGlobalAudioControl = (e: CustomEvent) => {
-      const { action, sender } = e.detail;
-      
-      // 如果不是自己发送的停止指令，则暂停自己的音频
-      if (action === 'stop-all' && sender !== blockId && GLOBAL_AUDIO_INSTANCE) {
-        GLOBAL_AUDIO_INSTANCE.pause();
-        setIsPlaying(false);
-        setActiveIndex(null);
-      }
-    };
-    
-    window.addEventListener(AUDIO_CONTROLLER_EVENT, handleGlobalAudioControl as EventListener);
-    
-    return () => {
-      window.removeEventListener(AUDIO_CONTROLLER_EVENT, handleGlobalAudioControl as EventListener);
-    };
-  }, [blockId]);
-
-  // 添加音频时间更新监听，更新UI
-  useEffect(() => {
-    const handleTimeUpdate = (e: CustomEvent) => {
-      const { currentTime, playerId } = e.detail;
-      
-      // 检查是否是单词播放器ID
-      const isWordPlayer = playerId && playerId.includes('-word-');
-      
-      // 更新当前时间
-      setCurrentAudioTime(currentTime);
-      
-      // 如果是单词播放，不要触发句子高亮
-      if (!isWordPlayer && playerId && (
-        playerId.startsWith(`block-${block.id}`) || 
-        playerId === 'main-audio-player'
-      )) {
-        // 只在句子播放时更新活动句子
-        if (activeIndex === null) {
-          // 查找当前时间所在的句子
-          const matchingSentenceIndex = embeddedSentences.size > 0 ? 0 : -1;
-          
-          if (matchingSentenceIndex !== -1) {
-            setActiveIndex(matchingSentenceIndex);
-          }
-        }
-      }
-      
-      // 总是传递时间给父组件
-      onTimeChange?.(currentTime);
-    };
-    
-    if (GLOBAL_AUDIO_INSTANCE) {
-      GLOBAL_AUDIO_INSTANCE.addEventListener('timeupdate', handleTimeUpdate);
-      
-      return () => {
-        if (GLOBAL_AUDIO_INSTANCE) {
-          GLOBAL_AUDIO_INSTANCE.removeEventListener('timeupdate', handleTimeUpdate);
-        }
-      };
-    }
-  }, [block.id, onTimeChange]);
-
-  // 添加全局音频状态监听
-  useEffect(() => {
-    // 监听全局音频状态更新
-    const handleAudioState = (e: CustomEvent) => {
-      const { isPlaying, blockId: stateBlockId, sentenceIndex, sender } = e.detail;
-      
-      // 如果状态变更不是由本组件发送的
-      if (sender !== blockId) {
-        // 如果状态更新与当前块相关
-        if (stateBlockId === block.id) {
-          setIsPlaying(isPlaying);
-          setActiveIndex(sentenceIndex);
-        } else {
-          // 如果与当前块无关，则重置状态
-          setIsPlaying(false);
-          setActiveIndex(null);
-        }
-      }
-    };
-    
-    window.addEventListener(AUDIO_STATE_EVENT, handleAudioState as EventListener);
-    
-    return () => {
-      window.removeEventListener(AUDIO_STATE_EVENT, handleAudioState as EventListener);
-    };
-  }, [block.id, blockId]);
-
-  // 监听全局音频时间更新
-  useEffect(() => {
-    const handleAudioTimeUpdate = (e: CustomEvent) => {
-      const { currentTime, blockId: timeBlockId, sentenceIndex } = e.detail;
-      
-      // 只处理与当前块相关的时间更新
-      if (timeBlockId === block.id && activeIndex === sentenceIndex) {
-        // 找到当前应该高亮的单词
-        if (embeddedSentences.size > 0) {
-          const words = embeddedSentences.values().next().value.words;
-          
-          // 遍历单词，找到当前时间点对应的单词
-          for (const word of words) {
-            if (currentTime >= word.begin_time && currentTime < word.end_time) {
-              // 找到了当前单词，强制更新UI
-              setIsPlaying(prev => prev);
-              break;
-            }
-          }
-        }
-      }
-    };
-    
-    window.addEventListener(AUDIO_TIME_EVENT, handleAudioTimeUpdate as EventListener);
-    
-    return () => {
-      window.removeEventListener(AUDIO_TIME_EVENT, handleAudioTimeUpdate as EventListener);
-    };
-  }, [block.id, activeIndex, embeddedSentences]);
-
   // 处理块点击事件
   const handleClick = (e: React.MouseEvent) => {
     if (onSelect && !e.defaultPrevented) {
@@ -491,8 +409,28 @@ export function ContentBlock({
 
   // 处理拖拽开始
   const handleDragStart = (e: React.DragEvent) => {
+    // 如果正在对齐，禁止拖拽
+    if (localAligning) {
+      e.preventDefault();
+      return;
+    }
+    
     setIsDragging(true);
+    
+    // 设置两种数据格式，确保兼容性
     e.dataTransfer.setData('blockId', block.id);
+    
+    // 添加明确的类型标识，区分块排序拖拽和句子对齐拖拽
+    try {
+      const blockData = JSON.stringify({
+        type: 'block',  // 明确标识这是块排序拖拽
+        id: block.id
+      });
+      e.dataTransfer.setData('application/json', blockData);
+    } catch (err) {
+      console.error('无法设置拖拽数据', err);
+    }
+    
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -505,15 +443,15 @@ export function ContentBlock({
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     
-    // 确保Firefox可以正确获取数据
-    if (e.dataTransfer.types.includes('application/json')) {
-      // 这是句子拖拽，整个块高亮
+    // 检查是否是句子对齐拖拽 - 使用types来检查
+    if (e.dataTransfer.types.includes('sentence-align-drag')) {
+      // 这是句子对齐拖拽，整个块高亮
       setIsDragOver(true);
       setDropPosition(null); // 不需要位置指示器
       return;
     }
     
-    // 这是块拖拽，显示位置指示器
+    // 这是块排序拖拽，显示位置指示器
     const rect = e.currentTarget.getBoundingClientRect();
     const posY = e.clientY - rect.top;
     
@@ -536,18 +474,24 @@ export function ContentBlock({
     setIsDragOver(false);
     setDropPosition(null);
     
+    // 尝试从两种格式获取数据
     try {
-      const data = JSON.parse(e.dataTransfer.getData('application/json'));
+      // 首先尝试读取JSON数据
+      const jsonData = e.dataTransfer.getData('application/json');
+      if (jsonData) {
+        const data = JSON.parse(jsonData);
       
-      // 如果是块排序
+        // 检查类型标识 - 块排序
       if (data.type === 'block' && onOrderChange) {
+          console.log('处理块排序拖拽:', data.id, block.id);
         const position = getDropPosition(e);
         onOrderChange(data.id, block.id, position);
         return;
       }
       
-      // 如果是语音识别句子对齐
+        // 检查类型标识 - 句子对齐（从SentencePlayer拖来的）
       if (data.type === 'sentence' && block.block_type === 'text') {
+          console.log('处理句子对齐拖拽:', data);
         // 设置当前块为对齐中状态
         setLocalAligning(true);
         
@@ -564,16 +508,24 @@ export function ContentBlock({
         );
         
         if (result.success) {
-          // 让动画继续播放一段时间
-          // 实际对齐完成后，动画效果会在useEffect中自动处理
+            // 对齐成功处理
         } else {
-          // 立即结束对齐状态
+            // 对齐失败处理
           setLocalAligning(false);
           toast({
             title: "对齐失败",
             description: result.message || "文本对齐处理失败",
             variant: "destructive",
           });
+          }
+        }
+      } else {
+        // 尝试读取blockId格式
+        const blockId = e.dataTransfer.getData('blockId');
+        if (blockId && onOrderChange) {
+          console.log('处理块排序拖拽(blockId):', blockId, block.id);
+          const position = getDropPosition(e);
+          onOrderChange(blockId, block.id, position);
         }
       }
     } catch (error) {
@@ -607,49 +559,66 @@ export function ContentBlock({
     );
   };
 
-  // 减少事件监听数量
-  useEffect(() => {
-    // 只监听状态变更
-    const handleStateChange = (e: CustomEvent) => {
-      const { isPlaying: newIsPlaying, playerId } = e.detail;
+  // 添加这个函数来处理单词点击，但保留所有现有功能
+  const handleWordClick = useCallback((word: any, sentenceIndex: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // 阻止触发句子点击
+    isClicking.current = true;
+    
+    // 先找到句子
+    const sentenceIds = getSentenceIdsFromContent();
+    if (sentenceIndex >= 0 && sentenceIndex < sentenceIds.length) {
+      const sentenceId = sentenceIds[sentenceIndex];
+      const sentence = embeddedSentences.get(sentenceId);
       
-      // 检查是否与当前块相关
-      if (playerId && playerId.startsWith(`block-${block.id}`)) {
-        setIsPlaying(newIsPlaying);
-        
-        // 如果停止播放且不是单词播放，重置活动句子
-        if (!newIsPlaying && !playerId.includes('-word-')) {
-          setActiveIndex(null);
-        }
-      } else if (playerId !== null) {
-        // 其他块在播放，重置自己的状态
-        setIsPlaying(false);
-        setActiveIndex(null);
+      if (!sentence || !audioUrl) {
+        console.error('无法播放单词：句子数据或音频URL缺失');
+        return;
       }
-    };
-    
-    // 监听时间更新，但减少处理逻辑
-    const handleTimeUpdate = (e: CustomEvent) => {
-      const { currentTime, playerId } = e.detail;
       
-      // 只更新与自己相关的时间
-      if (playerId && playerId.startsWith(`block-${block.id}`)) {
-        setCurrentAudioTime(currentTime);
-        onTimeChange?.(currentTime);
+      // 高亮当前句子
+      setActiveIndex(sentenceIndex);
+      
+      // 高亮点击的单词
+      setActiveWordId(word.id);
+      
+      // 获取单词时间戳
+      const beginTime = word.begin_time;
+      const endTime = word.end_time;
+      
+      if (beginTime === undefined || endTime === undefined) {
+        console.error('单词缺少时间信息', word);
+        return;
       }
-    };
-    
-    window.addEventListener(AUDIO_EVENTS.STATE_CHANGE, handleStateChange as EventListener);
-    window.addEventListener(AUDIO_EVENTS.TIME_UPDATE, handleTimeUpdate as EventListener);
-    
-    // 页面加载时紧急清理
-    AudioController.emergencyCleanup();
-    
-    return () => {
-      window.removeEventListener(AUDIO_EVENTS.STATE_CHANGE, handleStateChange as EventListener);
-      window.removeEventListener(AUDIO_EVENTS.TIME_UPDATE, handleTimeUpdate as EventListener);
-    };
-  }, [block.id, onTimeChange]);
+      
+      console.log(`播放单词 ${word.id}:`, beginTime, endTime);
+      
+      // 清除其他播放
+      window.dispatchEvent(new CustomEvent(CLEAR_ACTIVE_SENTENCE_EVENT, {
+        detail: { senderId: blockId }
+      }));
+      
+      // 停止所有播放
+      AudioController.stop();
+      
+      // 使用AudioController播放单词
+      AudioController.play({
+        url: audioUrl,
+        startTime: beginTime,
+        endTime: endTime,
+        context: 'word',
+        loop: false,
+        playerId: `block-${block.id}-word-${word.id}`
+      });
+      
+      // 更新父组件时间
+      onTimeChange?.(beginTime);
+      
+      // 重置点击标志
+      setTimeout(() => {
+        isClicking.current = false;
+      }, 100);
+    }
+  }, [audioUrl, blockId, block.id, embeddedSentences, getSentenceIdsFromContent, onTimeChange]);
 
   // 修改renderSentenceWithWords函数，区分单词高亮和句子高亮
   const renderSentenceWithWords = (sentence: any, sentenceIndex: number) => {
@@ -707,22 +676,40 @@ export function ContentBlock({
         // 只有在当前句子活动时才应用单词高亮
         const isWordActiveResult = isWordActive(word);
         
-        // 添加可点击单词
+        // 修改添加单词的部分，使用金色粗边框和更快速度
         elements.push(
           <span 
             key={`word-${sentenceIndex}-${word.id}`}
-            className={cn(
-              "cursor-pointer rounded-sm px-0.5",
-              isWordActiveResult 
-                ? "text-emerald-500 font-medium" 
-                : "hover:text-emerald-400"
-            )}
+            className="cursor-pointer px-0.5 relative"
             onClick={(e) => {
-              e.stopPropagation();
-              playWord(word, e);
+              handleWordClick(word, sentenceIndex, e);
             }}
           >
+            <AnimatePresence>
+              {isWordActiveResult && (
+                <motion.span
+                  className="absolute inset-0 rounded-sm"
+                  style={{
+                    borderColor: '#F5D742', // 金色边框
+                    borderWidth: '2px',     // 更粗的边框
+                    boxShadow: '0 0 3px rgba(245, 215, 66, 0.5)' // 金色阴影
+                  }}
+                  initial={{ opacity: 0 }}
+                  animate={{ 
+                    opacity: 1,
+                    transition: { duration: 0.1, ease: [0.22, 1, 0.36, 1] } // 更快的过渡
+                  }}
+                  exit={{ 
+                    opacity: 0,
+                    transition: { duration: 0.1, ease: [0.22, 1, 0.36, 1] } // 更快的过渡
+                  }}
+                  layoutId="word-highlight-flowing"
+                />
+              )}
+            </AnimatePresence>
+            <span className={isWordActiveResult ? "text-amber-500 font-medium relative z-10" : "hover:text-amber-400"}>
             {wordContent}
+            </span>
           </span>
         );
         
@@ -851,7 +838,7 @@ export function ContentBlock({
     return <span>{segments}</span>;
   };
 
-  // 渲染内容
+  // 修改现有的renderContent函数
   const renderContent = () => {
     // 图片语境块
     if (block.block_type === 'image' && resources) {
@@ -875,16 +862,57 @@ export function ContentBlock({
       return <div className="text-sm text-muted-foreground">图片未找到: {imgPath}</div>;
     }
     
-    // 音频对齐块 - 使用新的渲染方式
+    // 音频对齐块 - 增加显示alignment数据的选项
     if (block.block_type === 'audio_aligned') {
       return (
-        <div className="audio-aligned-block py-2 px-3 text-sm leading-relaxed">
+        <div className="audio-aligned-block relative">
+          {/* 主要内容 - 减少内部缩进 */}
+          <div className="py-2 px-3 text-sm leading-relaxed">
           <div className="prose prose-sm max-w-none">
             {isLoadingSentences ? (
               <span className="text-muted-foreground">加载句子内容中...</span>
             ) : (
               renderEmbeddedContent()
             )}
+            </div>
+          </div>
+          
+          {/* 底部功能图标栏 - 放在语境块外部但靠近底部 */}
+          <div className="absolute right-1 bottom-1 flex gap-1">
+            {/* 源文本查看图标 */}
+            <button
+              onClick={() => onShowSplitView?.(block.id, 'source')}
+              className="p-0.5 rounded-full bg-background/80 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
+              title="对齐前文本"
+            >
+              <Music2 className="h-3 w-3" />
+            </button>
+            
+            {/* 翻译图标（预留） */}
+            <button
+              onClick={() => toast({
+                title: "翻译功能开发中",
+                description: "敬请期待",
+                variant: "default",
+              })}
+              className="p-0.5 rounded-full bg-background/80 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
+              title="翻译"
+            >
+              <Globe className="h-3 w-3" />
+            </button>
+            
+            {/* 节点图标（预留） */}
+            <button
+              onClick={() => toast({
+                title: "节点功能开发中",
+                description: "敬请期待",
+                variant: "default",
+              })}
+              className="p-0.5 rounded-full bg-background/80 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
+              title="查看节点"
+            >
+              <Network className="h-3 w-3" />
+            </button>
           </div>
         </div>
       );
@@ -947,6 +975,135 @@ export function ContentBlock({
     };
   }, [onPlayModeChange]);
 
+  // 修改句子点击处理函数
+  const handleSentenceClick = useCallback((sentence: any, sentenceIndex: number) => {
+    isClicking.current = true;
+    
+    // 播放句子
+    playSentence(sentence, sentenceIndex);
+    
+    // 点击后重置标志
+    setTimeout(() => {
+      isClicking.current = false;
+    }, 100);
+  }, [playSentence]);
+
+  // 恢复关键的事件处理函数，这是我之前删除的
+  // 处理句子播放事件
+  useEffect(() => {
+    const handlePlayBlockSentence = (e: CustomEvent) => {
+      const { blockId, sentenceIndex } = e.detail;
+      
+      if (blockId === block.id) {
+        console.log(`接收到播放事件: 块=${blockId}, 句子索引=${sentenceIndex}`);
+        
+        // 如果没有加载句子数据，需要先加载
+        if (embeddedSentences.size === 0) {
+          parseAndLoadEmbeddedSentences().then(() => {
+            triggerPlaySentence(sentenceIndex);
+          });
+        } else {
+          triggerPlaySentence(sentenceIndex);
+        }
+      }
+    };
+    
+    // 直接播放指定索引的句子
+    const triggerPlaySentence = (sentenceIndex: number) => {
+      // 从content中提取所有句子ID
+      const sentenceIds: string[] = [];
+      const pattern = /\[\[([a-f0-9-]+)\]\]/g;
+      let match;
+      while ((match = pattern.exec(block.content || '')) !== null) {
+        sentenceIds.push(match[1]);
+      }
+      
+      // 确保索引有效
+      if (sentenceIndex >= 0 && sentenceIndex < sentenceIds.length) {
+        const sentenceId = sentenceIds[sentenceIndex];
+        const sentence = embeddedSentences.get(sentenceId);
+        
+        if (sentence) {
+          // 实际开始播放
+          console.log(`开始播放句子: ${sentenceId}, 索引: ${sentenceIndex}`);
+          playSentence(sentence, sentenceIndex);
+        } else {
+          console.error(`句子数据未找到: ${sentenceId}`);
+        }
+      }
+    };
+    
+    window.addEventListener(
+      'play-block-sentence', 
+      handlePlayBlockSentence as EventListener
+    );
+    
+    return () => {
+      window.removeEventListener(
+        'play-block-sentence', 
+        handlePlayBlockSentence as EventListener
+      );
+    };
+  }, [block.id, block.content, embeddedSentences, parseAndLoadEmbeddedSentences, playSentence]);
+
+  // 修改音频结束事件监听，增加精确的事件判断
+  useEffect(() => {
+    const handleAudioEnd = (e: CustomEvent) => {
+      const { context, playerId } = e.detail;
+      
+      // 检查是否是当前块的播放结束
+      const currentBlockRegex = new RegExp(`^block-${block.id}-sentence-`);
+      const isCurrentBlockAudio = currentBlockRegex.test(playerId || '');
+      
+      console.log(`音频结束事件 - playerId: ${playerId}, 匹配当前块: ${isCurrentBlockAudio}`);
+      
+      // 只有当是当前块的音频时才清除高亮
+      if (isCurrentBlockAudio) {
+        console.log(`清除块 ${block.id} 的高亮`);
+        setActiveIndex(null);
+        setActiveWordId(null);
+        setIsPlaying(false);
+      }
+    };
+    
+    window.addEventListener(AUDIO_EVENTS.END, handleAudioEnd as EventListener);
+    
+    return () => {
+      window.removeEventListener(AUDIO_EVENTS.END, handleAudioEnd as EventListener);
+    };
+  }, [block.id]);
+
+  // 组件卸载时清除自己的高亮
+  useEffect(() => {
+    return () => {
+      // 组件卸载时发送事件清除自己的高亮
+      window.dispatchEvent(new CustomEvent(CLEAR_ACTIVE_SENTENCE_EVENT, {
+        detail: { blockId: block.id, cleanup: true }
+      }));
+    };
+  }, [block.id]);
+
+  // 添加监听活跃块变化的事件
+  useEffect(() => {
+    const handleActiveBlockChanged = (e: CustomEvent) => {
+      const { activeBlockId } = e.detail;
+      
+      // 如果另一个块变为活跃，清除当前块的高亮
+      if (activeBlockId !== block.id) {
+        console.log(`块 ${block.id} 清除高亮 (活跃块变为 ${activeBlockId})`);
+        setActiveIndex(null);
+        setIsPlaying(false);
+        setActiveWordId(null);
+      }
+    };
+    
+    window.addEventListener(ACTIVE_BLOCK_CHANGED_EVENT, handleActiveBlockChanged as EventListener);
+    
+    return () => {
+      window.removeEventListener(ACTIVE_BLOCK_CHANGED_EVENT, handleActiveBlockChanged as EventListener);
+    };
+  }, [block.id]);
+
   return (
     <div
       ref={blockRef}
@@ -967,10 +1124,16 @@ export function ContentBlock({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      {/* 拖拽手柄 - 悬停时显示 */}
-      <div className="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity">
-        <DragHandleDots2Icon className="h-4 w-4 text-muted-foreground cursor-grab" />
+      {/* 拖拽手柄 - 对不同块类型使用不同位置 */}
+      <div className={cn(
+        "absolute flex items-center justify-center opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity",
+        block.block_type === 'audio_aligned' 
+          ? "left-2 top-3 w-8 h-8" 
+          : "left-0 top-0.5 w-8 h-8"
+      )}>
+        <DragHandleDots2Icon className="h-6 w-6 text-muted-foreground cursor-grab" />
       </div>
+      
       
       {/* 块内容 */}
       <div className="pl-6">
