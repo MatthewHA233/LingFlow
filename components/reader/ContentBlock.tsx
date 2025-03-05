@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { DragHandleDots2Icon } from '@radix-ui/react-icons';
-import { Play, Pause, Loader2, Music2, Globe, Network } from 'lucide-react';
+import { Play, Pause, Loader2, FileText, FileEdit, Music2, Globe, Network } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TextAlignmentService } from '@/lib/services/text-alignment';
 import { supabase } from '@/lib/supabase-client';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import Image from 'next/image';
 import { AudioController, AUDIO_EVENTS } from '@/lib/audio-controller';
 import { AnimatePresence, motion } from "framer-motion";
@@ -481,10 +481,7 @@ export function ContentBlock({
         // 设置当前块为对齐中状态
         setLocalAligning(true);
         
-        toast({
-          title: "正在进行文本对齐",
-          description: "请稍候，正在处理对齐...",
-        });
+        toast("正在进行文本对齐", { description: "请稍候，正在处理对齐..." });
         
         // 实际执行对齐操作
         const result = await TextAlignmentService.alignSentenceToBlock(
@@ -849,37 +846,29 @@ export function ContentBlock({
           
           {/* 底部功能图标栏 - 放在语境块外部但靠近底部 */}
           <div className="absolute right-1 bottom-1 flex gap-1">
-            {/* 源文本查看图标 */}
+            {/* 对齐记录图标 */}
             <button
               onClick={() => onShowSplitView?.(block.id, 'source')}
               className="p-0.5 rounded-full bg-background/80 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
-              title="对齐前文本"
+              title="对齐记录"
             >
-              <Music2 className="h-3 w-3" />
+              <FileEdit className="h-3 w-3" />
             </button>
             
-            {/* 翻译图标（预留） */}
+            {/* 翻译图标 */}
             <button
-              onClick={() => toast({
-                title: "翻译功能开发中",
-                description: "敬请期待",
-                variant: "default",
-              })}
+              onClick={() => toast("翻译功能开发中", { description: "敬请期待" })}
               className="p-0.5 rounded-full bg-background/80 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
               title="翻译"
             >
               <Globe className="h-3 w-3" />
             </button>
             
-            {/* 节点图标（预留） */}
+            {/* 词锚点图标 */}
             <button
-              onClick={() => toast({
-                title: "节点功能开发中",
-                description: "敬请期待",
-                variant: "default",
-              })}
+              onClick={() => toast("词锚点功能开发中", { description: "敬请期待" })}
               className="p-0.5 rounded-full bg-background/80 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
-              title="查看节点"
+              title="词锚点"
             >
               <Network className="h-3 w-3" />
             </button>

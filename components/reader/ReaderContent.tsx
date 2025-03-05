@@ -15,29 +15,6 @@ import { AudioController } from '@/lib/audio-controller';
 import { cn } from '@/lib/utils';
 import { throttle } from 'lodash';
 
-// 定义格式化工具函数 - 移到文件顶层
-export function formatTime(beginTime?: number, endTime?: number) {
-  if (beginTime === undefined) return '无时间信息';
-
-  const formatMs = (ms: number) => {
-    const totalSeconds = ms / 1000;
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = (totalSeconds % 60).toFixed(2);
-
-    // 根据是否有小时来格式化
-    const timeStr = hours > 0
-      ? `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.padStart(5, '0')}`
-      : `${minutes}:${seconds.padStart(5, '0')}`;
-      
-    return timeStr.replace('.', ':');
-  };
-
-  const begin = beginTime ? formatMs(beginTime) : '?';
-  const end = endTime ? formatMs(endTime) : '?';
-
-  return `${begin} - ${end}`;
-}
 
 export function formatWordTime(timeRange?: string) {
   if (!timeRange) return '';
@@ -330,7 +307,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     if (!parentIds[chapterIndex]) {
       console.error('没有找到章节的parentId，尝试重新获取', chapterIndex);
       // 尝试重新获取parentId
-      await loadParentIds();
+      await loadAllParentIds();
       // 如果还是没有，则放弃
       if (!parentIds[chapterIndex]) {
         toast.error('无法加载章节内容，请刷新页面');
@@ -860,13 +837,6 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     }
   }, []);
 
-  // 修正翻译功能toast
-  const handleTranslate = () => {
-    // 未来实现翻译功能...
-    toast("翻译功能开发中", {
-      description: "敬请期待"
-    });
-  };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
