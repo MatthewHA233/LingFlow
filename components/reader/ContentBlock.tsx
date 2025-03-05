@@ -215,19 +215,12 @@ export function ContentBlock({
     const handleTimeUpdate = (e: CustomEvent) => {
       const { currentTime, playerId, context } = e.detail;
       
-      // 添加提前量（500毫秒 = 0.5秒）
       const adjustedTime = currentTime + 0.5;
-      
-      // 更新当前时间
       setCurrentAudioTime(adjustedTime);
-      
-      // 如果手动点击状态，不自动切换高亮句子
       if (isClicking.current) return;
-      
-      // 查找当前时间对应的句子
+
       const sentenceIds = getSentenceIdsFromContent();
-      
-      // 没有句子数据，清除高亮
+
       if (sentenceIds.length === 0 || embeddedSentences.size === 0) {
         if (activeIndex !== null || isPlaying) {
           setActiveIndex(null);
@@ -236,65 +229,58 @@ export function ContentBlock({
         }
         return;
       }
-      
-      // 确定当前音频是否在任何句子的时间范围内
+
       let inAnySentenceRange = false;
       let foundSentence = false;
-      
+
       for (let i = 0; i < sentenceIds.length; i++) {
         const sentenceId = sentenceIds[i];
         const sentence = embeddedSentences.get(sentenceId);
-        
+
         if (!sentence) continue;
-        
-        // 检查是否在整个块的时间范围内(宽松检查)
-        if (adjustedTime >= sentence.begin_time && 
+
+        if (adjustedTime >= sentence.begin_time - 0.4 &&
             adjustedTime <= sentence.end_time) {
           inAnySentenceRange = true;
-          
-          // 找到了当前句子，设置高亮
+
           if (activeIndex !== i) {
             console.log(`高亮句子 ${i}: ${adjustedTime}秒在范围 ${sentence.begin_time}~${sentence.end_time}`);
             setActiveIndex(i);
             setIsPlaying(true);
           }
-          
+
           foundSentence = true;
-          
-          // 处理单词高亮
+
+          // 单词高亮逻辑：只在需要改变时更新
           if (sentence.words && Array.isArray(sentence.words)) {
-            let foundWord = false;
-            
+            let newActiveWordId = null; // 记录新的活动单词ID
+
             for (const word of sentence.words) {
-              if (adjustedTime >= word.begin_time && 
+              if (adjustedTime >= word.begin_time - 0.2 &&
                   adjustedTime <= word.end_time) {
-                setActiveWordId(word.id);
-                foundWord = true;
+                newActiveWordId = word.id;
                 break;
               }
             }
-            
-            if (!foundWord) {
-              setActiveWordId(null);
+
+            // 只有当新的活动单词ID与当前的不同时，才更新状态
+            if (newActiveWordId !== activeWordId) {
+              setActiveWordId(newActiveWordId);
             }
           }
-          
+
           break;
         }
       }
-      
-      // 清除高亮的关键 - 如果不在任何句子范围内，且不是句子播放上下文
+
       if (!inAnySentenceRange && context !== 'sentence') {
         if (activeIndex !== null || isPlaying) {
           console.log('音频时间超出语境块句子范围，清除高亮');
-      setActiveIndex(null);
+          setActiveIndex(null);
           setIsPlaying(false);
           setActiveWordId(null);
         }
       }
-      
-      // 如果没找到任何句子匹配当前时间，但仍在范围内，保持当前高亮
-      // 这解决了句子间空隙的问题
     };
     
     window.addEventListener(AUDIO_EVENTS.TIME_UPDATE, handleTimeUpdate as EventListener);
@@ -662,14 +648,14 @@ export function ContentBlock({
         
         // 修改单词高亮逻辑
         const isWordActive = (word: any) => {
-          // 如果是通过点击单词触发的高亮
+          // 如果是通过点击单词触发的高亮, 或者当前就是高亮
           if (activeWordId === word.id) {
             return true;
           }
-          
-          // 如果是通过句子播放触发的高亮 
-          return isActiveSentence && 
-            currentAudioTime >= word.begin_time && 
+ 
+          // 如果是通过句子播放触发的高亮
+          return isActiveSentence &&
+            currentAudioTime >= word.begin_time &&
             currentAudioTime < word.end_time;
         };
         
@@ -685,30 +671,14 @@ export function ContentBlock({
               handleWordClick(word, sentenceIndex, e);
             }}
           >
-            <AnimatePresence>
-              {isWordActiveResult && (
-                <motion.span
-                  className="absolute inset-0 rounded-sm"
-                  style={{
-                    borderColor: '#F5D742', // 金色边框
-                    borderWidth: '2px',     // 更粗的边框
-                    boxShadow: '0 0 3px rgba(245, 215, 66, 0.5)' // 金色阴影
-                  }}
-                  initial={{ opacity: 0 }}
-                  animate={{ 
-                    opacity: 1,
-                    transition: { duration: 0.1, ease: [0.22, 1, 0.36, 1] } // 更快的过渡
-                  }}
-                  exit={{ 
-                    opacity: 0,
-                    transition: { duration: 0.1, ease: [0.22, 1, 0.36, 1] } // 更快的过渡
-                  }}
-                  layoutId="word-highlight-flowing"
-                />
-              )}
-            </AnimatePresence>
+            {isWordActiveResult && (
+              <motion.span
+                className="absolute inset-0 rounded-sm word-highlight-flowing"
+                layoutId="word-highlight-flowing"
+              />
+            )}
             <span className={isWordActiveResult ? "text-amber-500 font-medium relative z-10" : "hover:text-amber-400"}>
-            {wordContent}
+              {wordContent}
             </span>
           </span>
         );

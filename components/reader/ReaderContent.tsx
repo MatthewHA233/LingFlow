@@ -9,35 +9,58 @@ import { X, Mic, Menu, ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import { ContentBlock } from './ContentBlock';
 import { toast } from 'sonner';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { TerminalPopover } from '@/components/ui/TerminalPopover';
 import Image from 'next/image';
 import { AudioController } from '@/lib/audio-controller';
 import { cn } from '@/lib/utils';
 import { throttle } from 'lodash';
 
 // 定义格式化工具函数 - 移到文件顶层
-function formatTime(beginTime?: number, endTime?: number) {
+export function formatTime(beginTime?: number, endTime?: number) {
   if (beginTime === undefined) return '无时间信息';
-  
+
   const formatMs = (ms: number) => {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    const totalSeconds = ms / 1000;
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = (totalSeconds % 60).toFixed(2);
+
+    // 根据是否有小时来格式化
+    const timeStr = hours > 0
+      ? `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.padStart(5, '0')}`
+      : `${minutes}:${seconds.padStart(5, '0')}`;
+      
+    return timeStr.replace('.', ':');
   };
-  
-  return `${formatMs(beginTime)} - ${endTime ? formatMs(endTime) : '?'}`;
+
+  const begin = beginTime ? formatMs(beginTime) : '?';
+  const end = endTime ? formatMs(endTime) : '?';
+
+  return `${begin} - ${end}`;
 }
 
-function formatWordTime(timeRange?: string) {
+export function formatWordTime(timeRange?: string) {
   if (!timeRange) return '';
-  
-  const [start, end] = timeRange.split('~');
-  if (!start) return '';
-  
-  const startMs = parseInt(start, 10);
-  const startSec = (startMs / 1000).toFixed(1);
-  
-  return `${startSec}s`;
+
+  const [startMs, endMs] = timeRange.split('~').map(Number);
+  if (isNaN(startMs)) return '';
+
+  const format = (ms: number) => {
+     const totalSeconds = ms / 1000;
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const formattedSeconds = seconds.toFixed(2);
+
+    const timeStr = hours > 0
+      ? `${hours}:${minutes.toString().padStart(2, '0')}:${formattedSeconds.padStart(5, '0')}`
+      : `${minutes}:${formattedSeconds.padStart(5, '0')}`;
+    return timeStr.replace('.', ':');
+  };
+
+  return endMs
+    ? `${format(startMs)} ~ ${format(endMs)}`
+    : format(startMs);
 }
 
 interface ReaderContentProps {
@@ -1060,328 +1083,3 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     </div>
   );
 }
-
-// 添加自定义终端风格悬浮窗组件
-function TerminalPopover({ 
-  blockId, 
-  contextBlocks,
-  position,
-  onClose,
-  audioUrl
-}: { 
-  blockId: string, 
-  contextBlocks: any[],
-  position: { x: number, y: number },
-  onClose: () => void,
-  audioUrl?: string
-}) {
-  const [alignmentData, setAlignmentData] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const [hovering, setHovering] = useState(true);
-  
-  // 自动关闭逻辑
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!hovering) {
-        onClose();
-      }
-    }, 500);
-    
-    return () => clearTimeout(timer);
-  }, [hovering, onClose]);
-  
-  // 数据加载逻辑保持不变...
-  useEffect(() => {
-    async function loadAlignmentData() {
-      try {
-        setIsLoading(true);
-        console.log('开始加载块的音频对齐数据, blockId:', blockId);
-        
-        // 从block_sentences表直接获取对齐数据
-        const { data: blockSentencesData, error: blockSentencesError } = await supabase
-          .from('block_sentences')
-          .select(`
-            block_id,
-            sentence_id,
-            order_index,
-            alignment_score,
-            segment_begin_offset,
-            segment_end_offset,
-            alignment_metadata,
-            sentences (id, text_content, begin_time, end_time)
-          `)
-          .eq('block_id', blockId)
-          .order('order_index');
-        
-        if (blockSentencesError) {
-          console.error('获取block_sentences对齐数据失败:', blockSentencesError);
-          return;
-        }
-        
-        console.log('从block_sentences表获取的数据:', blockSentencesData);
-        
-        if (!blockSentencesData || blockSentencesData.length === 0) {
-          console.log('未找到块相关的句子对齐数据');
-          return;
-        }
-        
-        // 处理获取到的数据
-        const processedData = blockSentencesData.map(item => ({
-          id: item.sentence_id,
-          order_index: item.order_index,
-          alignment_score: item.alignment_score,
-          segment_begin_offset: item.segment_begin_offset,
-          segment_end_offset: item.segment_end_offset,
-          alignment_metadata: item.alignment_metadata || {},
-          // 句子信息
-          text_content: item.sentences?.text_content || '',
-          begin_time: item.sentences?.begin_time || 0,
-          end_time: item.sentences?.end_time || 0
-        }));
-        
-        console.log('处理后的对齐数据:', processedData);
-        setAlignmentData(processedData);
-      } catch (err) {
-        console.error('加载音频对齐数据失败:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    
-    if (blockId) {
-      loadAlignmentData();
-    }
-  }, [blockId]);
-  
-  // 修复播放单词或句子的函数
-  const playAudio = (startTime: number, endTime?: number) => {
-    if (!audioUrl) return;
-    
-    // 先停止所有正在播放的音频
-    AudioController.stop();
-    
-    // 使用新的AudioController API
-    const context = endTime ? 'sentence' : 'word';
-    
-    AudioController.play({
-      url: audioUrl,
-      startTime, 
-      endTime,
-      context,
-      loop: false
-    }).catch(error => {
-      console.error('播放失败:', error);
-    });
-  };
-  
-  // 复制功能
-  const copyToClipboard = () => {
-    const textContent = alignmentData.map((item, idx) => {
-      // 创建纯文本内容
-      let result = `[句子 ${idx + 1}] ${item.text_content}\n`;
-      result += `时间范围: ${item.begin_time.toFixed(2)}s - ${item.end_time.toFixed(2)}s\n`;
-      
-      if (item.alignment_metadata?.alignment_summary) {
-        const summary = item.alignment_metadata.alignment_summary;
-        result += `原始文本: ${summary.original_text || ''}\n`;
-        result += `对齐文本: ${summary.aligned_text || ''}\n`;
-      }
-      
-      if (item.alignment_metadata?.word_changes?.words) {
-        result += "词语对齐:\n";
-        item.alignment_metadata.word_changes.words.forEach((word: any, widx: number) => {
-          result += `  ${widx.toString().padStart(2, ' ')}: ${word.time_range} "${word.original}"${
-            word.original !== word.aligned ? ` → "${word.aligned}"` : ""
-          } 置信度:${word.confidence}\n`;
-        });
-      }
-      
-      if (item.alignment_metadata?.alignment_method) {
-        result += `\n对齐方法: ${item.alignment_metadata.alignment_method}\n`;
-        result += `算法版本: ${item.alignment_metadata.algorithm_version || '未知'}\n`;
-        if (item.alignment_metadata?.alignment_summary?.alignment_date) {
-          result += `对齐日期: ${item.alignment_metadata.alignment_summary.alignment_date}\n`;
-        }
-      }
-      
-      return result + "\n";
-    }).join("");
-    
-    navigator.clipboard.writeText(textContent);
-    toast.success("已复制到剪贴板");
-  };
-
-  if (isLoading) {
-    return (
-      <div 
-        ref={popoverRef}
-        className="fixed z-50 bg-[#1e1e1e] text-[#d4d4d4] p-3 rounded shadow-lg w-96 h-48"
-        style={{ 
-          top: `${position.y}px`, 
-          left: `${position.x}px`,
-          transform: 'translate(-50%, -50%)'
-        }}
-      >
-        <div className="flex items-center justify-center h-full">
-          <div className="text-gray-400">正在加载对齐数据...</div>
-        </div>
-      </div>
-    );
-  }
-  
-  if (!alignmentData.length) {
-    return (
-      <div 
-        ref={popoverRef}
-        className="fixed z-50 bg-[#1e1e1e] text-[#d4d4d4] p-3 rounded shadow-lg w-96 h-48"
-        style={{ 
-          top: `${position.y}px`, 
-          left: `${position.x}px`,
-          transform: 'translate(-50%, -50%)'
-        }}
-      >
-        <div className="flex items-center justify-center h-full">
-          <div className="text-gray-400">未找到对齐数据</div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div 
-      ref={popoverRef}
-      className="fixed z-50 bg-[#1e1e1e] text-[#d4d4d4] p-2 rounded shadow-lg 
-                 w-[420px] max-h-[380px] overflow-auto custom-scrollbar border border-gray-700"
-      style={{ 
-        top: `${position.y - 140}px`,
-        left: `${position.x - 210}px`
-      }}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-    >
-      {/* 标题和复制按钮 - 增加padding */}
-      <div className="flex justify-between items-center mb-3 sticky top-0 bg-[#1e1e1e] py-2 border-b border-gray-700 z-10">
-        <span className="text-sm font-medium text-gray-300">对齐细节表</span>
-        <button 
-          onClick={copyToClipboard}
-          className="text-gray-400 hover:text-white p-1 rounded"
-          title="复制全部"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-          </svg>
-        </button>
-      </div>
-      
-      {/* 句子对齐详情 */}
-      <div className="space-y-3">
-        {alignmentData.map((item, idx) => {
-          // 从alignment_metadata中获取原始文本和对齐文本
-          const originalText = item.alignment_metadata?.alignment_summary?.original_text || item.text_content;
-          const alignedText = item.alignment_metadata?.alignment_summary?.aligned_text || item.text_content;
-          
-          return (
-            <div key={idx} className="pb-2 mb-1 border-b border-gray-700">
-              {/* 句子标题和播放按钮 */}
-              <div className="flex justify-between items-center mb-1">
-                <div className="text-green-300 font-bold flex items-center">
-                  <span>[句子 {idx + 1}]</span>
-                  {item.alignment_score && (
-                    <span className="ml-2 text-[10px] text-yellow-400">
-                      匹配度: {(parseFloat(item.alignment_score) * 100).toFixed(1)}%
-                    </span>
-                  )}
-                  {item.alignment_status && (
-                    <span className="ml-2 text-[10px] text-blue-400">
-                      {item.alignment_status === 'automated' ? '自动' : '人工'}
-                    </span>
-                  )}
-                  {audioUrl && item.begin_time !== undefined && (
-                    <button 
-                      onClick={() => playAudio(item.begin_time, item.end_time)}
-                      className="ml-2 text-gray-400 hover:text-white"
-                      title="播放句子"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                      </svg>
-                    </button>
-                  )}
-                </div>
-                <span className="text-yellow-300 text-[10px]">
-                  {formatTime(item.begin_time, item.end_time)}
-                </span>
-              </div>
-              
-              {/* 添加句子文本显示区域 */}
-              <div className="mb-2 pl-1">
-                {originalText !== alignedText ? (
-                  <>
-                    <div className="flex">
-                      <span className="text-gray-500 w-10 text-[10px]">原文:</span>
-                      <span className="text-red-300 text-[10px]">{originalText}</span>
-                    </div>
-                    <div className="flex">
-                      <span className="text-gray-500 w-10 text-[10px]">对齐:</span>
-                      <span className="text-green-300 text-[10px]">{alignedText}</span>
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-white text-[10px]">{alignedText}</div>
-                )}
-              </div>
-              
-              {/* 词语对齐表 - 终端风格 */}
-              {item.alignment_metadata?.word_changes?.words && (
-                <div className="mt-1 text-[10px]">
-                  <div className="font-mono">
-                    <div className="grid grid-cols-10 text-gray-500 border-b border-gray-700 pb-1">
-                      <span className="col-span-1">序号</span>
-                      <span className="col-span-2 text-cyan-300">时间</span>
-                      <span className="col-span-3 text-gray-500">原词</span>
-                      <span className="col-span-3 text-green-300">对齐词</span>
-                      <span className="col-span-1"></span>
-                    </div>
-                    {item.alignment_metadata.word_changes.words.map((word: any, widx: number) => {
-                      const timeRange = word.time_range?.split('~');
-                      const startTime = timeRange?.[0] ? parseInt(timeRange[0], 10) : null;
-                      const isDifferent = word.original !== word.aligned;
-                      
-                      return (
-                        <div key={widx} className="grid grid-cols-10 items-center hover:bg-gray-800 border-b border-gray-900">
-                          <span className="col-span-1 text-gray-500">{widx}</span>
-                          <span className="col-span-2 text-cyan-300">{formatWordTime(word.time_range)}</span>
-                          <span className={`col-span-3 ${isDifferent ? 'text-red-400' : 'text-white'} truncate`} title={word.original}>
-                            {word.original !== null && word.original !== undefined ? word.original : '(空)'}
-                          </span>
-                          <span className={`col-span-3 ${isDifferent ? 'text-green-400' : 'text-white'} truncate`} title={word.aligned}>
-                            {word.aligned}
-                          </span>
-                          <span className="col-span-1 text-right">
-                            {audioUrl && startTime && (
-                              <button
-                                onClick={() => playAudio(startTime)}
-                                className="text-gray-500 hover:text-white"
-                                title="播放单词"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                                </svg>
-                              </button>
-                            )}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-} 
