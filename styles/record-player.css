@@ -1,0 +1,27 @@
+/* 可以放在你的全局CSS中或者作为独立文件引入 */
+@keyframes needlePlay {
+  from { transform: rotate(-55deg); }
+  to { transform: rotate(-30deg); }
+}
+
+@keyframes needlePause {
+  from { transform: rotate(-30deg); }
+  to { transform: rotate(-55deg); }
+}
+
+.needle-play {
+  animation: needlePlay 0.5s ease forwards;
+}
+
+.needle-pause {
+  animation: needlePause 0.5s ease forwards;
+}
+
+.record-spin {
+  animation: recordSpin 2s linear infinite;
+}
+
+@keyframes recordSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+} 

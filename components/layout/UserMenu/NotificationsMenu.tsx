@@ -49,7 +49,11 @@ export function NotificationsMenu() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="relative">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="relative h-10 w-10 rounded-full p-0 avatar-icon"
+          >
             <Bell className="h-4 w-4" />
             {unreadCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-red-500 text-[8px] font-medium text-white grid place-items-center leading-none">
@@ -58,14 +62,14 @@ export function NotificationsMenu() {
             )}
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-80">
+        <DropdownMenuContent align="end" className="dropdown-menu-content w-80">
           <div className="flex items-center justify-between px-4 py-2 border-b">
             <span className="text-sm font-medium">消息通知</span>
             {notifications.length > 0 && (
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-xs"
+                className="text-xs dropdown-menu-item"
                 onClick={() => markAllAsRead()}
               >
                 全部标为已读
@@ -86,14 +90,14 @@ export function NotificationsMenu() {
                 {paginatedNotifications.map((notification) => (
                   <DropdownMenuItem
                     key={notification.id}
-                    className="flex flex-col items-start gap-1 p-4 cursor-default hover:bg-orange-50/10 focus:bg-orange-50/10 group"
+                    className="flex flex-col items-start gap-1 p-4 cursor-default hover:bg-transparent notification-item"
                     onClick={() => {
                       markAsRead(notification.id);
                       setSelectedNotification(notification);
                     }}
                   >
                     <div className="flex items-center justify-between w-full">
-                      <span className="text-sm font-medium flex items-center gap-2 group-hover:text-orange-500 transition-colors">
+                      <span className="text-sm font-medium flex items-center gap-2 notification-title">
                         {notification.title}
                         {!notification.read && (
                           <span className="h-2 w-2 rounded-full bg-red-500" />
@@ -102,7 +106,7 @@ export function NotificationsMenu() {
                     </div>
                     <p className="text-sm text-muted-foreground line-clamp-2">{notification.message}</p>
                     <div className="flex items-center gap-2 w-full">
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground notification-date">
                         {formatDistanceToNow(notification.created_at, { 
                           addSuffix: true,
                           locale: zhCN 

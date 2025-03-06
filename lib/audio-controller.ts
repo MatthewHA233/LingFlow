@@ -20,6 +20,12 @@ export type PlayContext = 'main' | 'sentence' | 'alignment' | 'word';
 // 播放模式
 export type PlayMode = 'continuous' | 'sentence' | 'block' | 'none';
 
+// 添加 SpeechResult 接口
+interface SpeechResult {
+  id: string;
+  audio_url: string;
+}
+
 // 统一的时间格式 - 全部使用毫秒
 interface AudioState {
   url: string;                 // 当前音频URL
@@ -35,6 +41,8 @@ interface AudioState {
     start: number;             // 循环开始时间(毫秒)
     end: number;               // 循环结束时间(毫秒)
   };
+  // 添加新字段
+  speechId?: string;           // 当前播放的 speech_id
 }
 
 class AudioControllerClass {
@@ -61,6 +69,9 @@ class AudioControllerClass {
   
   private playbackTimeout: any = null;
   private isInitialized = false;
+  
+  // 添加缓存存储
+  private speechCache: Map<string, SpeechResult> = new Map();
   
   constructor() {
     // 检查是否在浏览器环境
@@ -226,73 +237,134 @@ class AudioControllerClass {
     }
   }
   
+  // 添加缓存方法
+  cacheSpeechResult(result: SpeechResult) {
+    this.speechCache.set(result.id, result);
+  }
+
+  // 获取缓存的音频URL
+  getCachedAudioUrl(speechId: string): string | undefined {
+    return this.speechCache.get(speechId)?.audio_url;
+  }
+  
   // 设置音频源
-  setSource(url: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (!this.audio) {
-        reject(new Error('音频控制器未初始化'));
-        return;
+  async setSource(url: string, speechId?: string): Promise<void> {
+    if (!this.audio) {
+      throw new Error('音频控制器未初始化');
+    }
+
+    // 如果提供了 speechId，先检查缓存
+    if (speechId) {
+      const cachedUrl = this.getCachedAudioUrl(speechId);
+      if (cachedUrl) {
+        url = cachedUrl;
       }
       
-      // 如果是同一URL，不需要重新加载
-      if (this.state.url === url) {
-        resolve();
-        return;
-      }
-      
-      // 先暂停当前播放
-      this.audio.pause();
-      
-      // 重置状态
-      this.updateState({
-        url,
-        isPlaying: false,
-        currentTime: 0,
-        loop: { active: false, start: 0, end: 0 }
+      // 缓存新的结果
+      this.cacheSpeechResult({
+        id: speechId,
+        audio_url: url
       });
-      
-      // 设置新源
-      this.audio.src = url;
-      this.audio.load();
-      
-      // 广播源变更事件
-      window.dispatchEvent(new CustomEvent(AUDIO_EVENTS.SOURCE_CHANGE, {
-        detail: { url }
-      }));
-      
-      // 加载完成后解析Promise
-      const handleCanPlay = () => {
-        this.audio?.removeEventListener('canplay', handleCanPlay);
-        resolve();
-      };
-      
-      const handleError = (e: ErrorEvent) => {
-        this.audio?.removeEventListener('error', handleError);
-        reject(new Error('加载音频失败'));
-      };
-      
-      this.audio.addEventListener('canplay', handleCanPlay);
-      this.audio.addEventListener('error', handleError);
+    }
+
+    // 如果是同一URL，不需要重新加载
+    if (this.state.url === url) {
+      return;
+    }
+
+    // 先暂停当前播放
+    this.audio.pause();
+    
+    // 重置状态
+    this.updateState({
+      url,
+      speechId,
+      isPlaying: false,
+      currentTime: 0,
+      loop: { active: false, start: 0, end: 0 }
     });
+    
+    // 设置新源
+    this.audio.src = url;
+    this.audio.load();
+    
+    // 广播源变更事件
+    window.dispatchEvent(new CustomEvent(AUDIO_EVENTS.SOURCE_CHANGE, {
+      detail: { url }
+    }));
+    
+    // 加载完成后解析Promise
+    const handleCanPlay = () => {
+      this.audio?.removeEventListener('canplay', handleCanPlay);
+    };
+    
+    const handleError = (e: ErrorEvent) => {
+      this.audio?.removeEventListener('error', handleError);
+      throw new Error('加载音频失败');
+    };
+    
+    this.audio.addEventListener('canplay', handleCanPlay);
+    this.audio.addEventListener('error', handleError);
   }
   
   // 播放音频
   async play(options: {
-    url?: string;                // 可选的音频URL
-    startTime?: number;          // 开始时间(毫秒)
-    endTime?: number;            // 结束时间(毫秒)
-    context?: PlayContext;       // 播放上下文
-    loop?: boolean;              // 是否循环播放
+    url?: string;
+    startTime?: number;
+    endTime?: number;
+    context?: PlayContext;
+    loop?: boolean;
+    speechId?: string;
+    onEnd?: () => void;  // 添加 onEnd 回调函数类型
   } = {}): Promise<void> {
-    // 确保在浏览器环境且已初始化
-    if (typeof window === 'undefined' || !this.audio) {
-      return Promise.resolve();
-    }
-    
     try {
-      // 如果提供了URL且与当前不同，先设置新源
-      if (options.url && options.url !== this.state.url) {
-        await this.setSource(options.url);
+      console.log('AudioController.play 被调用:', {
+        currentSpeechId: this.state.speechId,
+        newSpeechId: options.speechId,
+        url: options.url
+      });
+
+      // 检查 speech_id 是否变化
+      if (options.speechId && options.speechId !== this.state.speechId) {
+        console.log('检测到 speech_id 变化');
+        // 获取缓存的 URL
+        const cachedUrl = this.getCachedAudioUrl(options.speechId);
+        console.log('缓存的 URL:', cachedUrl);
+
+        if (cachedUrl) {
+          // 广播 speech_id 变化事件，让 UI 显示 toast
+          window.dispatchEvent(new CustomEvent('audio-switch-start', {
+            detail: { 
+              speechId: options.speechId,
+              audioUrl: cachedUrl
+            }
+          }));
+
+          // 暂停当前播放
+          this.pause();
+          
+          // 设置新的音频源
+          await this.setSource(cachedUrl, options.speechId);
+          
+          // 广播 speech_id 变化事件
+          window.dispatchEvent(new CustomEvent('speech-id-changed', {
+            detail: { 
+              speechId: options.speechId,
+              audioUrl: cachedUrl
+            }
+          }));
+        }
+      }
+
+      // 确保在浏览器环境且已初始化
+      if (typeof window === 'undefined' || !this.audio) {
+        return Promise.resolve();
+      }
+      
+      // 如果提供了URL且与当前不同，或者提供了新的speechId
+      if ((options.url && options.url !== this.state.url) || 
+          (options.speechId && options.speechId !== this.state.speechId)) {
+        await this.setSource(options.url || this.state.url, options.speechId);
       }
       
       // 设置上下文
@@ -326,6 +398,11 @@ class AudioControllerClass {
       // 开始播放
       await this.audio.play();
       this.updateState({ isPlaying: true });
+      
+      // 在播放结束时调用 onEnd
+      this.audio.addEventListener('ended', () => {
+        options.onEnd?.();
+      }, { once: true });  // 使用 once 确保只触发一次
       
       return Promise.resolve();
     } catch (error) {

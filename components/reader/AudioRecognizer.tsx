@@ -25,6 +25,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { cn } from '@/lib/utils';
+import { AudioController } from '@/lib/audio-controller';
 
 interface AudioRecognizerProps {
   bookContent: string;
@@ -77,6 +78,14 @@ export function AudioRecognizer({
 
         setSpeechResults(data || []);
         
+        // 缓存所有结果
+        data?.forEach(result => {
+          AudioController.cacheSpeechResult({
+            id: result.id,
+            audio_url: result.audio_url
+          });
+        });
+        
         // 如果有记录，自动选择最新的一条
         if (data && data.length > 0) {
           const latestResult = data[0];
@@ -110,6 +119,32 @@ export function AudioRecognizer({
     }
   }, [currentTime, onTimeChange]);
 
+  // 监听 speech_id 变化
+  useEffect(() => {
+    const handleSpeechIdChange = (e: CustomEvent) => {
+      console.log('收到 speech-id-changed 事件:', e.detail);
+      const { speechId, audioUrl } = e.detail;
+      
+      // 更新状态
+      setSpeechId(speechId);
+      setAudioUrl(audioUrl);
+      
+      // 查找对应的记录
+      const result = speechResults.find(r => r.id === speechId);
+      if (result) {
+        console.log('找到对应的历史记录:', result);
+        // 更新选中的历史记录
+        setStatus('completed');
+      }
+    };
+
+    window.addEventListener('speech-id-changed', handleSpeechIdChange as EventListener);
+    
+    return () => {
+      window.removeEventListener('speech-id-changed', handleSpeechIdChange as EventListener);
+    };
+  }, [speechResults]);
+
   // 处理音频切换
   const handleAudioChange = (resultId: string) => {
     const selectedResult = speechResults.find(r => r.id === resultId);
@@ -124,6 +159,11 @@ export function AudioRecognizer({
         onAudioUrlChange?.(selectedResult.audio_url);
         setSpeechId(selectedResult.id);
         setStatus('completed');
+        
+        // 触发自定义事件告知音频已加载
+        window.dispatchEvent(new CustomEvent('audio-metadata-loaded', { 
+          detail: { url: selectedResult.audio_url } 
+        }));
       }, 0);
     }
   };

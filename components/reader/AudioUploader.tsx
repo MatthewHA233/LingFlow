@@ -10,13 +10,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
+import { Dispatch, SetStateAction } from 'react';
 
-interface AudioUploaderProps {
+export interface AudioUploaderProps {
   bookId: string;
-  onUploadSuccess: (audioUrl: string, speechId: string) => void;
+  onUploadSuccess: (newAudioUrl: string, newSpeechId: string) => Promise<void>;
   onUploadError: (error: string) => void;
-  isOpen?: boolean;
-  onOpenChange?: (open: boolean) => void;
+  isOpen: boolean;
+  onOpenChange: Dispatch<SetStateAction<boolean>>;
+  isProcessing?: boolean;
 }
 
 export function AudioUploader({ bookId, onUploadSuccess, onUploadError, isOpen, onOpenChange }: AudioUploaderProps) {
@@ -128,8 +130,8 @@ export function AudioUploader({ bookId, onUploadSuccess, onUploadError, isOpen, 
             await new Promise(resolve => setTimeout(resolve, 2500));
             
             // 动画显示完毕后，再通知父组件
-            onUploadSuccess(uploadData.fileLink, speechResult.id);
-            setAudioFile(null);
+      onUploadSuccess(uploadData.fileLink, speechResult.id);
+      setAudioFile(null);
             
             // 恢复原来的关闭处理函数
             onOpenChange = originalOnOpenChange;
@@ -161,7 +163,7 @@ export function AudioUploader({ bookId, onUploadSuccess, onUploadError, isOpen, 
       } else if (error.message.includes('未登录')) {
         onUploadError('请先登录');
       } else {
-        onUploadError(error.message || '上传失败');
+      onUploadError(error.message || '上传失败');
       }
     } finally {
       if (status !== 'completed') {
@@ -178,7 +180,7 @@ export function AudioUploader({ bookId, onUploadSuccess, onUploadError, isOpen, 
     };
   }, []);
 
-  return (
+    return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
@@ -221,61 +223,61 @@ export function AudioUploader({ bookId, onUploadSuccess, onUploadError, isOpen, 
               className="w-full flex flex-col items-center gap-4 p-6 cursor-pointer"
             >
               <label className="w-full flex flex-col items-center gap-4 cursor-pointer">
-                <FileAudio className="h-8 w-8 text-primary" />
-                <span className="text-muted-foreground">点击或拖拽音频文件到此处</span>
-                <input
-                  type="file"
-                  className="hidden"
+        <FileAudio className="h-8 w-8 text-primary" />
+        <span className="text-muted-foreground">点击或拖拽音频文件到此处</span>
+        <input
+          type="file"
+          className="hidden"
                   accept="audio/mp3,audio/wav"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
                       if (file.size > 100 * 1024 * 1024) {
                         onUploadError('文件大小不能超过100MB');
                         return;
                       }
-                      setAudioFile(file);
-                    }
-                  }}
-                />
-              </label>
+              setAudioFile(file);
+            }
+          }}
+        />
+      </label>
             </HoverBorderGradient>
           ) : (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <FileAudio className="h-4 w-4" />
-                <span>{audioFile.name}</span>
-                <span className="text-xs">({(audioFile.size / (1024 * 1024)).toFixed(2)} MB)</span>
-              </div>
-              <div className="flex justify-between items-center gap-4">
-                <button
-                  className={`flex items-center gap-2 px-4 py-2 ${
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <FileAudio className="h-4 w-4" />
+        <span>{audioFile.name}</span>
+        <span className="text-xs">({(audioFile.size / (1024 * 1024)).toFixed(2)} MB)</span>
+      </div>
+      <div className="flex justify-between items-center gap-4">
+        <button
+          className={`flex items-center gap-2 px-4 py-2 ${
                     status === 'uploading' ? 'bg-primary/50 cursor-not-allowed' : 'bg-primary'
-                  } text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors`}
-                  onClick={handleUpload}
+          } text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors`}
+          onClick={handleUpload}
                   disabled={status === 'uploading'}
-                >
+        >
                   {status === 'uploading' ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
-                      <span>正在上传...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4" />
-                      <span>开始上传</span>
-                    </>
-                  )}
-                </button>
-                <button
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => setAudioFile(null)}
+            <>
+              <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+              <span>正在上传...</span>
+            </>
+          ) : (
+            <>
+              <Upload className="h-4 w-4" />
+              <span>开始上传</span>
+            </>
+          )}
+        </button>
+        <button
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          onClick={() => setAudioFile(null)}
                   disabled={status === 'uploading'}
-                >
-                  取消
-                </button>
-              </div>
-            </div>
+        >
+          取消
+        </button>
+      </div>
+    </div>
           )
         )}
       </DialogContent>

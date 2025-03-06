@@ -28,35 +28,18 @@ import {
 import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
 import { Upload } from 'lucide-react';
 import { AudioUploader } from './AudioUploader';
-
-
-export function formatWordTime(timeRange?: string) {
-  if (!timeRange) return '';
-
-  const [startMs, endMs] = timeRange.split('~').map(Number);
-  if (isNaN(startMs)) return '';
-
-  const format = (ms: number) => {
-     const totalSeconds = ms / 1000;
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    const formattedSeconds = seconds.toFixed(2);
-
-    const timeStr = hours > 0
-      ? `${hours}:${minutes.toString().padStart(2, '0')}:${formattedSeconds.padStart(5, '0')}`
-      : `${minutes}:${formattedSeconds.padStart(5, '0')}`;
-    return timeStr.replace('.', ':');
-  };
-
-  return endMs
-    ? `${format(startMs)} ~ ${format(endMs)}`
-    : format(startMs);
-}
+import { createPortal } from 'react-dom';
 
 interface ReaderContentProps {
   book: Book;
   arrayBuffer: ArrayBuffer;
+}
+
+interface WordHistoryItem {
+  word: string;
+  begin_time?: number;
+  end_time?: number;
+  original_word?: string;
 }
 
 export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
@@ -85,6 +68,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
   const [undoStatus, setUndoStatus] = useState('');
   const [isUndoing, setIsUndoing] = useState(false);
   const blockRefs = useRef<{[key: string]: HTMLDivElement | null}>({});
+  const [mounted, setMounted] = useState(false);
 
   // 添加块更新处理函数
   const handleBlockUpdate = async (blockId: string, newType: string, content: string) => {
@@ -670,7 +654,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
               setUndoStatus('正在准备新的单词数据...');
               const allNewWords = sentencesData?.flatMap(sentence => {
                 const wordHistory = sentence.alignment_metadata?.word_history || [];
-                return wordHistory.map(word => ({
+                return wordHistory.map((word: WordHistoryItem) => ({
                   id: crypto.randomUUID(),
                   sentence_id: sentence.id,
                   word: word.word,
@@ -1117,6 +1101,22 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     //错误逻辑
   };
 
+  // 检测客户端挂载
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // 预加载相邻章节
+  const preloadAdjacentChapters = (chapterIndex: number) => {
+    // 预加载前一章和后一章
+    if (chapterIndex > 0 && !contextBlocks[chapterIndex - 1]) {
+      loadContextBlocksForChapter(chapterIndex - 1);
+    }
+    if (chapterIndex < book.chapters.length - 1 && !contextBlocks[chapterIndex + 1]) {
+      loadContextBlocksForChapter(chapterIndex + 1);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* 阅读器导航栏 */}
@@ -1298,8 +1298,8 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
         </div>
       </div>
 
-      {/* 可拖拽音频播放器 */}
-      {audioUrl && (
+      {/* 修改唱片播放器渲染方式 - 使用Portal */}
+      {mounted && audioUrl && createPortal(
         <DraggableAudioPlayer
           key={audioUrl}
           bookId={book.id}
@@ -1307,7 +1307,8 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
           currentTime={currentTime}
           onTimeUpdate={setCurrentTime}
           passiveMode={true}
-        />
+        />,
+        document.body
       )}
 
       {/* 替换FloatingPanel为自定义悬浮窗 */}

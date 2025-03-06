@@ -50,14 +50,14 @@ export function UserMenu({ user }: UserMenuProps) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
-            <Avatar>
-              <AvatarFallback className="bg-primary/10 text-primary">
+            <Avatar className="avatar">
+              <AvatarFallback className="avatar-fallback">
                 {userInitial}
               </AvatarFallback>
             </Avatar>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuContent align="end" className="dropdown-menu-content w-56">
           <DropdownMenuLabel>
             <div className="flex flex-col space-y-1">
               <p className="text-sm font-medium leading-none">我的账号</p>
@@ -70,7 +70,7 @@ export function UserMenu({ user }: UserMenuProps) {
           <DropdownMenuItem asChild>
             <Link 
               href="/context-library/bookshelf"
-              className="w-full flex items-center cursor-pointer"
+              className="w-full flex items-center cursor-pointer dropdown-menu-item"
             >
               <BookOpen className="w-4 h-4 mr-2" />
               <span>我的书架</span>
@@ -79,7 +79,7 @@ export function UserMenu({ user }: UserMenuProps) {
           <DropdownMenuItem asChild>
             <Link 
               href="/settings"
-              className="w-full flex items-center cursor-pointer"
+              className="w-full flex items-center cursor-pointer dropdown-menu-item"
             >
               <Settings className="w-4 h-4 mr-2" />
               <span>账号设置</span>
@@ -89,7 +89,7 @@ export function UserMenu({ user }: UserMenuProps) {
           <DropdownMenuItem
             onClick={handleSignOut}
             disabled={isLoading}
-            className="text-red-500 focus:text-red-500 cursor-pointer"
+            className="text-red-500 focus:text-red-500 cursor-pointer dropdown-menu-item"
           >
             <LogOut className="w-4 h-4 mr-2" />
             <span>{isLoading ? '退出中...' : '退出登录'}</span>

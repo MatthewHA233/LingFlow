@@ -164,25 +164,69 @@
   z-index: 5;
 }
 
-/* 覆盖 SelectItem 的默认样式 */
-.select-content .select-item {
+/* Select容器样式 */
+.select-content {
+  background-color: hsl(270 35% 8% / 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid hsl(270 30% 20% / 0.5);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 4px;
+  border-radius: 8px;
+}
+
+/* 选择项基础样式 */
+.select-content .select-item,
+[role="option"] {
   position: relative;
-  padding-left: 8px !important; /* 移除左侧padding */
+  padding: 6px 12px;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  margin: 1px 0;
+  font-size: 0.75rem;
+  color: hsl(270 15% 80%);
+  background-color: transparent;
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
 }
 
-/* 完全隐藏默认的勾选图标 */
-[role="option"] svg {
-  display: none !important;
+/* 移除所有可能的勾勾图标 */
+.select-content .select-item svg,
+[role="option"] svg,
+.select-item-indicator,
+.select-content svg {
+  display: none;
 }
 
-/* 添加自定义的勾选图标到右侧 */
-.select-content .select-item[data-state='checked']::after {
-  content: '✓';
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
+/* 选项悬停状态 */
+.select-content .select-item:hover,
+[role="option"]:hover {
+  background-color: transparent;
+  border-color: hsl(var(--primary) / 0.3);
+  color: hsl(0 0% 100%);
+}
+
+/* 选中状态 */
+.select-content .select-item[data-state='checked'],
+[role="option"][aria-selected="true"] {
+  background-color: hsl(var(--primary) / 0.1);
+  border-color: hsl(var(--primary));
   color: hsl(var(--primary));
+}
+
+/* 选择框触发器样式 */
+.select-trigger {
+  border-color: hsl(270 30% 20% / 0.5);
+  background-color: transparent;
+  transition: all 0.2s ease;
+}
+
+.select-trigger:hover {
+  border-color: hsl(var(--primary) / 0.5);
+  background-color: transparent;
 }
 
 @keyframes zoom-in {
@@ -257,4 +301,116 @@
 
 .duration-500 {
   animation-duration: 500ms;
+}
+
+/* 用户头像样式优化 */
+.avatar {
+  border: 1px solid hsl(270 30% 25% / 0.5);
+  transition: all 0.2s ease;
+}
+
+.avatar:hover {
+  border-color: hsl(var(--primary) / 0.7);
+  transform: translateY(-1px);
+}
+
+/* 头像占位符的样式 */
+.avatar-fallback {
+  background: linear-gradient(135deg, hsl(270 40% 15%), hsl(270 35% 25%));
+  color: hsl(0 0% 100%);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+/* 下拉菜单内容样式 */
+.dropdown-menu-content {
+  background-color: hsl(270 35% 10% / 0.95) !important;
+  backdrop-filter: blur(8px) !important;
+  border: 1px solid hsl(270 30% 20% / 0.5) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25) !important;
+  padding: 6px !important;
+  margin-top: 8px !important;
+  border-radius: 8px !important;
+}
+
+/* 通知图标样式 - 更亮更鲜艳 */
+.avatar-icon {
+  border: 1px solid hsl(270 30% 25% / 0.5) !important;
+  transition: all 0.2s ease !important;
+  background-color: hsl(270 40% 15% / 0.5) !important;
+}
+
+.avatar-icon:hover {
+  border-color: hsl(var(--primary) / 0.7) !important;
+  transform: translateY(-1px) !important;
+  background-color: hsl(270 40% 18% / 0.7) !important;
+}
+
+/* 通知图标本身的颜色 */
+.avatar-icon svg {
+  color: hsl(270 15% 85%) !important;
+  transition: all 0.2s ease !important;
+}
+
+.avatar-icon:hover svg {
+  color: hsl(var(--primary)) !important;
+  filter: drop-shadow(0 0 2px hsl(var(--primary) / 0.3)) !important;
+}
+
+/* 下拉菜单项样式 */
+.dropdown-menu-item {
+  border-radius: 4px !important;
+  transition: all 0.15s ease !important;
+  font-size: 0.9rem !important;
+  border: 1px solid transparent !important;
+  background-color: transparent !important;
+}
+
+.dropdown-menu-item:hover {
+  background-color: hsl(var(--primary) / 0.1) !important;
+  border-color: hsl(var(--primary) / 0.3) !important;
+  color: hsl(var(--primary)) !important;
+  text-shadow: 0 0 8px hsl(var(--primary) / 0.3) !important;
+}
+
+/* 修复通知项样式 */
+.notification-item {
+  border-radius: 4px !important;
+  transition: all 0.15s ease !important;
+  border: 1px solid transparent !important;
+  margin-bottom: 2px !important;
+  background-color: transparent !important;
+}
+
+.notification-item:hover {
+  background-color: hsl(var(--primary) / 0.05) !important;
+  border-color: hsl(var(--primary) / 0.2) !important;
+}
+
+/* 通知项标题 */
+.notification-item .notification-title {
+  transition: all 0.15s ease !important;
+}
+
+.notification-item:hover .notification-title {
+  color: hsl(var(--primary)) !important;
+  text-shadow: 0 0 8px hsl(var(--primary) / 0.2) !important;
+}
+
+/* 通知项内容 */
+.notification-item:hover p {
+  color: hsl(270 15% 90%) !important;
+}
+
+/* 通知项日期 */
+.notification-item:hover .notification-date {
+  color: hsl(var(--primary) / 0.8) !important;
+}
+
+/* 修复类型标签样式 */
+.notification-type-badge {
+  padding: 2px 6px !important;
+  border-radius: 9999px !important;
+  font-size: 0.65rem !important;
+  font-weight: 500 !important;
 }

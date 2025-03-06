@@ -22,7 +22,7 @@ interface ContentBlockProps {
   onBlockUpdate?: (blockId: string, newType: string, content: string) => void;
   onOrderChange?: (draggedId: string, droppedId: string, position: 'before' | 'after') => void;
   isSelected?: boolean;
-  onSelect?: (blockId: string, event: React.MouseEvent) => void;
+  onSelect?: (blockId: string | null, event: React.MouseEvent) => void;
   audioUrl?: string;
   onTimeChange?: (time: number) => void;
   isAligning?: boolean;
@@ -72,6 +72,7 @@ export function ContentBlock({
   const [showAlignmentPanel, setShowAlignmentPanel] = useState(false);
   const [showSplitView, setShowSplitView] = useState(false);
   const [sentences, setSentences] = useState<any[]>([]);
+  const [blockSpeechId, setBlockSpeechId] = useState<string | undefined>(block.speech_id);
   
   const blockRef = useRef<HTMLDivElement>(null);
   const contentEditableRef = useRef<HTMLDivElement>(null);
@@ -149,7 +150,7 @@ export function ContentBlock({
 
   // 完全重写的playSentence函数
   const playSentence = useCallback((sentence: any, index: number) => {
-    console.log('播放句子', index, sentence);
+    console.log('播放句子，当前 speech_id:', blockSpeechId);
     
     // 如果点击当前播放的句子，则停止播放
     if (activeIndex === index && isPlaying) {
@@ -196,6 +197,7 @@ export function ContentBlock({
       endTime: endTime,
       context: 'sentence',
       loop: false,
+      speechId: blockSpeechId,
       onEnd: () => {
           // 在句子播放结束时执行的操作，例如清除高亮
           setActiveIndex(null);
@@ -206,7 +208,7 @@ export function ContentBlock({
     
     // 更新父组件时间
     onTimeChange?.(beginTime);
-  }, [activeIndex, isPlaying, audioUrl, block.id, onTimeChange]);
+  }, [activeIndex, isPlaying, audioUrl, block.id, onTimeChange, blockSpeechId]);
 
   // 更新引用
   useEffect(() => {
@@ -306,7 +308,7 @@ export function ContentBlock({
     return () => {
       window.removeEventListener(AUDIO_EVENTS.TIME_UPDATE, handleTimeUpdate as EventListener);
     };
-  }, [activeIndex, isPlaying, embeddedSentences, getSentenceIdsFromContent, activeBlockId, block.id, onSelect, currentAudioTime]);
+  }, [activeIndex, isPlaying, embeddedSentences, getSentenceIdsFromContent, activeBlockId, block.id, onSelect, currentAudioTime, blockSpeechId]);
 
   // 2. 然后是其他函数和useEffect，保持原有顺序
   const parseAndLoadEmbeddedSentences = useCallback(async () => {
@@ -396,6 +398,32 @@ export function ContentBlock({
       return () => clearTimeout(timer);
     }
   }, [localAligning, block.id, onAlignmentComplete, parseAndLoadEmbeddedSentences]);
+
+  // 加载 context_blocks 数据
+  useEffect(() => {
+    async function loadContextBlock() {
+      if (block.block_type === 'audio_aligned') {
+        try {
+          console.log('开始加载语境块数据:', block.id);
+          const { data, error } = await supabase
+            .from('context_blocks')
+            .select('speech_id')
+            .eq('id', block.id)
+            .single();
+
+          if (error) throw error;
+          if (data?.speech_id) {
+            console.log('获取到语境块 speech_id:', data.speech_id);
+            setBlockSpeechId(data.speech_id);
+          }
+        } catch (err) {
+          console.error('加载语境块数据失败:', err);
+        }
+      }
+    }
+
+    loadContextBlock();
+  }, [block.id, block.block_type]);
 
   // 处理块点击事件
   const handleClick = (e: React.MouseEvent) => {
@@ -599,6 +627,7 @@ export function ContentBlock({
         endTime: endTime,
         context: 'word',
         loop: false,
+        speechId: blockSpeechId,
         onEnd: () => {
             // 单词播放结束后的操作
             setActiveWordId(null);
@@ -613,7 +642,7 @@ export function ContentBlock({
         isClicking.current = false;
       }, 100);
     }
-  }, [audioUrl, blockId, block.id, embeddedSentences, getSentenceIdsFromContent, onTimeChange]);
+  }, [audioUrl, blockId, block.id, embeddedSentences, getSentenceIdsFromContent, onTimeChange, blockSpeechId]);
 
   // 修改renderSentenceWithWords函数，区分单词高亮和句子高亮
   const renderSentenceWithWords = (sentence: any, sentenceIndex: number) => {
@@ -1019,6 +1048,22 @@ export function ContentBlock({
 
   // 使用 isBlockActive 来区分 prop 中的 isSelected
   const isBlockActive = activeBlockId === block.id;
+
+  // 在组件顶部添加事件监听
+  useEffect(() => {
+    const handleAudioSwitch = (e: CustomEvent) => {
+      toast("检测到不同音频，停顿跳转中", {
+        duration: 2000,  // 显示2秒
+        className: "bg-primary/10",  // 可选：自定义样式
+      });
+    };
+
+    window.addEventListener('audio-switch-start', handleAudioSwitch as EventListener);
+    
+    return () => {
+      window.removeEventListener('audio-switch-start', handleAudioSwitch as EventListener);
+    };
+  }, []);
 
   return (
     <div
