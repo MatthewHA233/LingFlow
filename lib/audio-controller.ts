@@ -237,9 +237,35 @@ class AudioControllerClass {
     }
   }
   
-  // 添加缓存方法
-  cacheSpeechResult(result: SpeechResult) {
+  // 添加预加载方法
+  async preloadAudio(url: string): Promise<void> {
+    if (!url) return;
+    
+    try {
+      // 创建一个临时的 Audio 元素来预加载
+      const tempAudio = new Audio();
+      tempAudio.preload = 'auto';
+      tempAudio.src = url;
+      
+      // 等待加载元数据
+      await new Promise((resolve) => {
+        tempAudio.addEventListener('loadedmetadata', resolve, { once: true });
+      });
+      
+      console.log('音频预加载完成:', url);
+    } catch (err) {
+      console.error('音频预加载失败:', err);
+    }
+  }
+
+  // 修改缓存方法，添加预加载
+  async cacheSpeechResult(result: SpeechResult) {
     this.speechCache.set(result.id, result);
+    
+    // 如果URL存在，预加载音频
+    if (result.audio_url) {
+      await this.preloadAudio(result.audio_url);
+    }
   }
 
   // 获取缓存的音频URL
@@ -315,47 +341,19 @@ class AudioControllerClass {
     context?: PlayContext;
     loop?: boolean;
     speechId?: string;
-    onEnd?: () => void;  // 添加 onEnd 回调函数类型
+    onEnd?: () => void;
   } = {}): Promise<void> {
     try {
-      console.log('AudioController.play 被调用:', {
-        currentSpeechId: this.state.speechId,
-        newSpeechId: options.speechId,
-        url: options.url
-      });
-
-      // 检查 speech_id 是否变化
+      // 检查是否需要切换音频
       if (options.speechId && options.speechId !== this.state.speechId) {
-        console.log('检测到 speech_id 变化');
-        // 获取缓存的 URL
         const cachedUrl = this.getCachedAudioUrl(options.speechId);
-        console.log('缓存的 URL:', cachedUrl);
-
+        
         if (cachedUrl) {
-          // 广播 speech_id 变化事件，让 UI 显示 toast
-          window.dispatchEvent(new CustomEvent('audio-switch-start', {
-            detail: { 
-              speechId: options.speechId,
-              audioUrl: cachedUrl
-            }
-          }));
-
-          // 暂停当前播放
-          this.pause();
-          
-          // 设置新的音频源
+          // 如果已经预加载过，切换会更快
           await this.setSource(cachedUrl, options.speechId);
-          
-          // 广播 speech_id 变化事件
-          window.dispatchEvent(new CustomEvent('speech-id-changed', {
-            detail: { 
-              speechId: options.speechId,
-              audioUrl: cachedUrl
-            }
-          }));
         }
       }
-
+      
       // 确保在浏览器环境且已初始化
       if (typeof window === 'undefined' || !this.audio) {
         return Promise.resolve();
