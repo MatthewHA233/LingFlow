@@ -69,6 +69,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
   const [isUndoing, setIsUndoing] = useState(false);
   const blockRefs = useRef<{[key: string]: HTMLDivElement | null}>({});
   const [mounted, setMounted] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   // 添加块更新处理函数
   const handleBlockUpdate = async (blockId: string, newType: string, content: string) => {
@@ -185,7 +186,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     }
   };
 
-  // 一次性加载所有章节的 parent_id
+  // 修改 loadAllParentIds 函数，让它返回 parentIds
   async function loadAllParentIds() {
     try {
       console.log('当前book对象:', book);
@@ -199,12 +200,12 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
 
       if (error) {
         console.error('加载章节父级ID失败:', error);
-        return;
+        return null;
       }
 
       if (!data || data.length === 0) {
         console.error('未找到任何章节数据，book.id:', book.id);
-        return;
+        return null;
       }
 
       console.log('加载到的章节数据:', data);
@@ -214,15 +215,92 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
         return acc;
       }, {});
 
-      setParentIds(idMap);
-      console.log('设置的parentIds:', idMap);
+      console.log('生成的parentIds:', idMap);
+      return idMap;
     } catch (err) {
       console.error('加载章节父级ID失败:', err);
+      return null;
     }
   }
 
+  // 修改 loadContextBlocksForChapter 函数，添加 parentId 参数
+  const loadContextBlocksForChapter = async (chapterIndex: number, parentId: string) => {
+    console.log(`开始加载章节 ${chapterIndex} 的内容，parentId: ${parentId}`);
+    
+    try {
+      setLoading(true);
+      
+      const { data: blocks, error: blocksError } = await supabase
+        .from('context_blocks')
+        .select('*')
+        .eq('parent_id', parentId)
+        .order('order_index');
+
+      if (blocksError) throw blocksError;
+
+      if (blocks && blocks.length > 0) {
+        // 先预加载音频
+        const firstAudioBlock = blocks.find(block => block.block_type === 'audio_aligned');
+        if (firstAudioBlock?.speech_id) {
+          console.log('正在预加载章节音频:', firstAudioBlock.speech_id);
+          
+          const { data: audioData } = await supabase
+            .from('speech_results')
+            .select('audio_url')
+            .eq('id', firstAudioBlock.speech_id)
+            .single();
+            
+          if (audioData?.audio_url) {
+            await AudioController.cacheSpeechResult({
+              id: firstAudioBlock.speech_id,
+              audio_url: audioData.audio_url
+            });
+            
+            if (chapterIndex === currentChapter) {
+              setAudioUrl(audioData.audio_url);
+            }
+          }
+        }
+
+        setContextBlocks(prev => ({
+          ...prev,
+          [chapterIndex]: blocks
+        }));
+      }
+    } catch (err) {
+      console.error('加载章节内容失败:', err);
+      toast.error('加载失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 修改初始化逻辑
   useEffect(() => {
-    loadAllParentIds();
+    async function initializeReader() {
+      try {
+        setInitialLoading(true);
+        // 先加载并获取 parentIds
+        const idMap = await loadAllParentIds();
+        if (!idMap) {
+          toast.error('加载章节信息失败');
+          return;
+        }
+        
+        // 设置 parentIds 状态
+        setParentIds(idMap);
+        
+        // 使用获取到的 parentId 加载第一章内容
+        const firstChapterParentId = idMap[0];
+        if (firstChapterParentId) {
+          await loadContextBlocksForChapter(0, firstChapterParentId);
+        }
+      } finally {
+        setInitialLoading(false);
+      }
+    }
+
+    initializeReader();
   }, [book.id]);
 
   // 加载资源信息(只加载一次)
@@ -264,60 +342,6 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     console.log('当前章节的块:', contextBlocks[currentChapter]);
   }, [contextBlocks, currentChapter]);
 
-  // 修改加载章节内容的函数
-  const loadContextBlocksForChapter = async (chapterIndex: number) => {
-    console.log(`开始加载章节 ${chapterIndex} 的内容`);
-    
-    try {
-      setLoading(true);
-      
-      const { data: blocks, error: blocksError } = await supabase
-        .from('context_blocks')
-        .select('*')
-        .eq('parent_id', parentIds[chapterIndex])
-        .order('order_index');
-
-      if (blocksError) throw blocksError;
-
-      if (blocks && blocks.length > 0) {
-        // 先预加载音频
-        const firstAudioBlock = blocks.find(block => block.block_type === 'audio_aligned');
-        if (firstAudioBlock?.speech_id) {
-          console.log('正在预加载章节音频:', firstAudioBlock.speech_id);
-          
-          const { data: audioData } = await supabase
-            .from('speech_results')
-            .select('audio_url')
-            .eq('id', firstAudioBlock.speech_id)
-            .single();
-            
-          if (audioData?.audio_url) {
-            await AudioController.cacheSpeechResult({
-              id: firstAudioBlock.speech_id,
-              audio_url: audioData.audio_url
-            });
-            
-            // 如果是当前章节，直接设置音频URL
-            if (chapterIndex === currentChapter) {
-              setAudioUrl(audioData.audio_url);
-            }
-          }
-        }
-
-        // 再更新blocks状态
-        setContextBlocks(prev => ({
-          ...prev,
-          [chapterIndex]: blocks
-        }));
-      }
-    } catch (err) {
-      console.error('加载章节内容失败:', err);
-      toast.error('加载失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // 添加预加载相邻章节的函数
   const preloadAdjacentChapters = async (currentIndex: number) => {
     const chaptersToPreload = [
@@ -328,7 +352,10 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     for (const chapterIndex of chaptersToPreload) {
       if (!contextBlocks[chapterIndex]) {
         console.log(`预加载相邻章节 ${chapterIndex}`);
-        await loadContextBlocksForChapter(chapterIndex);
+        const parentId = parentIds[chapterIndex];
+        if (parentId) {
+          await loadContextBlocksForChapter(chapterIndex, parentId);
+        }
       }
     }
   };
@@ -337,9 +364,16 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
   const handleChapterChange = async (newChapter: number) => {
     console.log(`切换到章节 ${newChapter}`);
     
+    const parentId = parentIds[newChapter];
+    if (!parentId) {
+      console.error(`未找到章节 ${newChapter} 的 parentId`);
+      toast.error('切换章节失败');
+      return;
+    }
+    
     // 如果没有该章节的数据，先加载
     if (!contextBlocks[newChapter]) {
-      await loadContextBlocksForChapter(newChapter);
+      await loadContextBlocksForChapter(newChapter, parentId);
     } else {
       // 如果已有数据，检查是否需要预加载音频
       const blocks = contextBlocks[newChapter];
@@ -892,8 +926,16 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
   );
 
   const renderBlocks = () => {
+    if (initialLoading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      );
+    }
+
     if (!contextBlocks[currentChapter]) {
-      return <div className="p-4 text-muted-foreground">无内容</div>;
+      return <div className="p-4 text-muted-foreground">该章节暂无内容</div>;
     }
 
     const blocks = contextBlocks[currentChapter];
