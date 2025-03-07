@@ -495,7 +495,7 @@ export function DraggableAudioPlayer({
     AudioController.setPlayMode(modes[nextIndex]);
     
     // 修复toast消息中的文本重复问题
-    toast.success(`切换到${modes[nextIndex] === 'continuous' ? '顺序播放' : 
+    toast.success(`已切换到${modes[nextIndex] === 'continuous' ? '顺序播放' : 
       modes[nextIndex] === 'sentence' ? '句子循环' : '语境块循环'}`);
   };
 
