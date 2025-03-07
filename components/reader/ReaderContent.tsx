@@ -5,7 +5,7 @@ import { AudioRecognizer } from './AudioRecognizer';
 import { DraggableAudioPlayer } from './DraggableAudioPlayer';
 import { Book } from '@/types/book';
 import { supabase } from '@/lib/supabase-client';
-import { X, Mic, Menu, ChevronLeft, ChevronRight, Info, Undo } from 'lucide-react';
+import { X, Mic, Menu, ChevronLeft, ChevronRight, Info, Undo, Pause, Play } from 'lucide-react';
 import { ContentBlock } from './ContentBlock';
 import { toast } from 'sonner';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -70,6 +70,8 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
   const blockRefs = useRef<{[key: string]: HTMLDivElement | null}>({});
   const [mounted, setMounted] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+  const [showVinyl, setShowVinyl] = useState<boolean>(true);
 
   // 添加块更新处理函数
   const handleBlockUpdate = async (blockId: string, newType: string, content: string) => {
@@ -287,14 +289,21 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
           return;
         }
         
-        // 设置 parentIds 状态
-        setParentIds(idMap);
+        // 设置 parentIds 状态并等待状态更新完成
+        await new Promise<void>(resolve => {
+          setParentIds(idMap);
+          // 使用 setTimeout 确保状态已更新
+          setTimeout(resolve, 0);
+        });
         
         // 使用获取到的 parentId 加载第一章内容
         const firstChapterParentId = idMap[0];
         if (firstChapterParentId) {
           await loadContextBlocksForChapter(0, firstChapterParentId);
         }
+      } catch (err) {
+        console.error('初始化失败:', err);
+        toast.error('加载失败');
       } finally {
         setInitialLoading(false);
       }
@@ -1147,62 +1156,125 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     setMounted(true);
   }, []);
 
+  // 检测设备类型
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768); // 768px是常用的移动设备断点
+    };
+    
+    // 初始检测
+    checkMobile();
+    
+    // 监听窗口大小变化
+    window.addEventListener('resize', checkMobile);
+    
+    return () => {
+      window.removeEventListener('resize', checkMobile);
+    };
+  }, []);
+
+  // 保存唱片显示状态到 localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('reader_show_vinyl', showVinyl.toString());
+    }
+  }, [showVinyl]);
+
+  // 初始化时从 localStorage 读取状态
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedShowVinyl = localStorage.getItem('reader_show_vinyl');
+      if (savedShowVinyl !== null) {
+        setShowVinyl(savedShowVinyl === 'true');
+      }
+    }
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      {/* 阅读器导航栏 */}
-      <div className="fixed top-16 left-0 right-0 h-12 border-b bg-card/95 backdrop-blur flex items-center px-4 z-40">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowToc(!showToc)}
-            className={`p-1.5 hover:bg-accent rounded-md transition-colors ${
-              showToc ? 'bg-accent/30' : ''
-            }`}
-          >
-            <Menu className="w-4 h-4" />
-          </button>
-          <div className="flex items-center gap-1">
+      {/* 阅读器导航栏 - 调整布局 */}
+      <div 
+        className="fixed left-0 right-0 h-12 border-b bg-card/95 backdrop-blur flex items-center px-4 z-40"
+        style={{ 
+          top: isMobile ? '3rem' : '3.5rem'
+        }}
+      >
+        {/* 重新组织导航栏布局 */}
+        <div className="flex-1 flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => handleChapterChange(Math.max(0, currentChapter - 1))}
-              disabled={currentChapter === 0}
-              className="p-1.5 hover:bg-accent rounded-md disabled:opacity-50"
+              onClick={() => setShowToc(!showToc)}
+              className={`p-1.5 hover:bg-accent rounded-md transition-colors ${
+                showToc ? 'bg-accent/30' : ''
+              }`}
             >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => handleChapterChange(Math.min(book.chapters.length - 1, currentChapter + 1))}
-              disabled={currentChapter === book.chapters.length - 1}
-              className="p-1.5 hover:bg-accent rounded-md disabled:opacity-50"
-            >
-              <ChevronRight className="w-4 h-4" />
+              <Menu className="w-4 h-4" />
             </button>
           </div>
-        </div>
-        <div className="flex-1 px-4">
-          <div className="text-center">
-            <h1 className="text-base font-semibold truncate">{book.title}</h1>
-            <h2 className="text-sm text-muted-foreground truncate">
-              {book.chapters[currentChapter]?.title}
-            </h2>
-          </div>
-        </div>
-        <button
-          onClick={() => setShowAudioPanel(!showAudioPanel)}
-          className={`p-1.5 hover:bg-accent/50 rounded-md transition-colors relative ${
-            showAudioPanel ? 'bg-accent/30' : ''
-          }`}
-          title="音频处理"
-        >
-          <Mic className={`w-4 h-4 transition-colors ${
-            showAudioPanel ? 'text-primary/80' : ''
-          }`} />
-          {audioUrl && (
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-primary rounded-full" />
+
+          {/* 章节导航 - 移动设备上使用新的布局 */}
+          {isMobile ? (
+            <div className="flex items-center justify-between flex-1 px-4">
+              <button
+                onClick={() => handleChapterChange(Math.max(0, currentChapter - 1))}
+                disabled={currentChapter === 0}
+                className="p-1.5 hover:bg-accent rounded-md disabled:opacity-50"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <div className="flex flex-col items-center flex-1">
+                <h1 className="text-base font-semibold truncate text-center">{book.title}</h1>
+                <h2 className="text-sm text-muted-foreground truncate text-center">
+                  {book.chapters[currentChapter]?.title}
+                </h2>
+              </div>
+
+              <button
+                onClick={() => handleChapterChange(Math.min(book.chapters.length - 1, currentChapter + 1))}
+                disabled={currentChapter === book.chapters.length - 1}
+                className="p-1.5 hover:bg-accent rounded-md disabled:opacity-50"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            // 桌面端保持原有布局
+            <div className="flex-1 px-4">
+              <div className="text-center">
+                <h1 className="text-base font-semibold truncate">{book.title}</h1>
+                <h2 className="text-sm text-muted-foreground truncate">
+                  {book.chapters[currentChapter]?.title}
+                </h2>
+              </div>
+            </div>
           )}
-        </button>
+
+          {/* 音频处理按钮 */}
+          <button
+            onClick={() => setShowAudioPanel(!showAudioPanel)}
+            className={`p-1.5 hover:bg-accent/50 rounded-md transition-colors relative ${
+              showAudioPanel ? 'bg-accent/30' : ''
+            } ${isMobile ? 'hidden' : ''}`}
+            title="音频处理"
+          >
+            <Mic className={`w-4 h-4 transition-colors ${
+              showAudioPanel ? 'text-primary/80' : ''
+            }`} />
+            {audioUrl && (
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-primary rounded-full" />
+            )}
+          </button>
+        </div>
       </div>
 
-      {/* 主要内容区域 */}
-      <div className="flex-1 pt-28 pb-16">
+      {/* 主要内容区域 - 根据设备类型调整顶部内边距 */}
+      <div 
+        className="flex-1 pb-16"
+        style={{ 
+          paddingTop: isMobile ? '3.75rem' : '4rem' // 移动设备上更小的顶部内边距
+        }}
+      >
         <div className="max-w-3xl mx-auto px-4">
           {loading ? (
             <div className="flex items-center justify-center py-12">
@@ -1216,7 +1288,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
 
       {/* 目录侧边栏 */}
       <div className={`
-        fixed left-0 top-28 w-64 h-[calc(100vh-7rem)]
+        fixed left-0 top-[calc(3rem+var(--reader-nav-height,3rem))] h-[calc(100vh-6rem)]
         transform transition-all duration-300 ease-in-out border-r shadow-lg z-30
         bg-card/95 backdrop-blur
         ${showToc ? 'translate-x-0' : '-translate-x-full'}
@@ -1251,85 +1323,128 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
       {/* 音频处理抽屉面板 */}
       <div
         className={`
-          fixed right-0 top-28 w-[400px] h-[calc(100vh-7rem)]
-          transform transition-all duration-300 ease-in-out
+          fixed right-0 transform transition-all duration-300 ease-in-out
           bg-card/95 backdrop-blur border-l shadow-lg z-30
-          ${showAudioPanel ? 'translate-x-0' : 'translate-x-full'}
           group
+          ${isMobile 
+            ? `bottom-0 left-0 h-72 w-full border-t translate-y-${showAudioPanel ? '0' : 'full'}` 
+            : `top-[calc(3rem+3rem-1.5px)] h-[calc(100vh-6rem+1.5px)] w-[400px] ${showAudioPanel ? 'translate-x-0' : 'translate-x-full'}`
+          }
         `}
       >
-        {/* 拖拽调整宽度的把手 */}
-        <div
-          className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-primary/20 group-hover:bg-primary/10"
-          onMouseDown={(e) => {
-            const panel = e.currentTarget.parentElement;
-            if (!panel) return;
-
-            const startX = e.pageX;
-            const startWidth = panel.offsetWidth;
-
-            const handleMouseMove = (moveEvent: MouseEvent) => {
-              const deltaX = moveEvent.pageX - startX;
-              const newWidth = Math.max(300, Math.min(800, startWidth - deltaX));
-              panel.style.width = `${newWidth}px`;
-            };
-
-            const handleMouseUp = () => {
-              document.removeEventListener('mousemove', handleMouseMove);
-              document.removeEventListener('mouseup', handleMouseUp);
-            };
-
-            document.addEventListener('mousemove', handleMouseMove);
-            document.addEventListener('mouseup', handleMouseUp);
-          }}
-        />
-
-        {/* 音频处理区域 - 标题栏 */}
-        <div className="flex flex-col h-full">
-          <div className="p-2 border-b bg-card/95 backdrop-blur sticky top-0 z-30">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1">
-                <Mic className="w-4 h-4 text-primary/80" />
-                <h2 className="text-sm font-medium">音频处理</h2>
-              </div>
-
-              {/* 上传按钮 - 只在有历史记录时显示 */}
-              {audioUrl && (
-                <>
-                  <HoverBorderGradient
-                    containerClassName="rounded-md"
-                    className="flex items-center gap-1.5 text-xs px-2 py-1 hover:bg-accent/50 transition-colors"
-                    onClick={() => setIsUploadDialogOpen(true)}
-                  >
-                    <Upload className="w-3 h-3" />
-                    <span>上传音频</span>
-                  </HoverBorderGradient>
-
-                  <AudioUploader
-                    bookId={book.id}
-                    onUploadSuccess={handleUploadSuccess}
-                    onUploadError={handleUploadError}
-                    isOpen={isUploadDialogOpen}
-                    onOpenChange={setIsUploadDialogOpen}
-                    isProcessing={status === 'processing'}
-                  />
-                </>
-              )}
+        {/* 调整标题栏在移动设备上的显示 */}
+        <div className="p-2 border-b bg-card/95 backdrop-blur sticky top-0 z-30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1">
+              <Mic className="w-4 h-4 text-primary/80" />
+              <h2 className="text-sm font-medium">音频处理</h2>
             </div>
-          </div>
-          <div className="flex-1 overflow-y-hidden p-2">
-            <AudioRecognizer
-              bookContent={book.chapters[currentChapter]?.content || ''}
-              bookId={book.id}
-              onAudioUrlChange={setAudioUrl}
-              onTimeChange={setCurrentTime}
-            />
+
+            {/* 移动设备关闭按钮 - 调整样式 */}
+            {isMobile && (
+              <button 
+                onClick={() => setShowAudioPanel(false)}
+                className="p-1 hover:bg-accent/50 rounded-md flex items-center justify-center"
+              >
+                <X className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
+              </button>
+            )}
+
+            {/* 上传按钮 - 只在有历史记录时显示 */}
+            {audioUrl && (
+              <>
+                <HoverBorderGradient
+                  containerClassName="rounded-md"
+                  className="flex items-center gap-1.5 text-xs px-2 py-1 hover:bg-accent/50 transition-colors"
+                  onClick={() => setIsUploadDialogOpen(true)}
+                >
+                  <Upload className="w-3 h-3" />
+                  <span>上传音频</span>
+                </HoverBorderGradient>
+
+                <AudioUploader
+                  bookId={book.id}
+                  onUploadSuccess={handleUploadSuccess}
+                  onUploadError={handleUploadError}
+                  isOpen={isUploadDialogOpen}
+                  onOpenChange={setIsUploadDialogOpen}
+                  isProcessing={status === 'processing'}
+                />
+              </>
+            )}
           </div>
         </div>
+
+        {/* 为移动设备调整内容区域的样式 */}
+        <div className={`${isMobile ? 'h-[calc(100%-40px)]' : 'flex-1'} overflow-y-auto p-2`}>
+          <AudioRecognizer
+            bookContent={book.chapters[currentChapter]?.content || ''}
+            bookId={book.id}
+            onAudioUrlChange={setAudioUrl}
+            onTimeChange={setCurrentTime}
+          />
+        </div>
+
+        {/* 移动设备底部显示时的把手 */}
+        {isMobile && (
+          <div 
+            className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent cursor-ns-resize"
+            onTouchStart={(e) => {
+              // 添加拖拽调整高度逻辑
+              const panel = e.currentTarget.parentElement;
+              if (!panel) return;
+              
+              const startY = e.touches[0].clientY;
+              const startHeight = panel.offsetHeight;
+              
+              const handleTouchMove = (moveEvent: TouchEvent) => {
+                const deltaY = startY - moveEvent.touches[0].clientY;
+                const newHeight = Math.min(window.innerHeight * 0.7, Math.max(200, startHeight + deltaY));
+                panel.style.height = `${newHeight}px`;
+              };
+              
+              const handleTouchEnd = () => {
+                document.removeEventListener('touchmove', handleTouchMove as any);
+                document.removeEventListener('touchend', handleTouchEnd as any);
+              };
+              
+              document.addEventListener('touchmove', handleTouchMove as any);
+              document.addEventListener('touchend', handleTouchEnd as any);
+            }}
+          />
+        )}
+
+        {/* 桌面端的宽度调整把手 - 只在非移动设备显示 */}
+        {!isMobile && (
+          <div
+            className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-primary/20 group-hover:bg-primary/10"
+            onMouseDown={(e) => {
+              const panel = e.currentTarget.parentElement;
+              if (!panel) return;
+
+              const startX = e.pageX;
+              const startWidth = panel.offsetWidth;
+
+              const handleMouseMove = (moveEvent: MouseEvent) => {
+                const deltaX = moveEvent.pageX - startX;
+                const newWidth = Math.max(300, Math.min(800, startWidth - deltaX));
+                panel.style.width = `${newWidth}px`;
+              };
+
+              const handleMouseUp = () => {
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+              };
+
+              document.addEventListener('mousemove', handleMouseMove);
+              document.addEventListener('mouseup', handleMouseUp);
+            }}
+          />
+        )}
       </div>
 
-      {/* 修改唱片播放器渲染方式 - 使用Portal */}
-      {mounted && audioUrl && createPortal(
+      {/* 修改唱片播放器渲染方式 - 使用Portal并添加显示控制 */}
+      {mounted && audioUrl && showVinyl && createPortal(
         <DraggableAudioPlayer
           key={audioUrl}
           bookId={book.id}
@@ -1379,6 +1494,62 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
           });
         `
       }} />
+
+      {/* 移动设备底部音频控制按钮 */}
+      {isMobile && audioUrl && !showAudioPanel && (
+        <div className="fixed bottom-0 left-0 right-0 h-12 bg-card/95 backdrop-blur border-t flex items-center gap-2 px-4 z-30">
+          {/* 音频处理按钮 */}
+          <button
+            onClick={() => setShowAudioPanel(true)}
+            className="w-8 h-8 rounded-full bg-primary/10 hover:bg-primary/20 flex items-center justify-center relative"
+          >
+            <Mic className="w-4 h-4 text-primary/80" />
+            {audioUrl && (
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-primary rounded-full" />
+            )}
+          </button>
+          
+          {/* 播放/暂停按钮 */}
+          <button 
+            className="w-8 h-8 rounded-full bg-accent/10 hover:bg-accent/20 flex items-center justify-center"
+            onClick={() => {
+              if (AudioController.isPlaying) {
+                AudioController.pause();
+              } else {
+                AudioController.play({
+                  url: audioUrl,
+                  context: 'main'
+                });
+              }
+            }}
+          >
+            {AudioController.isPlaying ? (
+              <Pause className="w-4 h-4" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+          </button>
+          
+          {/* 唱片显示/隐藏按钮 */}
+          <button 
+            className="w-8 h-8 rounded-full bg-accent/10 hover:bg-accent/20 flex items-center justify-center"
+            onClick={() => setShowVinyl(!showVinyl)}
+          >
+            <svg 
+              viewBox="0 0 24 24" 
+              className="w-4 h-4" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="10"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

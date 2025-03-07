@@ -530,6 +530,15 @@ class AudioControllerClass {
     this.cleanup();
     this.audio = null;
   }
+
+  // 添加 getter 方法
+  get isPlaying(): boolean {
+    return this.state.isPlaying;
+  }
+
+  get playing(): boolean {  // 为了向后兼容
+    return this.state.isPlaying;
+  }
 }
 
 // 导出单例实例

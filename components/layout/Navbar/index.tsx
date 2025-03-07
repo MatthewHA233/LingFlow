@@ -3,7 +3,7 @@
 import { useAuthStore } from '@/stores/auth';
 import { UserMenu } from '../UserMenu';
 import { AuthDialog } from '@/components/auth/AuthDialog';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Home, Book, Network, Users } from 'lucide-react';
@@ -14,7 +14,25 @@ export function Navbar() {
   const { user, loading } = useAuthStore();
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
+  const [isMobile, setIsMobile] = useState(false);
   const router = useRouter();
+
+  // 检测设备类型
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768); // 768px是常用的移动设备断点
+    };
+    
+    // 初始检测
+    checkMobile();
+    
+    // 监听窗口大小变化
+    window.addEventListener('resize', checkMobile);
+    
+    return () => {
+      window.removeEventListener('resize', checkMobile);
+    };
+  }, []);
 
   const items = [
     { 
@@ -42,7 +60,7 @@ export function Navbar() {
   return (
     <nav className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-sm border-b">
       <div className="container mx-auto px-2 sm:px-4 h-12 sm:h-14 flex items-center justify-between">
-        {/* Logo */}
+        {/* Logo - 移动设备上只显示图标 */}
         <div className="flex items-center space-x-2">
           <div className="relative w-7 h-7 sm:w-8 sm:h-8">
             <Image
@@ -53,9 +71,11 @@ export function Navbar() {
               className="object-contain"
             />
           </div>
-          <span className="text-lg sm:text-xl font-bold bg-gradient-to-r from-white to-purple-400 bg-clip-text text-transparent">
-            洪流二语习得
-          </span>
+          {!isMobile && (
+            <span className="text-lg sm:text-xl font-bold bg-gradient-to-r from-white to-purple-400 bg-clip-text text-transparent">
+              洪流二语习得
+            </span>
+          )}
         </div>
 
         {/* Dock Navigation */}

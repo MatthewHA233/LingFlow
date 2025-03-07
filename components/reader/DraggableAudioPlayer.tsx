@@ -58,6 +58,11 @@ export function DraggableAudioPlayer({
   // 添加播放速率状态
   const [playbackRate, setPlaybackRate] = useState<number>(1);
   
+  // 添加设备检测状态
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+  // 修改展开控制逻辑，在移动端使用点击而非悬停
+  const [isControlExpanded, setIsControlExpanded] = useState<boolean>(false);
+  
   // 动画函数
   const animate = useCallback((time: number) => {
     // 第一帧初始化
@@ -183,13 +188,39 @@ export function DraggableAudioPlayer({
     fetchBookCover();
   }, [bookId]);
 
+  // 检测设备类型
   useEffect(() => {
-    // 初始化位置
-    setPosition({
-      x: window.innerWidth - 1450,
-      y: window.innerHeight / 2 - 20
-    });
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768); // 768px是常用的移动设备断点
+    };
+    
+    // 初始检测
+    checkMobile();
+    
+    // 监听窗口大小变化
+    window.addEventListener('resize', checkMobile);
+    
+    return () => {
+      window.removeEventListener('resize', checkMobile);
+    };
   }, []);
+  
+  // 设置初始位置 - 根据设备类型不同
+  useEffect(() => {
+    if (isMobile) {
+      // 移动设备底部居中 - 调整位置更靠上一些
+      setPosition({
+        x: window.innerWidth / 2 - 50, // 居中显示
+        y: window.innerHeight - 180    // 位置上移
+      });
+    } else {
+      // 桌面设备保持原位置
+      setPosition({
+        x: window.innerWidth - 1450,
+        y: window.innerHeight / 2 - 20
+      });
+    }
+  }, [isMobile]);
 
   // 监听音频加载完成事件
   useEffect(() => {
@@ -424,6 +455,14 @@ export function DraggableAudioPlayer({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // 修改控制栏交互 - 在移动设备上使用点击切换控制栏展开状态
+  const handleControlAreaClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isMobile) {
+      setIsControlExpanded(!isControlExpanded);
+    }
+  };
+
   return (
     <motion.div
       className="fixed z-[9999]"
@@ -431,10 +470,13 @@ export function DraggableAudioPlayer({
         top: position.y,
         left: position.x,
         touchAction: 'none',
+        // 在移动设备上缩小尺寸 - 更小一点
+        transform: isMobile ? 'scale(0.65)' : 'none',
+        transformOrigin: 'center center',
       }}
       onMouseDown={handleMouseDown}
       whileHover={{
-        scale: 1.02,
+        scale: isMobile ? 0.68 : 1.02,
         transition: { duration: 0.3 }
       }}
     >
@@ -446,10 +488,12 @@ export function DraggableAudioPlayer({
         )}
         style={{ 
           transformOrigin: "90% 75%", 
-          transition: "all 0.8s cubic-bezier(0.4, 0, 0.2, 1)" // 修改过渡效果
+          transition: "all 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
+          // 在移动设备上调整指针大小
+          transform: isMobile ? `${isPlaying ? 'rotate(-20deg)' : 'rotate(-45deg)'} scale(0.85)` : undefined
         }}
         onClick={(e) => {
-          e.stopPropagation(); // 防止事件冒泡到唱片
+          e.stopPropagation();
           togglePlayPause();
         }}
       >
@@ -634,34 +678,35 @@ export function DraggableAudioPlayer({
           </div>
         </div>
         
-        {/* 科技感控制区 - 修复点击和展开方向问题 */}
+        {/* 科技感控制区 - 修改交互方式 */}
         <div className="absolute bottom-0 left-0 w-full z-50">
           <div 
             className="mx-auto overflow-hidden"
             style={{
-              width: isProgressHovered ? '164px' : '120px',
-              borderBottomLeftRadius: isProgressHovered ? '12px' : '60px',
-              borderBottomRightRadius: isProgressHovered ? '12px' : '60px',
-              boxShadow: isProgressHovered ? 
+              width: (isMobile ? isControlExpanded : isProgressHovered) ? '164px' : '120px',
+              borderBottomLeftRadius: (isMobile ? isControlExpanded : isProgressHovered) ? '12px' : '60px',
+              borderBottomRightRadius: (isMobile ? isControlExpanded : isProgressHovered) ? '12px' : '60px',
+              boxShadow: (isMobile ? isControlExpanded : isProgressHovered) ? 
                 '0 0 0 1px rgba(56, 182, 255, 0.6), 0 4px 8px rgba(0, 0, 0, 0.3)' : 
                 '0 0 0 1px rgba(56, 182, 255, 0.3)',
               transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
             }}
-            onMouseEnter={() => setIsProgressHovered(true)}
-            onMouseLeave={() => setIsProgressHovered(false)}
+            onClick={isMobile ? handleControlAreaClick : undefined}
+            onMouseEnter={!isMobile ? () => setIsProgressHovered(true) : undefined}
+            onMouseLeave={!isMobile ? () => setIsProgressHovered(false) : undefined}
           >
             {/* 控制区背景 */}
             <div 
-              className="relative bg-black/80 backdrop-blur-lg pt-1 pb-1.5 px-2 overflow-hidden"
+              className="relative bg-black/80 backdrop-blur-lg pt-1 pb-1.5 px-2 overflow-hidden progress-area"
               style={{
                 position: 'relative',
                 top: 0,
-                height: isProgressHovered ? '55px' : '24px',
+                height: (isMobile ? isControlExpanded : isProgressHovered) ? '55px' : '24px',
                 transition: 'height 0.4s cubic-bezier(0.21, 1, 0.36, 1)'
               }}
             >
               {/* 科技感边框 */}
-              {isProgressHovered && (
+              {(isMobile ? isControlExpanded : isProgressHovered) && (
                 <div className="absolute inset-0 opacity-30 pointer-events-none">
                   <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
                   <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
@@ -674,7 +719,7 @@ export function DraggableAudioPlayer({
               <div className="progress-area">
                 {/* 时间和音量显示 */}
                 <div className="text-center text-white text-xs font-medium mb-0.5 flex justify-center items-center gap-2">
-                  {isProgressHovered ? (
+                  {(isMobile ? isControlExpanded : isProgressHovered) ? (
                     <>
                       <div className="flex items-center">
                         <span className="text-blue-300/90">{formatTime(currentTime1)}</span>
@@ -705,7 +750,7 @@ export function DraggableAudioPlayer({
                 
                 {/* 控制区底部 */}
                 <AnimatePresence>
-                  {isProgressHovered && (
+                  {(isMobile ? isControlExpanded : isProgressHovered) && (
                     <motion.div 
                       className="mt-1"
                       initial={{ opacity: 0, y: -5 }}

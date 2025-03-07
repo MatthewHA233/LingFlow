@@ -10,7 +10,7 @@ import {
   DropResult
 } from 'react-beautiful-dnd';
 import { debounce } from 'lodash';
-import { Play, Pause, GripVertical, AlignCenter } from 'lucide-react';
+import { Play, Pause, GripVertical, AlignCenter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { formatTime } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
@@ -577,10 +577,9 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
 
   return (
     <>
-      {/* 添加 Toast 组件到组件树中 */}
       <ToastProvider>
-        <div className="flex flex-col h-full max-h-[calc(100vh-15rem)]">
-          {/* 句子列表容器，使用 flex-1 自动占据剩余空间 */}
+        <div className="flex flex-col h-[calc(100vh-12rem)]">
+          {/* 句子列表容器 */}
           <div className="flex-1 overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent hover:scrollbar-thumb-primary/30">
             <div className="space-y-0.5 p-1">
               {sentences.map((sentence) => {
@@ -645,13 +644,40 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
             </div>
           </div>
 
-          {/* 分页控件，不参与滚动 */}
-          <div className="flex-none py-2">
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={setCurrentPage}
-            />
+          {/* 分页控件 - 现在会紧贴底部 */}
+          <div className="flex-none py-1 border-t bg-card/50">
+            <div className="flex items-center justify-center gap-0.5">
+              <button
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="p-1 hover:bg-accent/50 rounded-md disabled:opacity-50 text-sm"
+              >
+                <ChevronLeft className="w-3 h-3" />
+              </button>
+              
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={cn(
+                    "min-w-[1.5rem] h-6 text-xs rounded-md transition-colors",
+                    currentPage === page
+                      ? "bg-primary/20 text-primary"
+                      : "hover:bg-accent/50"
+                  )}
+                >
+                  {page}
+                </button>
+              ))}
+              
+              <button
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1 hover:bg-accent/50 rounded-md disabled:opacity-50 text-sm"
+              >
+                <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
           </div>
         </div>
         <ToastViewport />
