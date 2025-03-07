@@ -72,6 +72,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
   const [initialLoading, setInitialLoading] = useState(true);
   const [isMobile, setIsMobile] = useState<boolean>(false);
   const [showVinyl, setShowVinyl] = useState<boolean>(true);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
 
   // 添加块更新处理函数
   const handleBlockUpdate = async (blockId: string, newType: string, content: string) => {
@@ -1190,6 +1191,47 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     }
   }, []);
 
+  // 添加更可靠的处理函数
+  const handleAudioPanelToggle = useCallback((show: boolean) => {
+    // 设置短延迟确保事件处理完成
+    setTimeout(() => {
+      setShowAudioPanel(show);
+    }, 50);
+  }, []);
+  
+  // 添加初始化效果确保手机端默认关闭
+  useEffect(() => {
+    if (isMobile) {
+      setShowAudioPanel(false);
+    }
+  }, [isMobile]);
+
+  // 监听音频播放状态变化
+  useEffect(() => {
+    const handleStateChange = (e: CustomEvent) => {
+      const { isPlaying: newIsPlaying } = e.detail;
+      setIsPlaying(newIsPlaying);
+    };
+    
+    window.addEventListener('audio-state-change', handleStateChange as EventListener);
+    
+    return () => {
+      window.removeEventListener('audio-state-change', handleStateChange as EventListener);
+    };
+  }, []);
+  
+  // 添加播放控制函数
+  const togglePlayPause = useCallback(() => {
+    if (isPlaying) {
+      AudioController.pause();
+    } else {
+      AudioController.play({
+        url: audioUrl,
+        context: 'main'
+      });
+    }
+  }, [isPlaying, audioUrl]);
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* 阅读器导航栏 */}
@@ -1201,8 +1243,9 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
       >
         {/* 重新组织导航栏布局 */}
         <div className="flex-1 flex items-center justify-between">
-          {/* 修改左侧按钮组布局 */}
+          {/* 左侧区域 */}
           <div className="flex items-center gap-2">
+            {/* 目录按钮 */}
             <button
               onClick={() => setShowToc(!showToc)}
               className={`p-1.5 hover:bg-accent rounded-md transition-colors ${
@@ -1211,8 +1254,8 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
             >
               <Menu className="w-4 h-4" />
             </button>
-
-            {/* 在非移动设备上显示章节导航按钮 */}
+            
+            {/* 桌面端才显示的上下章节按钮 */}
             {!isMobile && (
               <>
                 <button
@@ -1244,15 +1287,31 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
             )}
           </div>
 
-          {/* 章节导航 - 移动设备上使用新的布局 */}
+          {/* 中间区域 - 不修改，保持现有布局 */}
           {isMobile ? (
             <div className="flex items-center justify-between flex-1 px-4">
+              <button
+                onClick={() => handleChapterChange(Math.max(0, currentChapter - 1))}
+                disabled={currentChapter === 0}
+                className="p-1.5 hover:bg-accent rounded-md disabled:opacity-50"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
               <div className="flex flex-col items-center flex-1">
                 <h1 className="text-base font-semibold truncate text-center">{book.title}</h1>
                 <h2 className="text-sm text-muted-foreground truncate text-center">
                   {book.chapters[currentChapter]?.title}
                 </h2>
               </div>
+
+              <button
+                onClick={() => handleChapterChange(Math.min(book.chapters.length - 1, currentChapter + 1))}
+                disabled={currentChapter === book.chapters.length - 1}
+                className="p-1.5 hover:bg-accent rounded-md disabled:opacity-50"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
           ) : (
             // 桌面端保持原有布局
@@ -1266,9 +1325,9 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
             </div>
           )}
 
-          {/* 音频处理按钮 */}
+          {/* 右侧按钮 - 不修改，保持现有布局 */}
           <button
-            onClick={() => setShowAudioPanel(!showAudioPanel)}
+            onClick={() => handleAudioPanelToggle(!showAudioPanel)}
             className={`p-1.5 hover:bg-accent/50 rounded-md transition-colors relative ${
               showAudioPanel ? 'bg-accent/30' : ''
             } ${isMobile ? 'hidden' : ''}`}
@@ -1343,12 +1402,12 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
           bg-card/95 backdrop-blur border-l shadow-lg z-30
           group
           ${isMobile 
-            ? `bottom-0 left-0 h-72 w-full border-t translate-y-${showAudioPanel ? '0' : 'full'}` 
+            ? `bottom-0 left-0 h-72 w-full border-t ${showAudioPanel ? 'translate-y-0' : 'translate-y-full'}` 
             : `top-[calc(3rem+3rem-1.5px)] h-[calc(100vh-6rem+1.5px)] w-[400px] ${showAudioPanel ? 'translate-x-0' : 'translate-x-full'}`
           }
         `}
       >
-        {/* 调整标题栏在移动设备上的显示 */}
+        {/* 标题栏 */}
         <div className="p-2 border-b bg-card/95 backdrop-blur sticky top-0 z-30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1">
@@ -1356,11 +1415,12 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
               <h2 className="text-sm font-medium">音频处理</h2>
             </div>
 
-            {/* 移动设备关闭按钮 - 调整样式 */}
+            {/* 移动设备上的关闭按钮 */}
             {isMobile && (
               <button 
-                onClick={() => setShowAudioPanel(false)}
-                className="p-1 hover:bg-accent/50 rounded-md flex items-center justify-center"
+                onClick={() => handleAudioPanelToggle(false)}
+                className="p-2 hover:bg-accent/50 rounded-md flex items-center justify-center"
+                aria-label="关闭音频处理面板"
               >
                 <X className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
               </button>
@@ -1460,7 +1520,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
       </div>
 
       {/* 修改唱片播放器渲染方式 - 使用Portal并添加显示控制 */}
-      {mounted && audioUrl && showVinyl && createPortal(
+      {mounted && audioUrl && createPortal(
         <DraggableAudioPlayer
           key={audioUrl}
           bookId={book.id}
@@ -1468,6 +1528,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
           currentTime={currentTime}
           onTimeUpdate={setCurrentTime}
           passiveMode={true}
+          isVisible={showVinyl}
         />,
         document.body
       )}
@@ -1516,7 +1577,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
         <div className="fixed bottom-0 left-0 right-0 h-12 bg-card/95 backdrop-blur border-t flex items-center gap-2 px-4 z-30">
           {/* 音频处理按钮 */}
           <button
-            onClick={() => setShowAudioPanel(true)}
+            onClick={() => handleAudioPanelToggle(true)}
             className="w-8 h-8 rounded-full bg-primary/10 hover:bg-primary/20 flex items-center justify-center relative"
           >
             <Mic className="w-4 h-4 text-primary/80" />
@@ -1525,21 +1586,12 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
             )}
           </button>
           
-          {/* 播放/暂停按钮 */}
+          {/* 播放/暂停按钮 - 修改为使用本地状态 */}
           <button 
             className="w-8 h-8 rounded-full bg-accent/10 hover:bg-accent/20 flex items-center justify-center"
-            onClick={() => {
-              if (AudioController.isPlaying) {
-                AudioController.pause();
-              } else {
-                AudioController.play({
-                  url: audioUrl,
-                  context: 'main'
-                });
-              }
-            }}
+            onClick={togglePlayPause}
           >
-            {AudioController.isPlaying ? (
+            {isPlaying ? (
               <Pause className="w-4 h-4" />
             ) : (
               <Play className="w-4 h-4" />
@@ -1548,7 +1600,10 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
           
           {/* 唱片显示/隐藏按钮 */}
           <button 
-            className="w-8 h-8 rounded-full bg-accent/10 hover:bg-accent/20 flex items-center justify-center"
+            className={cn(
+              "w-8 h-8 rounded-full flex items-center justify-center transition-colors",
+              showVinyl ? "bg-primary/20 text-primary" : "bg-accent/10 hover:bg-accent/20"
+            )}
             onClick={() => setShowVinyl(!showVinyl)}
           >
             <svg 

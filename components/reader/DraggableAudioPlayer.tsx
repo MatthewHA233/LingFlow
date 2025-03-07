@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { AudioController } from '@/lib/audio-controller';
 import { ChevronRight, SkipBack, SkipForward, Volume2, Play, Pause } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -15,6 +15,7 @@ interface DraggableAudioPlayerProps {
   currentTime?: number;
   onTimeUpdate?: (currentTime: number) => void;
   passiveMode?: boolean;
+  isVisible?: boolean;
 }
 
 // 修改物理参数 - 基础值
@@ -64,7 +65,9 @@ export function DraggableAudioPlayer({
   bookId,
   audioUrl,
   currentTime,
-  onTimeUpdate
+  onTimeUpdate,
+  passiveMode,
+  isVisible = true
 }: DraggableAudioPlayerProps) {
   // 将useState钩子移到组件函数内部
   const [isAudioLoaded, setIsAudioLoaded] = useState<boolean>(false);
@@ -585,6 +588,19 @@ export function DraggableAudioPlayer({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // 计算实际位置 - 当不可见时放到屏幕外
+  const actualPosition = useMemo(() => {
+    if (isVisible) {
+      return position; // 正常位置
+    } else {
+      // 移到屏幕外，但保持组件实例活跃
+      return { 
+        x: -2000, 
+        y: -2000 
+      };
+    }
+  }, [position, isVisible]);
+
   return (
     <>
       {/* 添加全局样式 */}
@@ -593,13 +609,14 @@ export function DraggableAudioPlayer({
       <motion.div
         className="fixed z-[9999] select-none touch-manipulation"
         style={{
-          top: position.y,
-          left: position.x,
+          top: actualPosition.y,
+          left: actualPosition.x,
           touchAction: 'none',
           WebkitTapHighlightColor: 'transparent',
           WebkitTouchCallout: 'none',
           transform: 'none',
           transformOrigin: 'center center',
+          pointerEvents: isVisible ? 'auto' : 'none'
         }}
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
