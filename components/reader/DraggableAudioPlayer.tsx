@@ -488,24 +488,15 @@ export function DraggableAudioPlayer({
 
   // 处理循环模式变化
   const handleLoopModeChange = () => {
-    const modes = ['continuous', 'sentence', 'block'] as const;
+    const modes: ('continuous' | 'sentence' | 'block')[] = ['continuous', 'sentence', 'block'];
     const currentIndex = modes.indexOf(loopMode);
     const nextIndex = (currentIndex + 1) % modes.length;
-    const newMode = modes[nextIndex];
-    setLoopMode(newMode);
-    AudioController.setPlayMode(newMode);
+    setLoopMode(modes[nextIndex]);
+    AudioController.setPlayMode(modes[nextIndex]);
     
-    // 添加 toast 提示
-    const modeText = {
-      continuous: '已切换到顺序播放',
-      sentence: '已切换到单句循环',
-      block: '已切换到语境块循环'
-    }[newMode];
-    
-    toast.success(`切换到${modeText}`, {
-      position: 'bottom-right',
-      duration: 1500,
-    });
+    // 修复toast消息中的文本重复问题
+    toast.success(`切换到${modes[nextIndex] === 'continuous' ? '顺序播放' : 
+      modes[nextIndex] === 'sentence' ? '句子循环' : '语境块循环'}`);
   };
 
   // 格式化时间函数
@@ -625,98 +616,10 @@ export function DraggableAudioPlayer({
           transition: { duration: 0.3 }
         }}
       >
-        {/* 大型唱片指针 - 添加点击事件和平滑过渡 */}
-        <div 
-          className={cn(
-            "absolute -top-6 left-1/2 z-30 transform-gpu cursor-pointer select-none", 
-            isPlaying ? "rotate-[-20deg]" : "rotate-[-45deg]"
-          )}
-          style={{ 
-            transformOrigin: "90% 75%", 
-            transition: "all 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
-            // 移除移动设备上的缩放调整
-            transform: isPlaying ? 'rotate(-20deg)' : 'rotate(-45deg)'
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            togglePlayPause();
-          }}
-        >
-          <svg 
-            width="160" 
-            height="120" 
-            viewBox="0 0 180 120"
-            style={{
-              filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.2))" // 添加阴影效果
-            }}
-          >
-            {/* 支架底座 */}
-            <rect x="145" y="90" width="30" height="10" rx="3" fill="#333" />
-            
-            {/* 唱臂支柱 */}
-            <rect x="155" y="40" width="10" height="55" rx="2" fill="#444" />
-            
-            {/* 唱臂平衡部分 */}
-            <rect x="140" y="40" width="40" height="8" rx="2" fill="#333" />
-            <circle cx="160" cy="44" r="6" fill="#222" />
-            <circle cx="160" cy="44" r="3" fill="#111" />
-            
-            {/* 唱臂主体 */}
-            <rect 
-              x="20" 
-              y="41" 
-              width="130" 
-              height="6" 
-              rx="3" 
-              fill="#333"
-            />
-            
-            {/* 唱臂头部 */}
-            <rect 
-              x="15" 
-              y="39" 
-              width="20" 
-              height="10" 
-              rx="2" 
-              fill="#222"
-            />
-            
-            {/* 唱针 - 增加了红色部分的尺寸 */}
-            <rect 
-              x="18" 
-              y="47" 
-              width="10" 
-              height="15" 
-              rx="1" 
-              fill="#d32f2f"
-            />
-            <rect 
-              x="22" 
-              y="60" 
-              width="2" 
-              height="5" 
-              fill="#111"
-            />
-            
-            {/* 状态灯 - 添加过渡效果 */}
-            <circle 
-              cx="160" 
-              cy="30" 
-              r="4" 
-              fill={isPlaying ? "#4caf50" : "#d32f2f"}
-              style={{
-                transition: "fill 0.3s ease-in-out",
-                filter: "drop-shadow(0 0 3px rgba(0,0,0,0.3))"
-              }}
-            />
-          </svg>
-        </div>
-        
         {/* 唱片主体部分 */}
         <div className="relative select-none">
-          {/* 倍速控制 - 放在唱片上方 */}
-          <div 
-            className="absolute top-8 left-1/2 -translate-x-1/2 z-30 cursor-pointer select-none"
+          {/* 倍速控制 */}
+          <div className="absolute top-8 left-1/2 -translate-x-1/2 z-30 cursor-pointer select-none"
             onClick={(e) => {
               e.stopPropagation();
               const currentIndex = PLAYBACK_RATES.indexOf(playbackRate);
@@ -769,58 +672,12 @@ export function DraggableAudioPlayer({
               }}
             />
 
-            {/* 其他内容（中心孔等）保持不变 */}
-            <div className="absolute inset-0 flex items-center justify-center">
+            {/* 中心区域 */}
+            <div className="absolute inset-0 flex items-center justify-center" style={{ pointerEvents: 'none' }}>
               {/* 黑色圆环背景 */}
-              <div className="w-12 h-12 rounded-full bg-black flex items-center justify-center">
+              <div className="w-12 h-12 rounded-full bg-black flex items-center justify-center" style={{ pointerEvents: 'none' }}>
                 {/* 白色中心孔 */}
                 <div className="absolute w-4 h-4 rounded-full bg-white/20 pointer-events-none" />
-                
-                {/* 循环模式控制 - 放在中心孔位置 */}
-                <div 
-                  className="w-4 h-4 rounded-full cursor-pointer z-30 flex items-center justify-center"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleLoopModeChange();
-                  }}
-                >
-                  <svg 
-                    width="16" 
-                    height="16" 
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    stroke="white" 
-                    strokeWidth="2" 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round"
-                    className="opacity-90"
-                  >
-                    {loopMode === 'continuous' ? (
-                      // 顺序播放图标 - 单箭头
-                      <>
-                        <path d="M4 12h16" />
-                        <path d="M16 6l6 6-6 6" />
-                      </>
-                    ) : loopMode === 'sentence' ? (
-                      // 单曲循环图标
-                      <>
-                        <path d="M17 2l4 4-4 4" />
-                        <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
-                        <path d="M7 22l-4-4 4-4" />
-                        <path d="M21 13v1a4 4 0 0 1-4 4H3" />
-                        <path d="M11 12h2" />
-                      </>
-                    ) : (
-                      // 段落循环图标
-                      <>
-                        <path d="M17 2l4 4-4 4" />
-                        <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
-                        <path d="M7 22l-4-4 4-4" />
-                        <path d="M21 13v1a4 4 0 0 1-4 4H3" />
-                      </>
-                    )}
-                  </svg>
-                </div>
               </div>
             </div>
           </div>
@@ -1050,7 +907,7 @@ export function DraggableAudioPlayer({
                               {volume === 0 ? (
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
                                   className="text-blue-300" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <polygon points="11 5 6 9 2 9 2 15 6 15 19 11 5"></polygon>
+                                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
                                   <line x1="23" y1="9" x2="17" y2="15"></line>
                                   <line x1="17" y1="9" x2="23" y2="15"></line>
                                 </svg>
@@ -1083,6 +940,142 @@ export function DraggableAudioPlayer({
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+        
+        {/* 大型唱片指针 */}
+        <div 
+          className={cn(
+            "absolute -top-6 left-1/2 z-40 transform-gpu cursor-pointer select-none", 
+            isPlaying ? "rotate-[-20deg]" : "rotate-[-45deg]"
+          )}
+          style={{ 
+            transformOrigin: "90% 75%", 
+            transition: "all 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
+            transform: isPlaying ? 'rotate(-20deg)' : 'rotate(-45deg)',
+            pointerEvents: 'auto', // 确保唱针可点击
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            togglePlayPause();
+          }}
+        >
+          <svg 
+            width="160" 
+            height="120" 
+            viewBox="0 0 180 120"
+            style={{
+              filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.2))" // 添加阴影效果
+            }}
+          >
+            {/* 支架底座 */}
+            <rect x="145" y="90" width="30" height="10" rx="3" fill="#333" />
+            
+            {/* 唱臂支柱 */}
+            <rect x="155" y="40" width="10" height="55" rx="2" fill="#444" />
+            
+            {/* 唱臂平衡部分 */}
+            <rect x="140" y="40" width="40" height="8" rx="2" fill="#333" />
+            <circle cx="160" cy="44" r="6" fill="#222" />
+            <circle cx="160" cy="44" r="3" fill="#111" />
+            
+            {/* 唱臂主体 */}
+            <rect 
+              x="20" 
+              y="41" 
+              width="130" 
+              height="6" 
+              rx="3" 
+              fill="#333"
+            />
+            
+            {/* 唱臂头部 */}
+            <rect 
+              x="15" 
+              y="39" 
+              width="20" 
+              height="10" 
+              rx="2" 
+              fill="#222"
+            />
+            
+            {/* 唱针 - 增加了红色部分的尺寸 */}
+            <rect 
+              x="18" 
+              y="47" 
+              width="10" 
+              height="15" 
+              rx="1" 
+              fill="#d32f2f"
+            />
+            <rect 
+              x="22" 
+              y="60" 
+              width="2" 
+              height="5" 
+              fill="#111"
+            />
+            
+            {/* 状态灯 - 添加过渡效果 */}
+            <circle 
+              cx="160" 
+              cy="30" 
+              r="4" 
+              fill={isPlaying ? "#4caf50" : "#d32f2f"}
+              style={{
+                transition: "fill 0.3s ease-in-out",
+                filter: "drop-shadow(0 0 3px rgba(0,0,0,0.3))"
+              }}
+            />
+          </svg>
+        </div>
+        
+        {/* 单独放置循环模式控制按钮，确保在最顶层 */}
+        <div 
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-10 h-10 rounded-full cursor-pointer flex items-center justify-center"
+          style={{
+            pointerEvents: 'auto' // 确保可以接收点击事件
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            handleLoopModeChange();
+          }}
+        >
+          <div className="w-8 h-8 rounded-full flex items-center justify-center">
+            <svg 
+              width="16" 
+              height="16" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="white" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round"
+              className="opacity-90"
+            >
+              {loopMode === 'continuous' ? (
+                <>
+                  <path d="M4 12h16" />
+                  <path d="M16 6l6 6-6 6" />
+                </>
+              ) : loopMode === 'sentence' ? (
+                <>
+                  <path d="M17 2l4 4-4 4" />
+                  <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+                  <path d="M7 22l-4-4 4-4" />
+                  <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+                  <path d="M11 12h2" />
+                </>
+              ) : (
+                <>
+                  <path d="M17 2l4 4-4 4" />
+                  <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+                  <path d="M7 22l-4-4 4-4" />
+                  <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+                </>
+              )}
+            </svg>
           </div>
         </div>
       </motion.div>
