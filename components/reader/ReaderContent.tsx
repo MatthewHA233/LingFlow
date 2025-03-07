@@ -1192,7 +1192,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      {/* 阅读器导航栏 - 调整布局 */}
+      {/* 阅读器导航栏 */}
       <div 
         className="fixed left-0 right-0 h-12 border-b bg-card/95 backdrop-blur flex items-center px-4 z-40"
         style={{ 
@@ -1201,6 +1201,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
       >
         {/* 重新组织导航栏布局 */}
         <div className="flex-1 flex items-center justify-between">
+          {/* 修改左侧按钮组布局 */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowToc(!showToc)}
@@ -1210,33 +1211,48 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
             >
               <Menu className="w-4 h-4" />
             </button>
+
+            {/* 在非移动设备上显示章节导航按钮 */}
+            {!isMobile && (
+              <>
+                <button
+                  onClick={() => handleChapterChange(currentChapter - 1)}
+                  disabled={currentChapter <= 0}
+                  className={cn(
+                    "p-1.5 rounded-md transition-colors",
+                    currentChapter <= 0 
+                      ? "opacity-50 cursor-not-allowed" 
+                      : "hover:bg-accent"
+                  )}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                
+                <button
+                  onClick={() => handleChapterChange(currentChapter + 1)}
+                  disabled={currentChapter >= book.chapters.length - 1}
+                  className={cn(
+                    "p-1.5 rounded-md transition-colors",
+                    currentChapter >= book.chapters.length - 1 
+                      ? "opacity-50 cursor-not-allowed" 
+                      : "hover:bg-accent"
+                  )}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </>
+            )}
           </div>
 
           {/* 章节导航 - 移动设备上使用新的布局 */}
           {isMobile ? (
             <div className="flex items-center justify-between flex-1 px-4">
-              <button
-                onClick={() => handleChapterChange(Math.max(0, currentChapter - 1))}
-                disabled={currentChapter === 0}
-                className="p-1.5 hover:bg-accent rounded-md disabled:opacity-50"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-
               <div className="flex flex-col items-center flex-1">
                 <h1 className="text-base font-semibold truncate text-center">{book.title}</h1>
                 <h2 className="text-sm text-muted-foreground truncate text-center">
                   {book.chapters[currentChapter]?.title}
                 </h2>
               </div>
-
-              <button
-                onClick={() => handleChapterChange(Math.min(book.chapters.length - 1, currentChapter + 1))}
-                disabled={currentChapter === book.chapters.length - 1}
-                className="p-1.5 hover:bg-accent rounded-md disabled:opacity-50"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
             </div>
           ) : (
             // 桌面端保持原有布局

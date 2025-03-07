@@ -26,6 +26,40 @@ const MIN_ROTATION_SPEED = 0.1; // 最小转速
 // 添加倍速选项
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
+// 添加以下全局样式到组件顶部
+const globalStyles = `
+  * {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+`;
+
+// 在组件顶部添加新的常量
+const VINYL_POSITION_KEY = 'vinyl_player_position';
+
+// 修改边界检查函数
+const checkBoundaries = (pos: { x: number; y: number }) => {
+  if (typeof window === 'undefined') return pos;
+
+  const playerWidth = 180; // 唱片宽度
+  const playerHeight = 240; // 唱片高度（包括唱针）
+  const bottomBarHeight = 60; // 底部控制栏高度
+  const allowedOverflow = 100; // 允许超出屏幕的距离（约半个唱片直径多一点）
+
+  return {
+    x: Math.min(
+      Math.max(-allowedOverflow, pos.x), 
+      window.innerWidth - playerWidth + allowedOverflow
+    ),
+    y: Math.min(
+      Math.max(-allowedOverflow, pos.y), 
+      window.innerHeight - playerHeight - bottomBarHeight + allowedOverflow
+    )
+  };
+};
+
 export function DraggableAudioPlayer({
   bookId,
   audioUrl,
@@ -35,7 +69,26 @@ export function DraggableAudioPlayer({
   // 将useState钩子移到组件函数内部
   const [isAudioLoaded, setIsAudioLoaded] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [position, setPosition] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const savedPosition = localStorage.getItem(VINYL_POSITION_KEY);
+      if (savedPosition) {
+        try {
+          const pos = JSON.parse(savedPosition);
+          // 检查保存的位置是否在有效范围内
+          return checkBoundaries(pos);
+        } catch (e) {
+          console.error('解析保存的位置失败:', e);
+        }
+      }
+    }
+    // 默认位置
+    const defaultPos = {
+      x: window.innerWidth - 1450,
+      y: window.innerHeight / 2 - 20
+    };
+    return checkBoundaries(defaultPos);
+  });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -194,10 +247,7 @@ export function DraggableAudioPlayer({
       setIsMobile(window.innerWidth < 768); // 768px是常用的移动设备断点
     };
     
-    // 初始检测
     checkMobile();
-    
-    // 监听窗口大小变化
     window.addEventListener('resize', checkMobile);
     
     return () => {
@@ -205,20 +255,30 @@ export function DraggableAudioPlayer({
     };
   }, []);
   
-  // 设置初始位置 - 根据设备类型不同
+  // 修改位置保存效果
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // 保存前进行边界检查
+      const checkedPosition = checkBoundaries(position);
+      if (checkedPosition.x !== position.x || checkedPosition.y !== position.y) {
+        setPosition(checkedPosition);
+      }
+      localStorage.setItem(VINYL_POSITION_KEY, JSON.stringify(checkedPosition));
+    }
+  }, [position]);
+
+  // 修改设置初始位置的逻辑
   useEffect(() => {
     if (isMobile) {
-      // 移动设备底部居中 - 调整位置更靠上一些
-      setPosition({
-        x: window.innerWidth / 2 - 50, // 居中显示
-        y: window.innerHeight - 180    // 位置上移
-      });
-    } else {
-      // 桌面设备保持原位置
-      setPosition({
-        x: window.innerWidth - 1450,
-        y: window.innerHeight / 2 - 20
-      });
+      const savedPosition = localStorage.getItem(VINYL_POSITION_KEY);
+      if (!savedPosition) {
+        // 移动设备的默认位置
+        const defaultMobilePos = {
+          x: window.innerWidth / 2 - 90,
+          y: window.innerHeight - 150
+        };
+        setPosition(checkBoundaries(defaultMobilePos));
+      }
     }
   }, [isMobile]);
 
@@ -313,10 +373,14 @@ export function DraggableAudioPlayer({
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isDragging) return;
 
-    setPosition({
+    const newPosition = {
       x: e.clientX - dragStart.x,
       y: e.clientY - dragStart.y
-    });
+    };
+
+    // 应用边界检查
+    const checkedPosition = checkBoundaries(newPosition);
+    setPosition(checkedPosition);
   }, [isDragging, dragStart]);
 
   const handleMouseUp = useCallback(() => {
@@ -463,481 +527,548 @@ export function DraggableAudioPlayer({
     }
   };
 
+  // 添加触摸事件处理 - 修复移动端拖拽问题
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    // 检查触摸的元素是否在进度条区域内
+    const progressArea = document.querySelector('.progress-area');
+    if (progressArea?.contains(e.target as Node)) {
+      return; // 如果在进度条区域内，不启动拖拽
+    }
+
+    setIsDragging(true);
+    setDragStart({
+      x: e.touches[0].clientX - position.x,
+      y: e.touches[0].clientY - position.y
+    });
+  };
+
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (!isDragging) return;
+
+    const newPosition = {
+      x: e.touches[0].clientX - dragStart.x,
+      y: e.touches[0].clientY - dragStart.y
+    };
+
+    // 应用边界检查
+    const checkedPosition = checkBoundaries(newPosition);
+    setPosition(checkedPosition);
+  }, [isDragging, dragStart]);
+
+  const handleTouchEnd = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  // 添加触摸事件监听
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('touchmove', handleTouchMove);
+      window.addEventListener('touchend', handleTouchEnd);
+    } else {
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+    }
+
+    return () => {
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isDragging, handleTouchMove, handleTouchEnd]);
+
+  // 添加窗口大小变化监听
+  useEffect(() => {
+    const handleResize = () => {
+      setPosition(prev => checkBoundaries(prev));
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   return (
-    <motion.div
-      className="fixed z-[9999]"
-      style={{
-        top: position.y,
-        left: position.x,
-        touchAction: 'none',
-        // 在移动设备上缩小尺寸 - 更小一点
-        transform: isMobile ? 'scale(0.65)' : 'none',
-        transformOrigin: 'center center',
-      }}
-      onMouseDown={handleMouseDown}
-      whileHover={{
-        scale: isMobile ? 0.68 : 1.02,
-        transition: { duration: 0.3 }
-      }}
-    >
-      {/* 大型唱片指针 - 添加点击事件和平滑过渡 */}
-      <div 
-        className={cn(
-          "absolute -top-6 left-1/2 z-30 transform-gpu cursor-pointer", 
-          isPlaying ? "rotate-[-20deg]" : "rotate-[-45deg]"
-        )}
-        style={{ 
-          transformOrigin: "90% 75%", 
-          transition: "all 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
-          // 在移动设备上调整指针大小
-          transform: isMobile ? `${isPlaying ? 'rotate(-20deg)' : 'rotate(-45deg)'} scale(0.85)` : undefined
+    <>
+      {/* 添加全局样式 */}
+      <style jsx global>{globalStyles}</style>
+      
+      <motion.div
+        className="fixed z-[9999] select-none touch-manipulation"
+        style={{
+          top: position.y,
+          left: position.x,
+          touchAction: 'none',
+          WebkitTapHighlightColor: 'transparent',
+          WebkitTouchCallout: 'none',
+          transform: 'none',
+          transformOrigin: 'center center',
         }}
-        onClick={(e) => {
-          e.stopPropagation();
-          togglePlayPause();
+        onMouseDown={handleMouseDown}
+        onTouchStart={handleTouchStart}
+        whileHover={{
+          scale: isMobile ? 1 : 1.02,
+          transition: { duration: 0.3 }
         }}
       >
-        <svg 
-          width="160" 
-          height="120" 
-          viewBox="0 0 180 120"
-          style={{
-            filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.2))" // 添加阴影效果
-          }}
-        >
-          {/* 支架底座 */}
-          <rect x="145" y="90" width="30" height="10" rx="3" fill="#333" />
-          
-          {/* 唱臂支柱 */}
-          <rect x="155" y="40" width="10" height="55" rx="2" fill="#444" />
-          
-          {/* 唱臂平衡部分 */}
-          <rect x="140" y="40" width="40" height="8" rx="2" fill="#333" />
-          <circle cx="160" cy="44" r="6" fill="#222" />
-          <circle cx="160" cy="44" r="3" fill="#111" />
-          
-          {/* 唱臂主体 */}
-          <rect 
-            x="20" 
-            y="41" 
-            width="130" 
-            height="6" 
-            rx="3" 
-            fill="#333"
-          />
-          
-          {/* 唱臂头部 */}
-          <rect 
-            x="15" 
-            y="39" 
-            width="20" 
-            height="10" 
-            rx="2" 
-            fill="#222"
-          />
-          
-          {/* 唱针 - 增加了红色部分的尺寸 */}
-          <rect 
-            x="18" 
-            y="47" 
-            width="10" 
-            height="15" 
-            rx="1" 
-            fill="#d32f2f"
-          />
-          <rect 
-            x="22" 
-            y="60" 
-            width="2" 
-            height="5" 
-            fill="#111"
-          />
-          
-          {/* 状态灯 - 添加过渡效果 */}
-          <circle 
-            cx="160" 
-            cy="30" 
-            r="4" 
-            fill={isPlaying ? "#4caf50" : "#d32f2f"}
-            style={{
-              transition: "fill 0.3s ease-in-out",
-              filter: "drop-shadow(0 0 3px rgba(0,0,0,0.3))"
-            }}
-          />
-        </svg>
-      </div>
-      
-      {/* 唱片主体部分 */}
-      <div className="relative">
-        {/* 倍速控制 - 放在唱片上方 */}
+        {/* 大型唱片指针 - 添加点击事件和平滑过渡 */}
         <div 
-          className="absolute top-8 left-1/2 -translate-x-1/2 z-30 cursor-pointer"
+          className={cn(
+            "absolute -top-6 left-1/2 z-30 transform-gpu cursor-pointer select-none", 
+            isPlaying ? "rotate-[-20deg]" : "rotate-[-45deg]"
+          )}
+          style={{ 
+            transformOrigin: "90% 75%", 
+            transition: "all 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
+            // 移除移动设备上的缩放调整
+            transform: isPlaying ? 'rotate(-20deg)' : 'rotate(-45deg)'
+          }}
           onClick={(e) => {
             e.stopPropagation();
-            const currentIndex = PLAYBACK_RATES.indexOf(playbackRate);
-            const nextIndex = (currentIndex + 1) % PLAYBACK_RATES.length;
-            handlePlaybackRateChange(PLAYBACK_RATES[nextIndex]);
+            togglePlayPause();
           }}
         >
-          <span className="text-xs font-medium text-white/90 drop-shadow-lg">
-            {playbackRate}x
-          </span>
-        </div>
-
-        {/* 实际唱片圆盘 */}
-        <div 
-          id="record-disc"
-          className="relative w-[180px] h-[180px] rounded-full overflow-visible cursor-pointer"
-          onClick={togglePlayPause}
-          style={{
-            transform: `rotate(${rotation}deg)`,
-            transition: 'none',
-          }}
-        >
-          {/* 唱片内容容器 - 添加溢出隐藏 */}
-          <div className="absolute inset-0 rounded-full overflow-hidden border-8 border-black">
-            {/* 唱片封面图 */}
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-900 to-indigo-900">
-              {coverUrl && (
-                <Image
-                  src={coverUrl}
-                  alt="Album cover"
-                  fill
-                  className="object-cover"
-                />
-              )}
-            </div>
-          </div>
-
-          {/* 外部光晕效果 */}
-          <div 
-            className="absolute inset-0 rounded-full"
+          <svg 
+            width="160" 
+            height="120" 
+            viewBox="0 0 180 120"
             style={{
-              boxShadow: `
-                0 0 20px 2px rgba(147, 51, 234, 0.1),
-                0 0 10px 1px rgba(168, 85, 247, 0.15),
-                0 0 5px 0 rgba(139, 92, 246, 0.2),
-                0 4px 6px rgba(0, 0, 0, 0.3)
-              `
+              filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.2))" // 添加阴影效果
             }}
-          />
-
-          {/* 其他内容（中心孔等）保持不变 */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            {/* 黑色圆环背景 */}
-            <div className="w-12 h-12 rounded-full bg-black flex items-center justify-center">
-              {/* 白色中心孔 */}
-              <div className="absolute w-4 h-4 rounded-full bg-white/20 pointer-events-none" />
-              
-              {/* 循环模式控制 - 放在中心孔位置 */}
-              <div 
-                className="w-4 h-4 rounded-full cursor-pointer z-30 flex items-center justify-center"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleLoopModeChange();
-                }}
-              >
-                <svg 
-                  width="16" 
-                  height="16" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="white" 
-                  strokeWidth="2" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round"
-                  className="opacity-90"
-                >
-                  {loopMode === 'continuous' ? (
-                    // 顺序播放图标 - 单箭头
-                    <>
-                      <path d="M4 12h16" />
-                      <path d="M16 6l6 6-6 6" />
-                    </>
-                  ) : loopMode === 'sentence' ? (
-                    // 单曲循环图标
-                    <>
-                      <path d="M17 2l4 4-4 4" />
-                      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
-                      <path d="M7 22l-4-4 4-4" />
-                      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
-                      <path d="M11 12h2" />
-                    </>
-                  ) : (
-                    // 段落循环图标
-                    <>
-                      <path d="M17 2l4 4-4 4" />
-                      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
-                      <path d="M7 22l-4-4 4-4" />
-                      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
-                    </>
-                  )}
-                </svg>
-              </div>
-            </div>
-          </div>
+          >
+            {/* 支架底座 */}
+            <rect x="145" y="90" width="30" height="10" rx="3" fill="#333" />
+            
+            {/* 唱臂支柱 */}
+            <rect x="155" y="40" width="10" height="55" rx="2" fill="#444" />
+            
+            {/* 唱臂平衡部分 */}
+            <rect x="140" y="40" width="40" height="8" rx="2" fill="#333" />
+            <circle cx="160" cy="44" r="6" fill="#222" />
+            <circle cx="160" cy="44" r="3" fill="#111" />
+            
+            {/* 唱臂主体 */}
+            <rect 
+              x="20" 
+              y="41" 
+              width="130" 
+              height="6" 
+              rx="3" 
+              fill="#333"
+            />
+            
+            {/* 唱臂头部 */}
+            <rect 
+              x="15" 
+              y="39" 
+              width="20" 
+              height="10" 
+              rx="2" 
+              fill="#222"
+            />
+            
+            {/* 唱针 - 增加了红色部分的尺寸 */}
+            <rect 
+              x="18" 
+              y="47" 
+              width="10" 
+              height="15" 
+              rx="1" 
+              fill="#d32f2f"
+            />
+            <rect 
+              x="22" 
+              y="60" 
+              width="2" 
+              height="5" 
+              fill="#111"
+            />
+            
+            {/* 状态灯 - 添加过渡效果 */}
+            <circle 
+              cx="160" 
+              cy="30" 
+              r="4" 
+              fill={isPlaying ? "#4caf50" : "#d32f2f"}
+              style={{
+                transition: "fill 0.3s ease-in-out",
+                filter: "drop-shadow(0 0 3px rgba(0,0,0,0.3))"
+              }}
+            />
+          </svg>
         </div>
         
-        {/* 科技感控制区 - 修改交互方式 */}
-        <div className="absolute bottom-0 left-0 w-full z-50">
+        {/* 唱片主体部分 */}
+        <div className="relative select-none">
+          {/* 倍速控制 - 放在唱片上方 */}
           <div 
-            className="mx-auto overflow-hidden"
-            style={{
-              width: (isMobile ? isControlExpanded : isProgressHovered) ? '164px' : '120px',
-              borderBottomLeftRadius: (isMobile ? isControlExpanded : isProgressHovered) ? '12px' : '60px',
-              borderBottomRightRadius: (isMobile ? isControlExpanded : isProgressHovered) ? '12px' : '60px',
-              boxShadow: (isMobile ? isControlExpanded : isProgressHovered) ? 
-                '0 0 0 1px rgba(56, 182, 255, 0.6), 0 4px 8px rgba(0, 0, 0, 0.3)' : 
-                '0 0 0 1px rgba(56, 182, 255, 0.3)',
-              transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
+            className="absolute top-8 left-1/2 -translate-x-1/2 z-30 cursor-pointer select-none"
+            onClick={(e) => {
+              e.stopPropagation();
+              const currentIndex = PLAYBACK_RATES.indexOf(playbackRate);
+              const nextIndex = (currentIndex + 1) % PLAYBACK_RATES.length;
+              handlePlaybackRateChange(PLAYBACK_RATES[nextIndex]);
             }}
-            onClick={isMobile ? handleControlAreaClick : undefined}
-            onMouseEnter={!isMobile ? () => setIsProgressHovered(true) : undefined}
-            onMouseLeave={!isMobile ? () => setIsProgressHovered(false) : undefined}
           >
-            {/* 控制区背景 */}
+            <span className="text-xs font-medium text-white/90 drop-shadow-lg select-none">
+              {playbackRate}x
+            </span>
+          </div>
+
+          {/* 实际唱片圆盘 */}
+          <div 
+            id="record-disc"
+            className="relative w-[180px] h-[180px] rounded-full overflow-visible cursor-pointer select-none"
+            onClick={togglePlayPause}
+            style={{
+              transform: `rotate(${rotation}deg)`,
+              transition: 'none',
+            }}
+          >
+            {/* 唱片内容容器 - 添加溢出隐藏 */}
+            <div className="absolute inset-0 rounded-full overflow-hidden border-8 border-black select-none">
+              {/* 唱片封面图 */}
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-900 to-indigo-900 select-none">
+                {coverUrl && (
+                  <Image
+                    src={coverUrl}
+                    alt="Album cover"
+                    fill
+                    className="object-cover select-none"
+                    unselectable="on"
+                    draggable={false}
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* 外部光晕效果 */}
             <div 
-              className="relative bg-black/80 backdrop-blur-lg pt-1 pb-1.5 px-2 overflow-hidden progress-area"
+              className="absolute inset-0 rounded-full"
               style={{
-                position: 'relative',
-                top: 0,
-                height: (isMobile ? isControlExpanded : isProgressHovered) ? '55px' : '24px',
-                transition: 'height 0.4s cubic-bezier(0.21, 1, 0.36, 1)'
+                boxShadow: `
+                  0 0 20px 2px rgba(147, 51, 234, 0.1),
+                  0 0 10px 1px rgba(168, 85, 247, 0.15),
+                  0 0 5px 0 rgba(139, 92, 246, 0.2),
+                  0 4px 6px rgba(0, 0, 0, 0.3)
+                `
               }}
-            >
-              {/* 科技感边框 */}
-              {(isMobile ? isControlExpanded : isProgressHovered) && (
-                <div className="absolute inset-0 opacity-30 pointer-events-none">
-                  <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
-                  <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
-                  <div className="absolute top-0 bottom-0 left-0 w-[1px] bg-gradient-to-b from-transparent via-blue-400 to-transparent" />
-                  <div className="absolute top-0 bottom-0 right-0 w-[1px] bg-gradient-to-b from-transparent via-blue-400 to-transparent" />
-                </div>
-              )}
-              
-              {/* 给进度条区域添加类名 */}
-              <div className="progress-area">
-                {/* 时间和音量显示 */}
-                <div className="text-center text-white text-xs font-medium mb-0.5 flex justify-center items-center gap-2">
-                  {(isMobile ? isControlExpanded : isProgressHovered) ? (
-                    <>
-                      <div className="flex items-center">
-                        <span className="text-blue-300/90">{formatTime(currentTime1)}</span>
-                        <span className="mx-1 text-[10px] text-white/50">/</span>
-                        <span className="text-white/70">{formatTime(duration)}</span>
-                      </div>
-                      <span className="text-[10px] text-blue-200/90 font-medium">
-                        {Math.round(volume * 100)}%
-                      </span>
-                    </>
-                  ) : (
-                    formatTime(currentTime1)
-                  )}
-                </div>
+            />
+
+            {/* 其他内容（中心孔等）保持不变 */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              {/* 黑色圆环背景 */}
+              <div className="w-12 h-12 rounded-full bg-black flex items-center justify-center">
+                {/* 白色中心孔 */}
+                <div className="absolute w-4 h-4 rounded-full bg-white/20 pointer-events-none" />
                 
-                {/* 进度条 */}
+                {/* 循环模式控制 - 放在中心孔位置 */}
                 <div 
-                  className="w-full cursor-pointer relative z-10"
-                  onClick={handleProgressBarClick}
+                  className="w-4 h-4 rounded-full cursor-pointer z-30 flex items-center justify-center"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleLoopModeChange();
+                  }}
                 >
-                  <div className="w-full h-1 rounded-full overflow-hidden bg-[#0a2e47]">
-                    <div 
-                      className="h-full bg-gradient-to-r from-purple-400 via-fuchsia-500 to-violet-600"
-                      style={{ width: `${(currentTime1 / (duration || 1)) * 100}%` }}
-                    />
-                  </div>
+                  <svg 
+                    width="16" 
+                    height="16" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="white" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                    className="opacity-90"
+                  >
+                    {loopMode === 'continuous' ? (
+                      // 顺序播放图标 - 单箭头
+                      <>
+                        <path d="M4 12h16" />
+                        <path d="M16 6l6 6-6 6" />
+                      </>
+                    ) : loopMode === 'sentence' ? (
+                      // 单曲循环图标
+                      <>
+                        <path d="M17 2l4 4-4 4" />
+                        <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+                        <path d="M7 22l-4-4 4-4" />
+                        <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+                        <path d="M11 12h2" />
+                      </>
+                    ) : (
+                      // 段落循环图标
+                      <>
+                        <path d="M17 2l4 4-4 4" />
+                        <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+                        <path d="M7 22l-4-4 4-4" />
+                        <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+                      </>
+                    )}
+                  </svg>
                 </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* 科技感控制区 - 修改交互方式 */}
+          <div className="absolute bottom-0 left-0 w-full z-50">
+            <div 
+              className="mx-auto overflow-hidden"
+              style={{
+                width: (isMobile ? isControlExpanded : isProgressHovered) ? '164px' : '120px',
+                borderBottomLeftRadius: (isMobile ? isControlExpanded : isProgressHovered) ? '12px' : '60px',
+                borderBottomRightRadius: (isMobile ? isControlExpanded : isProgressHovered) ? '12px' : '60px',
+                boxShadow: (isMobile ? isControlExpanded : isProgressHovered) ? 
+                  '0 0 0 1px rgba(56, 182, 255, 0.6), 0 4px 8px rgba(0, 0, 0, 0.3)' : 
+                  '0 0 0 1px rgba(56, 182, 255, 0.3)',
+                transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
+              }}
+              onClick={isMobile ? handleControlAreaClick : undefined}
+              onMouseEnter={!isMobile ? () => setIsProgressHovered(true) : undefined}
+              onMouseLeave={!isMobile ? () => setIsProgressHovered(false) : undefined}
+            >
+              {/* 控制区背景 */}
+              <div 
+                className="relative bg-black/80 backdrop-blur-lg pt-1 pb-1.5 px-2 overflow-hidden progress-area"
+                style={{
+                  position: 'relative',
+                  top: 0,
+                  height: (isMobile ? isControlExpanded : isProgressHovered) ? '55px' : '24px',
+                  transition: 'height 0.4s cubic-bezier(0.21, 1, 0.36, 1)'
+                }}
+              >
+                {/* 科技感边框 */}
+                {(isMobile ? isControlExpanded : isProgressHovered) && (
+                  <div className="absolute inset-0 opacity-30 pointer-events-none">
+                    <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
+                    <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
+                    <div className="absolute top-0 bottom-0 left-0 w-[1px] bg-gradient-to-b from-transparent via-blue-400 to-transparent" />
+                    <div className="absolute top-0 bottom-0 right-0 w-[1px] bg-gradient-to-b from-transparent via-blue-400 to-transparent" />
+                  </div>
+                )}
                 
-                {/* 控制区底部 */}
-                <AnimatePresence>
-                  {(isMobile ? isControlExpanded : isProgressHovered) && (
-                    <motion.div 
-                      className="mt-1"
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -5 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <div className="flex items-center justify-between">
-                        {/* 左侧按钮组 */}
-                        <div className="flex items-center gap-1.5">
-                          {/* 倍速按钮 */}
-                          <button 
-                            className="w-5 h-5 rounded-full bg-blue-900/30 flex items-center justify-center"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const currentIndex = PLAYBACK_RATES.indexOf(playbackRate);
-                              const nextIndex = (currentIndex + 1) % PLAYBACK_RATES.length;
-                              handlePlaybackRateChange(PLAYBACK_RATES[nextIndex]);
-                            }}
-                          >
-                            <span className="text-[10px] text-blue-300 translate-y-px -translate-x-[0.5px]">
-                              {playbackRate}x
-                            </span>
-                          </button>
+                {/* 给进度条区域添加类名 */}
+                <div className="progress-area">
+                  {/* 时间和音量显示 */}
+                  <div className="text-center text-white text-xs font-medium mb-0.5 flex justify-center items-center gap-2">
+                    {(isMobile ? isControlExpanded : isProgressHovered) ? (
+                      <>
+                        <div className="flex items-center">
+                          <span className="text-blue-300/90">{formatTime(currentTime1)}</span>
+                          <span className="mx-1 text-[10px] text-white/50">/</span>
+                          <span className="text-white/70">{formatTime(duration)}</span>
+                        </div>
+                        <span className="text-[10px] text-blue-200/90 font-medium">
+                          {Math.round(volume * 100)}%
+                        </span>
+                      </>
+                    ) : (
+                      formatTime(currentTime1)
+                    )}
+                  </div>
+                  
+                  {/* 进度条 */}
+                  <div 
+                    className="w-full cursor-pointer relative z-10"
+                    onClick={handleProgressBarClick}
+                  >
+                    <div className="w-full h-1 rounded-full overflow-hidden bg-[#0a2e47]">
+                      <div 
+                        className="h-full bg-gradient-to-r from-purple-400 via-fuchsia-500 to-violet-600"
+                        style={{ width: `${(currentTime1 / (duration || 1)) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* 控制区底部 */}
+                  <AnimatePresence>
+                    {(isMobile ? isControlExpanded : isProgressHovered) && (
+                      <motion.div 
+                        className="mt-1"
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -5 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <div className="flex items-center justify-between">
+                          {/* 左侧按钮组 */}
+                          <div className="flex items-center gap-1.5">
+                            {/* 倍速按钮 */}
+                            <button 
+                              className="w-5 h-5 rounded-full bg-blue-900/30 flex items-center justify-center"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const currentIndex = PLAYBACK_RATES.indexOf(playbackRate);
+                                const nextIndex = (currentIndex + 1) % PLAYBACK_RATES.length;
+                                handlePlaybackRateChange(PLAYBACK_RATES[nextIndex]);
+                              }}
+                            >
+                              <span className="text-[10px] text-blue-300 translate-y-px -translate-x-[0.5px]">
+                                {playbackRate}x
+                              </span>
+                            </button>
+                            
+                            {/* 循环模式按钮 */}
+                            <button 
+                              className="w-5 h-5 rounded-full bg-blue-900/30 flex items-center justify-center"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleLoopModeChange();
+                              }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+                                className="text-blue-300" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                {loopMode === 'continuous' ? (
+                                  // 顺序播放图标 - 修改为图片中的样式
+                                  <>
+                                    <path d="M4 12h16" />
+                                    <path d="M16 6l6 6-6 6" />
+                                  </>
+                                ) : loopMode === 'sentence' ? (
+                                  // 单曲循环图标
+                                  <>
+                                    <path d="M17 2l4 4-4 4" />
+                                    <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+                                    <path d="M7 22l-4-4 4-4" />
+                                    <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+                                    <path d="M11 12h2" />
+                                  </>
+                                ) : (
+                                  // 段落循环图标
+                                  <>
+                                    <path d="M17 2l4 4-4 4" />
+                                    <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+                                    <path d="M7 22l-4-4 4-4" />
+                                    <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+                                  </>
+                                )}
+                              </svg>
+                            </button>
+                          </div>
                           
-                          {/* 循环模式按钮 */}
-                          <button 
-                            className="w-5 h-5 rounded-full bg-blue-900/30 flex items-center justify-center"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleLoopModeChange();
-                            }}
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
-                              className="text-blue-300" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              {loopMode === 'continuous' ? (
-                                // 顺序播放图标 - 修改为图片中的样式
-                                <>
-                                  <path d="M4 12h16" />
-                                  <path d="M16 6l6 6-6 6" />
-                                </>
-                              ) : loopMode === 'sentence' ? (
-                                // 单曲循环图标
-                                <>
-                                  <path d="M17 2l4 4-4 4" />
-                                  <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
-                                  <path d="M7 22l-4-4 4-4" />
-                                  <path d="M21 13v1a4 4 0 0 1-4 4H3" />
-                                  <path d="M11 12h2" />
-                                </>
+                          {/* 中间音量控制面板 */}
+                          <div className="flex flex-col gap-[3px]">
+                            {/* 第一行 - 1-5档位 */}
+                            <div className="flex gap-[3px]">
+                              {[...Array(5)].map((_, i) => {
+                                const volumeLevel = (i + 1) * 10; // 10%, 20%, 30%, 40%, 50%
+                                const isActive = Math.round(volume * 100) >= volumeLevel;
+                                
+                                return (
+                                  <div 
+                                    key={`top-${i}`}
+                                    className="relative group"
+                                  >
+                                    {/* 提示工具提示 - 增加 z-index 确保在进度条上方 */}
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
+                                      <span className="text-[8px] text-white/90 bg-black/70 px-1 py-0.5 rounded whitespace-nowrap">
+                                        {volumeLevel}%
+                                      </span>
+                                    </div>
+                                    
+                                    <div 
+                                      className="w-2 h-2 rounded-full cursor-pointer transition-all duration-150"
+                                      style={{
+                                        backgroundColor: isActive 
+                                          ? `rgba(${56 + i*20}, ${182 - i*10}, ${255 - i*20}, 0.9)` 
+                                          : 'rgba(10, 46, 71, 0.5)',
+                                        transform: isActive ? 'scale(1)' : 'scale(0.8)'
+                                      }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleVolumeChange([volumeLevel]);
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            
+                            {/* 第二行 - 6-10档位 */}
+                            <div className="flex gap-[3px]">
+                              {[...Array(5)].map((_, i) => {
+                                const volumeLevel = (i + 6) * 10; // 60%, 70%, 80%, 90%, 100%
+                                const isActive = Math.round(volume * 100) >= volumeLevel;
+                                
+                                return (
+                                  <div 
+                                    key={`bottom-${i}`}
+                                    className="relative group"
+                                  >
+                                    {/* 提示工具提示 - 增加 z-index 确保在进度条上方 */}
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
+                                      <span className="text-[8px] text-white/90 bg-black/70 px-1 py-0.5 rounded whitespace-nowrap">
+                                        {volumeLevel}%
+                                      </span>
+                                    </div>
+                                    
+                                    <div 
+                                      className="w-2 h-2 rounded-full cursor-pointer transition-all duration-150"
+                                      style={{
+                                        backgroundColor: isActive 
+                                          ? `rgba(${56 + (i+5)*20}, ${182 - (i+5)*10}, ${255 - (i+5)*20}, 0.9)` 
+                                          : 'rgba(10, 46, 71, 0.5)',
+                                        transform: isActive ? 'scale(1)' : 'scale(0.8)'
+                                      }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleVolumeChange([volumeLevel]);
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          
+                          {/* 右侧按钮组 */}
+                          <div className="flex items-center gap-1.5">
+                            {/* 音量按钮 - 替换原来的音频按钮 */}
+                            <button 
+                              className="w-5 h-5 rounded-full bg-blue-900/30 flex items-center justify-center"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newVolume = volume > 0 ? 0 : lastNonZeroVolume || 0.7;
+                                handleVolumeChange([newVolume * 100]);
+                              }}
+                            >
+                              {volume === 0 ? (
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+                                  className="text-blue-300" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polygon points="11 5 6 9 2 9 2 15 6 15 19 11 5"></polygon>
+                                  <line x1="23" y1="9" x2="17" y2="15"></line>
+                                  <line x1="17" y1="9" x2="23" y2="15"></line>
+                                </svg>
                               ) : (
-                                // 段落循环图标
-                                <>
-                                  <path d="M17 2l4 4-4 4" />
-                                  <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
-                                  <path d="M7 22l-4-4 4-4" />
-                                  <path d="M21 13v1a4 4 0 0 1-4 4H3" />
-                                </>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+                                  className="text-blue-300" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                                </svg>
                               )}
-                            </svg>
-                          </button>
-                        </div>
-                        
-                        {/* 中间音量控制面板 */}
-                        <div className="flex flex-col gap-[3px]">
-                          {/* 第一行 - 1-5档位 */}
-                          <div className="flex gap-[3px]">
-                            {[...Array(5)].map((_, i) => {
-                              const volumeLevel = (i + 1) * 10; // 10%, 20%, 30%, 40%, 50%
-                              const isActive = Math.round(volume * 100) >= volumeLevel;
-                              
-                              return (
-                                <div 
-                                  key={`top-${i}`}
-                                  className="relative group"
-                                >
-                                  {/* 提示工具提示 - 增加 z-index 确保在进度条上方 */}
-                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
-                                    <span className="text-[8px] text-white/90 bg-black/70 px-1 py-0.5 rounded whitespace-nowrap">
-                                      {volumeLevel}%
-                                    </span>
-                                  </div>
-                                  
-                                  <div 
-                                    className="w-2 h-2 rounded-full cursor-pointer transition-all duration-150"
-                                    style={{
-                                      backgroundColor: isActive 
-                                        ? `rgba(${56 + i*20}, ${182 - i*10}, ${255 - i*20}, 0.9)` 
-                                        : 'rgba(10, 46, 71, 0.5)',
-                                      transform: isActive ? 'scale(1)' : 'scale(0.8)'
-                                    }}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleVolumeChange([volumeLevel]);
-                                    }}
-                                  />
-                                </div>
-                              );
-                            })}
-                          </div>
-                          
-                          {/* 第二行 - 6-10档位 */}
-                          <div className="flex gap-[3px]">
-                            {[...Array(5)].map((_, i) => {
-                              const volumeLevel = (i + 6) * 10; // 60%, 70%, 80%, 90%, 100%
-                              const isActive = Math.round(volume * 100) >= volumeLevel;
-                              
-                              return (
-                                <div 
-                                  key={`bottom-${i}`}
-                                  className="relative group"
-                                >
-                                  {/* 提示工具提示 - 增加 z-index 确保在进度条上方 */}
-                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
-                                    <span className="text-[8px] text-white/90 bg-black/70 px-1 py-0.5 rounded whitespace-nowrap">
-                                      {volumeLevel}%
-                                    </span>
-                                  </div>
-                                  
-                                  <div 
-                                    className="w-2 h-2 rounded-full cursor-pointer transition-all duration-150"
-                                    style={{
-                                      backgroundColor: isActive 
-                                        ? `rgba(${56 + (i+5)*20}, ${182 - (i+5)*10}, ${255 - (i+5)*20}, 0.9)` 
-                                        : 'rgba(10, 46, 71, 0.5)',
-                                      transform: isActive ? 'scale(1)' : 'scale(0.8)'
-                                    }}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleVolumeChange([volumeLevel]);
-                                    }}
-                                  />
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        
-                        {/* 右侧按钮组 */}
-                        <div className="flex items-center gap-1.5">
-                          {/* 音量按钮 - 替换原来的音频按钮 */}
-                          <button 
-                            className="w-5 h-5 rounded-full bg-blue-900/30 flex items-center justify-center"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const newVolume = volume > 0 ? 0 : lastNonZeroVolume || 0.7;
-                              handleVolumeChange([newVolume * 100]);
-                            }}
-                          >
-                            {volume === 0 ? (
+                            </button>
+                            
+                            {/* 详情按钮 */}
+                            <button 
+                              className="w-5 h-5 rounded-full bg-blue-900/30 flex items-center justify-center"
+                            >
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
                                 className="text-blue-300" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                                <line x1="23" y1="9" x2="17" y2="15"></line>
-                                <line x1="17" y1="9" x2="23" y2="15"></line>
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="12" y1="16" x2="12" y2="12"></line>
+                                <line x1="12" y1="8" x2="12" y2="8"></line>
                               </svg>
-                            ) : (
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
-                                className="text-blue-300" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-                                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
-                              </svg>
-                            )}
-                          </button>
-                          
-                          {/* 详情按钮 */}
-                          <button 
-                            className="w-5 h-5 rounded-full bg-blue-900/30 flex items-center justify-center"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
-                              className="text-blue-300" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <circle cx="12" cy="12" r="10"></circle>
-                              <line x1="12" y1="16" x2="12" y2="12"></line>
-                              <line x1="12" y1="8" x2="12" y2="8"></line>
-                            </svg>
-                          </button>
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </motion.div>
+      </motion.div>
+    </>
   );
 } 
