@@ -83,224 +83,202 @@ export class WordAlignmentService {
   }
   
   /**
-   * 创建原始单词到对齐单词的映射（优化版）
+   * 创建原始单词到对齐单词的映射（顺序对齐改进版）
    */
   private static createAlignmentMap(
     dbWords: any[], 
     originalWords: string[], 
     alignedWords: string[]
   ): Map<number, {targetIndices: number[], similarityScore: number}> {
-    console.time('创建映射-预计算相似度矩阵');
+    console.time('创建映射-顺序对齐');
     // 映射: 原始单词索引 -> {目标单词索引数组, 相似度得分}
     const alignmentMap = new Map<number, {targetIndices: number[], similarityScore: number}>();
-    
-    // 位置权重计算
-    function calculatePositionWeight(origIndex: number, alignedIndex: number) {
-      // 相对位置
-      const origPosition = origIndex / originalWords.length;
-      const alignedPosition = alignedIndex / alignedWords.length;
-      
-      // 位置差异惩罚（差异越大，得分越低）
-      const positionDiff = Math.abs(origPosition - alignedPosition);
-      const positionScore = 1 - positionDiff;
-      
-      return positionScore;
-    }
-    
-    // 预计算相似度矩阵，避免重复计算
-    const similarityMatrix: number[][] = [];
-    for (let i = 0; i < originalWords.length; i++) {
-      similarityMatrix[i] = [];
-      const originalWord = originalWords[i].toLowerCase();
-      
-      for (let j = 0; j < alignedWords.length; j++) {
-        const alignedWord = alignedWords[j].toLowerCase();
-        const textSimilarity = stringSimilarity.compareTwoStrings(originalWord, alignedWord);
-        
-        // 结合文本相似度和位置相似度（位置权重占30%）
-        const positionWeight = 0.3;
-        const positionScore = calculatePositionWeight(i, j);
-        const combinedScore = (textSimilarity * (1 - positionWeight)) + 
-                             (positionScore * positionWeight);
-        
-        similarityMatrix[i][j] = combinedScore;
-      }
-    }
-    console.timeEnd('创建映射-预计算相似度矩阵');
     
     // 记录已分配的对齐单词索引
     const assignedAlignedIndices = new Set<number>();
     
-    // 贪心算法：先处理最高相似度的匹配
-    console.time('创建映射-收集匹配候选');
-    const candidateMatches: Array<{
-      originalIndex: number,
-      alignedIndex: number,
-      similarity: number
-    }> = [];
+    // 顺序遍历两个单词列表
+    let origIndex = 0;
+    let alignIndex = 0;
     
-    // 收集所有可能的单词匹配
-    for (let i = 0; i < originalWords.length; i++) {
-      for (let j = 0; j < alignedWords.length; j++) {
-        if (similarityMatrix[i][j] > 0.5) { // 只考虑相似度较高的匹配
-          candidateMatches.push({
-            originalIndex: i,
-            alignedIndex: j,
-            similarity: similarityMatrix[i][j]
-          });
-        }
+    while (origIndex < originalWords.length && alignIndex < alignedWords.length) {
+      const origWord = originalWords[origIndex].toLowerCase();
+      const alignWord = alignedWords[alignIndex].toLowerCase();
+      
+      // 计算相似度
+      const similarity = stringSimilarity.compareTwoStrings(origWord, alignWord);
+      
+      // 单词完全匹配或非常相似 (一对一)
+      if (similarity > 0.8) {
+        alignmentMap.set(origIndex, {
+          targetIndices: [alignIndex],
+          similarityScore: similarity
+        });
+        assignedAlignedIndices.add(alignIndex);
+        origIndex++;
+        alignIndex++;
+        continue;
       }
-    }
-    console.timeEnd('创建映射-收集匹配候选');
-    
-    // 按相似度降序排序
-    console.time('创建映射-处理一对一匹配');
-    candidateMatches.sort((a, b) => b.similarity - a.similarity);
-    
-    // 处理一对一匹配
-    for (const match of candidateMatches) {
-      if (!alignmentMap.has(match.originalIndex) && 
-          !assignedAlignedIndices.has(match.alignedIndex)) {
+      
+      // 尝试检测拆分单词 (一对多) - "anyone" -> "any one"
+      const splitWords = this.checkWordSplit(origWord, alignedWords, alignIndex);
+      if (splitWords.found && splitWords.endIndex > alignIndex) {
+        // 确保按顺序添加单词索引
+        const targetIndices = [];
+        for (let i = alignIndex; i <= splitWords.endIndex; i++) {
+          targetIndices.push(i);
+          assignedAlignedIndices.add(i);
+        }
         
-        alignmentMap.set(match.originalIndex, {
-          targetIndices: [match.alignedIndex],
-          similarityScore: match.similarity
+        alignmentMap.set(origIndex, {
+          targetIndices: targetIndices,
+          similarityScore: splitWords.similarity
         });
         
-        assignedAlignedIndices.add(match.alignedIndex);
-      }
-    }
-    console.timeEnd('创建映射-处理一对一匹配');
-    
-    // 处理未分配的原始单词 - 尝试组合匹配
-    console.time('创建映射-处理复杂匹配');
-    for (let i = 0; i < originalWords.length; i++) {
-      if (alignmentMap.has(i)) continue;
-      
-      const originalWord = originalWords[i].toLowerCase();
-      
-      // 尝试将原始单词与多个未分配的对齐单词匹配
-      let bestMultiMatch = {
-        indices: [] as number[],
-        similarity: 0
-      };
-      
-      // 只考虑最多3个连续单词的组合
-      for (let startIdx = 0; startIdx < alignedWords.length; startIdx++) {
-        if (assignedAlignedIndices.has(startIdx)) continue;
-        
-        for (let count = 1; count <= 3 && startIdx + count - 1 < alignedWords.length; count++) {
-          // 检查这些单词是否都未分配
-          let allAvailable = true;
-          for (let j = 0; j < count; j++) {
-            if (assignedAlignedIndices.has(startIdx + j)) {
-              allAvailable = false;
-              break;
-            }
-          }
-          
-          if (!allAvailable) continue;
-          
-          // 组合单词并计算相似度
-          let combined = '';
-          for (let j = 0; j < count; j++) {
-            combined += alignedWords[startIdx + j].toLowerCase();
-          }
-          
-          const similarity = stringSimilarity.compareTwoStrings(originalWord, combined);
-          
-          if (similarity > bestMultiMatch.similarity) {
-            bestMultiMatch.similarity = similarity;
-            bestMultiMatch.indices = [];
-            for (let j = 0; j < count; j++) {
-              bestMultiMatch.indices.push(startIdx + j);
-            }
-          }
-        }
+        // 更新索引位置
+        origIndex++;
+        alignIndex = splitWords.endIndex + 1;
+        continue;
       }
       
-      // 如果找到较好的多词匹配
-      if (bestMultiMatch.similarity > 0.5 && bestMultiMatch.indices.length > 0) {
-        alignmentMap.set(i, {
-          targetIndices: bestMultiMatch.indices,
-          similarityScore: bestMultiMatch.similarity
-        });
-        
-        bestMultiMatch.indices.forEach(idx => assignedAlignedIndices.add(idx));
-      }
-    }
-    
-    // 处理未分配的对齐单词 - 尝试将多个原始单词组合匹配到一个对齐单词
-    for (let j = 0; j < alignedWords.length; j++) {
-      if (assignedAlignedIndices.has(j)) continue;
-      
-      const alignedWord = alignedWords[j].toLowerCase();
-      
-      // 尝试将多个连续的未分配原始单词与此对齐单词匹配
-      let bestMultiOriginalMatch = {
-        indices: [] as number[],
-        similarity: 0
-      };
-      
-      // 只考虑最多3个连续原始单词的组合
-      for (let startIdx = 0; startIdx < originalWords.length; startIdx++) {
-        if (alignmentMap.has(startIdx)) continue;
-        
-        for (let count = 1; count <= 3 && startIdx + count - 1 < originalWords.length; count++) {
-          // 检查这些单词是否都未分配
-          let allAvailable = true;
-          for (let i = 0; i < count; i++) {
-            if (alignmentMap.has(startIdx + i)) {
-              allAvailable = false;
-              break;
-            }
-          }
-          
-          if (!allAvailable) continue;
-          
-          // 组合单词并计算相似度
-          let combined = '';
-          for (let i = 0; i < count; i++) {
-            combined += originalWords[startIdx + i].toLowerCase();
-          }
-          
-          const similarity = stringSimilarity.compareTwoStrings(combined, alignedWord);
-          
-          if (similarity > bestMultiOriginalMatch.similarity) {
-            bestMultiOriginalMatch.similarity = similarity;
-            bestMultiOriginalMatch.indices = [];
-            for (let i = 0; i < count; i++) {
-              bestMultiOriginalMatch.indices.push(startIdx + i);
-            }
-          }
-        }
-      }
-      
-      // 如果找到较好的多词匹配
-      if (bestMultiOriginalMatch.similarity > 0.5 && bestMultiOriginalMatch.indices.length > 0) {
-        for (const idx of bestMultiOriginalMatch.indices) {
-          alignmentMap.set(idx, {
-            targetIndices: [j],
-            similarityScore: bestMultiOriginalMatch.similarity / bestMultiOriginalMatch.indices.length
+      // 尝试检测合并单词 (多对一) - "any one" -> "anyone" 
+      const mergedWords = this.checkWordMerge(originalWords, origIndex, alignWord);
+      if (mergedWords.found && mergedWords.endIndex > origIndex) {
+        // 将多个原始单词映射到同一个对齐单词
+        for (let i = origIndex; i <= mergedWords.endIndex; i++) {
+          alignmentMap.set(i, {
+            targetIndices: [alignIndex],
+            similarityScore: mergedWords.similarity / (mergedWords.endIndex - origIndex + 1)
           });
         }
         
-        assignedAlignedIndices.add(j);
+        assignedAlignedIndices.add(alignIndex);
+        origIndex = mergedWords.endIndex + 1;
+        alignIndex++;
+        continue;
       }
+      
+      // 处理可能的插入或删除
+      // 首先检查是否为删除（原文有，对齐文本没有）
+      if (origIndex + 1 < originalWords.length) {
+        const nextOrigWord = originalWords[origIndex + 1].toLowerCase();
+        const skipOrigSimilarity = stringSimilarity.compareTwoStrings(nextOrigWord, alignWord);
+        
+        if (skipOrigSimilarity > 0.7) {
+          // 当前原始单词可能已被删除
+          alignmentMap.set(origIndex, {
+            targetIndices: [],
+            similarityScore: 0
+          });
+          origIndex++;
+          continue;
+        }
+      }
+      
+      // 检查是否为插入（原文没有，对齐文本有）
+      if (alignIndex + 1 < alignedWords.length) {
+        const nextAlignWord = alignedWords[alignIndex + 1].toLowerCase();
+        const skipAlignSimilarity = stringSimilarity.compareTwoStrings(origWord, nextAlignWord);
+        
+        if (skipAlignSimilarity > 0.7) {
+          // 当前对齐单词可能是插入的
+          assignedAlignedIndices.add(alignIndex);
+          alignIndex++;
+          continue;
+        }
+      }
+      
+      // 默认情况：尝试一对一匹配（即使相似度不高）
+      alignmentMap.set(origIndex, {
+        targetIndices: [alignIndex],
+        similarityScore: Math.max(0.3, similarity) // 给一个最低分数
+      });
+      assignedAlignedIndices.add(alignIndex);
+      origIndex++;
+      alignIndex++;
     }
     
-    // 简单处理剩余未分配的原始单词和对齐单词
-    // 未分配的原始单词设为删除
-    for (let i = 0; i < originalWords.length; i++) {
-      if (!alignmentMap.has(i)) {
-        alignmentMap.set(i, {
-          targetIndices: [],
-          similarityScore: 0
-        });
-      }
+    // 处理剩余单词
+    while (origIndex < originalWords.length) {
+      alignmentMap.set(origIndex, {
+        targetIndices: [],
+        similarityScore: 0
+      });
+      origIndex++;
     }
     
+    console.timeEnd('创建映射-顺序对齐');
     return alignmentMap;
+  }
+  
+  /**
+   * 检查单词是否应该拆分为多个单词 (如 "anyone" -> "any one")
+   */
+  private static checkWordSplit(
+    origWord: string,
+    alignedWords: string[],
+    startIndex: number
+  ): {found: boolean, endIndex: number, similarity: number} {
+    if (startIndex >= alignedWords.length - 1) {
+      return {found: false, endIndex: startIndex, similarity: 0};
+    }
+    
+    // 尝试2-3个连续单词的组合
+    for (let count = 2; count <= 3 && startIndex + count - 1 < alignedWords.length; count++) {
+      let combined = '';
+      
+      // 按顺序组合单词
+      for (let i = 0; i < count; i++) {
+        combined += alignedWords[startIndex + i].toLowerCase();
+      }
+      
+      const similarity = stringSimilarity.compareTwoStrings(origWord.toLowerCase(), combined);
+      
+      if (similarity > 0.7) {
+        return {
+          found: true,
+          endIndex: startIndex + count - 1,
+          similarity: similarity
+        };
+      }
+    }
+    
+    return {found: false, endIndex: startIndex, similarity: 0};
+  }
+  
+  /**
+   * 检查多个单词是否应该合并为一个单词 (如 "any one" -> "anyone")
+   */
+  private static checkWordMerge(
+    originalWords: string[],
+    startIndex: number,
+    alignedWord: string
+  ): {found: boolean, endIndex: number, similarity: number} {
+    if (startIndex >= originalWords.length - 1) {
+      return {found: false, endIndex: startIndex, similarity: 0};
+    }
+    
+    // 尝试2-3个连续单词的组合
+    for (let count = 2; count <= 3 && startIndex + count - 1 < originalWords.length; count++) {
+      let combined = '';
+      
+      // 按顺序组合单词
+      for (let i = 0; i < count; i++) {
+        combined += originalWords[startIndex + i].toLowerCase();
+      }
+      
+      const similarity = stringSimilarity.compareTwoStrings(combined, alignedWord.toLowerCase());
+      
+      if (similarity > 0.7) {
+        return {
+          found: true,
+          endIndex: startIndex + count - 1,
+          similarity: similarity
+        };
+      }
+    }
+    
+    return {found: false, endIndex: startIndex, similarity: 0};
   }
   
   /**
@@ -337,7 +315,7 @@ export class WordAlignmentService {
             word: alignedWords[targetIndices[0]]
           }
         });
-      } else {
+            } else {
         // 一个原始单词拆分为多个对齐单词
         const totalDuration = dbWord.end_time - dbWord.begin_time;
         const segmentDuration = totalDuration / targetIndices.length;
