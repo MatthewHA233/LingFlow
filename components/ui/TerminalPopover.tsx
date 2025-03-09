@@ -6,7 +6,7 @@ import { AudioController, AUDIO_EVENTS } from '@/lib/audio-controller';
 import { toast } from 'sonner';
 import { Fragment } from 'react';
 
-// 重新设计的 formatTime 函数
+// 修改 formatTime 函数返回字符串而非 JSX
 const formatTime = (ms: number) => {
   if (ms === undefined || isNaN(ms)) return '未知';
 
@@ -16,25 +16,12 @@ const formatTime = (ms: number) => {
   const seconds = totalSeconds % 60;
   const milliseconds = ms % 1000;
 
-  const formattedTime = hours > 0
-    ? (
-      <>
-        <span className="text-blue-400">{String(hours).padStart(2, '0')}</span>:
-        {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}.
-        <span className="text-gray-400 text-[8px]">{String(milliseconds).padStart(3, '0')}</span>
-      </>
-    )
-    : (
-      <>
-        {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}.
-        <span className="text-gray-400 text-[8px]">{String(milliseconds).padStart(3, '0')}</span>
-      </>
-    );
-
-  return formattedTime;
+  return hours > 0
+    ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`
+    : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`;
 };
 
-// 重新设计的 formatWordTime 函数
+// 修改 formatWordTime 函数返回字符串而非 JSX
 const formatWordTime = (timeRange?: string) => {
   if (!timeRange) return '';
 
@@ -48,25 +35,12 @@ const formatWordTime = (timeRange?: string) => {
     const seconds = totalSeconds % 60;
     const milliseconds = ms % 1000;
 
-    const formattedTime = hours > 0
-      ? (
-        <>
-          <span className="text-blue-400">{String(hours).padStart(2, '0')}</span>:
-          {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}.
-          <span className="text-gray-400 text-[8px]">{String(milliseconds).padStart(3, '0')}</span>
-        </>
-      )
-      : (
-        <>
-          {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}.
-          <span className="text-gray-400 text-[8px]">{String(milliseconds).padStart(3, '0')}</span>
-        </>
-      );
-
-    return formattedTime;
+    return hours > 0
+      ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`
+      : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`;
   };
 
-  return endMs ? <>{format(startMs)} ~ {format(endMs)}</> : format(startMs);
+  return endMs ? `${format(startMs)} ~ ${format(endMs)}` : format(startMs);
 };
 
 // 添加自定义终端风格悬浮窗组件

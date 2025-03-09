@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase-client';
 import * as stringSimilarity from 'string-similarity';
+import { WordAlignmentService } from './word-alignment';
 
 export interface AlignmentResult {
   blockId: string;
@@ -175,14 +176,14 @@ export class TextAlignmentService {
         result.alignedSentences.push({
           sentenceId: sentence.id,
           originalText: sentence.text_content,
-          alignedText: alignedText,
+          alignedText: alignedText || "",
           beginTime: sentence.begin_time,
           endTime: sentence.end_time,
           orderIndex: orderIndex++
         });
         
         // 更新剩余文本，去除已对齐部分
-        const newStartIndex = matchResult.startIndex + alignedText.length;
+        const newStartIndex = matchResult.startIndex + (alignedText?.length || 0);
         console.log(`4.3 更新剩余文本，从位置 ${newStartIndex} 开始截取`);
         currentText = currentText.substring(newStartIndex);
         console.log('剩余文本(前100字符):', currentText.substring(0, 100) + (currentText.length > 100 ? '...' : ''));
@@ -204,7 +205,7 @@ export class TextAlignmentService {
         console.log('\n8. 处理单词级对齐');
         for (const sentence of result.alignedSentences) {
           console.log(`处理句子 ${sentence.sentenceId} 的单词对齐`);
-          await this.alignWordsForSentence(sentence.sentenceId, sentence.alignedText);
+          await WordAlignmentService.alignWordsForSentence(sentence.sentenceId, sentence.alignedText);
         }
         
         // 3. 最后创建元数据关联，此时单词数据已更新
@@ -237,7 +238,7 @@ export class TextAlignmentService {
   /**
    * 寻找句子在文本中的最佳匹配位置
    */
-  private static findBestTextMatch(sentenceText, blockText) {
+  private static findBestTextMatch(sentenceText: string, blockText: string) {
     try {
       console.log('【文本匹配计算】:');
       console.log(`- 句子文本: ${sentenceText}`);
@@ -392,69 +393,45 @@ export class TextAlignmentService {
     let matchedText = originalText.substring(optimizedStart, optimizedEnd);
     console.log(`- 初始匹配文本: "${matchedText}"`);
     
-    // 处理左侧边界 - 向左扩展查找引号或其他需要包含的标点
-    const leftExtensionChars = ['"', '"', '(', '[', '{', '\u2019', '\u00AB'];
-    const leftContextStart = Math.max(0, optimizedStart - 10);
-    const leftContext = originalText.substring(leftContextStart, optimizedStart);
+    // 改进处理引号闭合的逻辑
+    // 检查是否有未闭合的引号
+    const quoteChars = ['"', "'", '"', '"'];
+    let unclosedQuotes = [];
     
-    // 查找最近的左侧特殊字符
-    for (const char of leftExtensionChars) {
-      const lastIndex = leftContext.lastIndexOf(char);
-      if (lastIndex !== -1) {
-        const newStart = leftContextStart + lastIndex;
-        // 只有当这是一个成对标点的左边界时才扩展
-        if (this.isOpeningPunctuation(char)) {
-          console.log(`- 向左扩展边界，包含 ${char} 字符`);
-          optimizedStart = newStart;
-          break;
+    for (let i = optimizedStart; i < optimizedEnd; i++) {
+      if (quoteChars.includes(originalText[i])) {
+        // 如果是引号字符，检查是否已在未闭合列表中
+        const quoteIndex = unclosedQuotes.indexOf(originalText[i]);
+        if (quoteIndex === -1) {
+          // 添加到未闭合列表
+          unclosedQuotes.push(originalText[i]);
+        } else {
+          // 从未闭合列表中移除
+          unclosedQuotes.splice(quoteIndex, 1);
         }
       }
     }
     
-    // 优先处理：检查原始文本中是否存在完整句子并截断
-    const sentenceEndingChars = ['.', '!', '?'];
-    
-    // 先在匹配的文本中查找所有句子结束符位置
-    const sentenceEndings: {position: number, char: string}[] = [];
-    
-    for (const char of sentenceEndingChars) {
-      let pos = matchedText.indexOf(char);
-      while (pos !== -1) {
-        // 检查是否是真正的句子结束（后面是空格、引号或文本结束）
-        const isRealSentenceEnding = 
-          pos === matchedText.length - 1 || // 文本末尾
-          pos + 1 < matchedText.length && (
-            matchedText[pos + 1] === ' ' || // 后跟空格
-            matchedText[pos + 1] === '"' || // 后跟引号
-            matchedText[pos + 1] === '\n'   // 后跟换行
-          );
-        
-        if (isRealSentenceEnding) {
-          sentenceEndings.push({ position: pos, char });
-        }
-        pos = matchedText.indexOf(char, pos + 1);
-      }
-    }
-    
-    // 按位置排序
-    sentenceEndings.sort((a, b) => a.position - b.position);
-    
-    // 如果找到句子结束符，截断到第一个完整句子
-    if (sentenceEndings.length > 0) {
-      const firstSentenceEnd = sentenceEndings[0];
-      // 移到句子结束符之后（包含标点符号）
-      console.log(`- 找到句子结束符 ${firstSentenceEnd.char} 在位置 ${firstSentenceEnd.position}`);
+    // 如果有未闭合的引号，尝试向右查找闭合引号
+    if (unclosedQuotes.length > 0) {
+      const rightContext = originalText.substring(optimizedEnd, Math.min(originalText.length, optimizedEnd + 30));
       
-      // 如果句子结束符不在文本末尾，截断到这个位置
-      if (firstSentenceEnd.position < matchedText.length - 1) {
-        optimizedEnd = optimizedStart + firstSentenceEnd.position + 1; // +1 包含句子结束符本身
-        matchedText = originalText.substring(optimizedStart, optimizedEnd);
-        console.log(`- 截断到第一个完整句子: "${matchedText}"`);
-        return matchedText; // 直接返回处理后的文本
+      for (const unclosedQuote of unclosedQuotes) {
+        const matchingQuote = unclosedQuote === '"' ? '"' : 
+                             unclosedQuote === "'" ? "'" : 
+                             unclosedQuote === '"' ? '"' : 
+                             unclosedQuote === '"' ? '"' : null;
+        
+        if (matchingQuote) {
+          const quotePos = rightContext.indexOf(matchingQuote);
+          if (quotePos !== -1 && quotePos < 20) { // 只考虑不太远的引号
+            optimizedEnd = optimizedEnd + quotePos + 1; // +1 包含引号本身
+            console.log(`- 向右扩展以闭合引号 ${unclosedQuote}→${matchingQuote}`);
+          }
+        }
       }
     }
     
-    // 如果没有找到完整句子，尝试其他处理方法...
     // 处理右侧边界 - 向右扩展查找引号等成对标点
     const rightExtensionChars = ['"', '"', ')', ']', '}', '\u2019', '\u00BB', ':', ';'];
     const rightContextEnd = Math.min(originalText.length, optimizedEnd + 15);
@@ -471,19 +448,6 @@ export class TextAlignmentService {
           console.log(`- 向右扩展边界，包含闭合标点 ${char} 字符`);
           optimizedEnd = newEnd;
           foundPunctuation = true;
-          break;
-        }
-      }
-    }
-    
-    // 如果没找到成对标点，再查找句子结束符
-    if (!foundPunctuation) {
-      for (const char of sentenceEndingChars) {
-        const firstIndex = rightContext.indexOf(char);
-        if (firstIndex !== -1) {
-          const newEnd = optimizedEnd + firstIndex + 1; // +1 包含句子结束符本身
-          console.log(`- 向右扩展边界，包含句子结束符 ${char}`);
-          optimizedEnd = newEnd;
           break;
         }
       }
@@ -853,239 +817,6 @@ export class TextAlignmentService {
     }
   }
   
-  /**
-   * 为句子执行单词级对齐
-   * 直接使用原始文本和对齐文本的单词对比
-   */
-  private static async alignWordsForSentence(sentenceId: string, alignedText: string) {
-    try {
-      console.log(`【开始处理句子 ${sentenceId} 的单词对齐】`);
-      
-      // 1. 获取现有单词数据
-      console.log('1. 获取现有单词数据');
-      const { data: words, error: wordsError } = await supabase
-        .from('words')
-        .select('*')
-        .eq('sentence_id', sentenceId)
-        .order('begin_time');
-      
-      if (wordsError) {
-        console.error('获取单词数据失败:', wordsError);
-        throw new Error(`获取单词数据失败: ${wordsError.message}`);
-      }
-      
-      console.log(`获取到 ${words?.length || 0} 个单词`);
-      words?.forEach((word, i) => {
-        console.log(`单词 ${i+1}: id=${word.id}, 内容="${word.word}", 开始时间=${word.begin_time}, 结束时间=${word.end_time}`);
-      });
-      
-      // 2. 获取句子的原始文本内容
-      console.log('2. 获取句子原始文本');
-      const { data: sentence, error: sentenceError } = await supabase
-        .from('sentences')
-        .select('original_text_content')
-        .eq('id', sentenceId)
-        .single();
-      
-      if (sentenceError) {
-        console.error('获取句子原始文本失败:', sentenceError);
-        throw new Error(`获取句子原始文本失败: ${sentenceError.message}`);
-      }
-      
-      const originalText = sentence.original_text_content || '';
-      console.log(`原始文本: "${originalText}"`);
-      console.log(`对齐文本: "${alignedText}"`);
-      
-      // 3. 提取原始文本和对齐文本中的单词
-      const originalWords = this.extractWords(originalText);
-      const alignedWords = this.extractWords(alignedText);
-      
-      console.log('原始单词列表:', originalWords);
-      console.log('对齐单词列表:', alignedWords);
-      
-      // 4. 处理单词更新
-      console.log('4. 处理单词对齐');
-      
-      // 如果没有现有单词数据，无法执行对齐
-      if (!words || words.length === 0) {
-        console.log('没有现有单词数据，跳过单词对齐');
-        return;
-      }
-      
-      // 只处理单词文本的变化，保留原始时间戳和顺序
-      // 比较两列表长度
-      if (originalWords.length === alignedWords.length) {
-        console.log('情况1: 原始文本和对齐文本单词数量相同，逐一更新单词内容');
-        
-        // 逐一更新单词内容，保留原始顺序和时间戳
-        for (let i = 0; i < Math.min(words.length, alignedWords.length); i++) {
-          const currentWord = words[i];
-          const newWordText = alignedWords[i];
-          
-          // 仅当单词文本不同时更新
-          if (currentWord.word !== newWordText) {
-            console.log(`更新单词 ${i+1}:`, {
-              id: currentWord.id,
-              oldWord: currentWord.word,
-              newWord: newWordText
-            });
-            
-            const wordUpdate = {
-              original_word: currentWord.word, // 保存原始单词
-              word: newWordText           // 更新为新单词
-            };
-            
-            const { error: updateError } = await supabase
-              .from('words')
-              .update(wordUpdate)
-              .eq('id', currentWord.id);
-              
-            if (updateError) {
-              console.error(`更新单词 ${currentWord.id} 失败:`, updateError);
-            } else {
-              console.log(`单词 ${currentWord.id} 更新成功`);
-            }
-          } else {
-            console.log(`单词 ${i+1}: "${currentWord.word}" 无需更新`);
-          }
-        }
-      } 
-      else if (alignedWords.length > originalWords.length) {
-        console.log('情况2: 对齐文本单词数量增加，更新现有单词并添加新单词');
-        
-        // 首先更新现有单词
-        for (let i = 0; i < Math.min(words.length, originalWords.length); i++) {
-          const currentWord = words[i];
-          const newWordText = i < alignedWords.length ? alignedWords[i] : '';
-          
-          if (currentWord.word !== newWordText) {
-            console.log(`更新单词 ${i+1}:`, {
-              id: currentWord.id,
-              oldWord: currentWord.word,
-              newWord: newWordText
-            });
-            
-            const wordUpdate = {
-              original_word: currentWord.word,
-              word: newWordText
-            };
-            
-            const { error: updateError } = await supabase
-              .from('words')
-              .update(wordUpdate)
-              .eq('id', currentWord.id);
-              
-            if (updateError) {
-              console.error(`更新单词 ${currentWord.id} 失败:`, updateError);
-            } else {
-              console.log(`单词 ${currentWord.id} 更新成功`);
-            }
-          }
-        }
-        
-        // 然后添加新增的单词
-        if (alignedWords.length > words.length) {
-          console.log(`需要添加 ${alignedWords.length - words.length} 个新单词`);
-          
-          // 计算新单词的时间戳
-          // 简单方法：平均分配最后一个单词之后的时间
-          const lastWord = words[words.length - 1];
-          const timePerWord = 200; // 每个单词平均时长（毫秒）
-          
-          for (let i = words.length; i < alignedWords.length; i++) {
-            const newWord = {
-              sentence_id: sentenceId,
-              word: alignedWords[i],
-              original_word: '',
-              begin_time: lastWord.end_time + (i - words.length) * timePerWord,
-              end_time: lastWord.end_time + (i - words.length + 1) * timePerWord
-            };
-            
-            console.log(`添加新单词 ${i+1}:`, newWord);
-            
-            const { error: insertError } = await supabase
-              .from('words')
-              .insert(newWord);
-            
-            if (insertError) {
-              console.error(`添加单词 "${alignedWords[i]}" 失败:`, insertError);
-            } else {
-              console.log(`单词 "${alignedWords[i]}" 添加成功`);
-            }
-          }
-        }
-      }
-      else {
-        console.log('情况3: 对齐文本单词数量减少，更新保留的单词并删除多余单词');
-        
-        // 更新保留的单词
-        for (let i = 0; i < alignedWords.length; i++) {
-          const currentWord = words[i];
-          const newWordText = alignedWords[i];
-          
-          if (currentWord.word !== newWordText) {
-            console.log(`更新保留的单词 ${i+1}:`, {
-              id: currentWord.id,
-              oldWord: currentWord.word,
-              newWord: newWordText
-            });
-            
-            const wordUpdate = {
-              original_word: currentWord.word,
-              word: newWordText
-            };
-            
-            const { error: updateError } = await supabase
-              .from('words')
-              .update(wordUpdate)
-              .eq('id', currentWord.id);
-              
-            if (updateError) {
-              console.error(`更新单词 ${currentWord.id} 失败:`, updateError);
-            } else {
-              console.log(`单词 ${currentWord.id} 更新成功`);
-            }
-          }
-        }
-        
-        // 删除多余的单词
-        if (words.length > alignedWords.length) {
-          const wordIdsToDelete = words.slice(alignedWords.length).map(w => w.id);
-          
-          if (wordIdsToDelete.length > 0) {
-            console.log('需要删除的单词ID:', wordIdsToDelete);
-            
-            const { error: deleteError } = await supabase
-              .from('words')
-              .delete()
-              .in('id', wordIdsToDelete);
-            
-            if (deleteError) {
-              console.error('删除多余单词失败:', deleteError);
-            } else {
-              console.log(`成功删除 ${wordIdsToDelete.length} 个多余单词`);
-            }
-          }
-        }
-      }
-      
-      console.log('单词对齐处理完成');
-    } catch (error) {
-      console.error('单词对齐失败:', error);
-    }
-  }
-  
-  /**
-   * 从文本中提取单词（简单实现）
-   * 只提取字母和数字组成的单词，忽略标点符号
-   */
-  private static extractWords(text: string): string[] {
-    if (!text) return [];
-    // 匹配所有单词（连续的字母和数字，可能包含连字符和撇号）
-    const wordMatches = text.match(/[a-zA-Z0-9]+(?:[''-][a-zA-Z0-9]+)*/g);
-    return wordMatches || [];
-  }
-
   /**
    * 将对齐摘要输出到日志
    */
