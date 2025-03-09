@@ -123,70 +123,133 @@ export class TextAlignmentService {
         success: true
       };
       
-      // 3. 从当前块开始，对每个句子执行对齐
+      // 3. 开始对齐过程 - 新的对齐算法
       console.log('4. 开始逐句对齐');
-      let offset = 0;
+      let currentPosition = 0; // 跟踪当前处理位置
       let orderIndex = 0;
       
-      for (const sentence of sentencesData) {
-        console.log(`\n处理第 ${orderIndex+1} 个句子:`, {
+      // 处理第一个句子 - 可能需要寻找匹配位置
+      const firstSentence = sentencesData[0];
+      console.log(`\n处理第一个句子:`, {
+        id: firstSentence.id,
+        text: firstSentence.text_content
+      });
+      
+      // 检查第一个句子是否应该从头开始匹配
+      const firstSentenceText = this.normalizeText(firstSentence.text_content);
+      const blockStartText = this.normalizeText(currentText.substring(0, Math.min(firstSentenceText.length * 2, currentText.length)));
+      
+      const startingSimilarity = stringSimilarity.compareTwoStrings(
+        firstSentenceText.substring(0, Math.min(20, firstSentenceText.length)),
+        blockStartText.substring(0, Math.min(20, blockStartText.length))
+      );
+      
+      console.log(`首句与块开头相似度: ${startingSimilarity.toFixed(2)}`);
+      
+      let matchResult;
+      // 如果开头相似度较低，尝试在文本中找到最佳位置
+      if (startingSimilarity < 0.6) {
+        console.log('首句与块开头相似度低，尝试在文本中查找匹配位置');
+        matchResult = this.findSentenceStartPosition(firstSentence.text_content, currentText);
+        currentPosition = matchResult.startIndex;
+      } else {
+        // 直接从开头匹配
+        console.log('首句与块开头相似度高，直接从开头开始匹配');
+        matchResult = this.findSentenceEndPosition(firstSentence.text_content, currentText, 0);
+      }
+      
+      console.log('首句匹配结果:', {
+        startPosition: currentPosition,
+        endPosition: currentPosition + (matchResult.matchedText?.length || 0),
+        matchedText: matchResult.matchedText ? 
+                    (matchResult.matchedText.length > 50 ? 
+                     matchResult.matchedText.substring(0, 50) + '...' : 
+                     matchResult.matchedText) : '无匹配'
+      });
+      
+      // 如果匹配度过低，停止对齐
+      if (matchResult.score < 0.6) {
+        console.log('首句匹配度过低(低于0.6)，停止对齐');
+        result.remainingText = currentText;
+        return result;
+      }
+      
+      // 添加第一个句子到结果
+      const firstAlignedText = matchResult.matchedText || "";
+      result.alignedSentences.push({
+        sentenceId: firstSentence.id,
+        originalText: firstSentence.text_content,
+        alignedText: firstAlignedText,
+        beginTime: firstSentence.begin_time,
+        endTime: firstSentence.end_time,
+        orderIndex: orderIndex++
+      });
+      
+      // 更新当前位置到第一个句子的结束位置
+      currentPosition += firstAlignedText.length;
+      
+      // 处理后续句子 - 线性对齐，每个句子从上一个句子结束的地方开始
+      for (let i = 1; i < sentencesData.length; i++) {
+        const sentence = sentencesData[i];
+        console.log(`\n处理第 ${i+1} 个句子:`, {
           id: sentence.id,
           text: sentence.text_content
         });
         
-        if (!currentText || currentText.trim().length === 0) {
+        // 检查是否还有足够的文本
+        if (currentPosition >= currentText.length) {
           console.log('当前块文本已用完，停止对齐');
           result.remainingText = null;
           break;
         }
         
-        console.log('4.1 计算最佳匹配...');
-        // 调用文本匹配方法查找最佳匹配位置
-        const matchResult = this.findBestTextMatch(
+        // 获取剩余文本
+        const remainingText = currentText.substring(currentPosition);
+        console.log(`剩余文本(前50字符): ${remainingText.substring(0, 50)}${remainingText.length > 50 ? '...' : ''}`);
+        
+        // 查找句子在剩余文本中的结束位置
+        console.log('计算句子在剩余文本中的结束位置');
+        const endMatchResult = this.findSentenceEndPosition(
           sentence.text_content,
-          currentText
+          remainingText,
+          0 // 从剩余文本的开头开始
         );
         
-        console.log('匹配结果:', {
-          score: matchResult.score,
-          startIndex: matchResult.startIndex,
-          matchedText: matchResult.matchedText ? 
-                      (matchResult.matchedText.length > 50 ? 
-                       matchResult.matchedText.substring(0, 50) + '...' : 
-                       matchResult.matchedText) : '无匹配'
+        console.log('句子匹配结果:', {
+          score: endMatchResult.score,
+          matchedText: endMatchResult.matchedText ? 
+                      (endMatchResult.matchedText.length > 50 ? 
+                       endMatchResult.matchedText.substring(0, 50) + '...' : 
+                       endMatchResult.matchedText) : '无匹配'
         });
         
-        // 如果匹配度过低，停止当前对齐
-        if (matchResult.score < 0.6) {
-          console.log('匹配度过低(低于0.6)，停止对齐');
-          result.remainingText = currentText;
+        // 如果匹配度过低，停止对齐
+        if (endMatchResult.score < 0.6) {
+          console.log('句子匹配度过低(低于0.6)，停止当前对齐');
+          result.remainingText = remainingText;
           break;
         }
         
         // 提取对齐文本
-        const alignedText = matchResult.matchedText;
+        const alignedText = endMatchResult.matchedText || "";
         
         // 添加到结果中
-        console.log('4.2 添加对齐结果:');
-        console.log('原始文本:', sentence.text_content);
-        console.log('对齐文本:', alignedText);
-        console.log('开始时间:', sentence.begin_time);
-        console.log('结束时间:', sentence.end_time);
-        
         result.alignedSentences.push({
           sentenceId: sentence.id,
           originalText: sentence.text_content,
-          alignedText: alignedText || "",
+          alignedText: alignedText,
           beginTime: sentence.begin_time,
           endTime: sentence.end_time,
           orderIndex: orderIndex++
         });
         
-        // 更新剩余文本，去除已对齐部分
-        const newStartIndex = matchResult.startIndex + (alignedText?.length || 0);
-        console.log(`4.3 更新剩余文本，从位置 ${newStartIndex} 开始截取`);
-        currentText = currentText.substring(newStartIndex);
-        console.log('剩余文本(前100字符):', currentText.substring(0, 100) + (currentText.length > 100 ? '...' : ''));
+        // 更新当前位置
+        currentPosition += alignedText.length;
+      }
+      
+      // 设置剩余文本
+      if (currentPosition < currentText.length) {
+        result.remainingText = currentText.substring(currentPosition);
       }
       
       console.log('\n5. 对齐过程完成');
@@ -236,11 +299,11 @@ export class TextAlignmentService {
   }
   
   /**
-   * 寻找句子在文本中的最佳匹配位置
+   * 查找句子在文本中的开始位置（适用于第一个句子）
    */
-  private static findBestTextMatch(sentenceText: string, blockText: string) {
+  private static findSentenceStartPosition(sentenceText: string, blockText: string) {
     try {
-      console.log('【文本匹配计算】:');
+      console.log('【寻找句子开始位置】:');
       console.log(`- 句子文本: ${sentenceText}`);
       console.log(`- 块文本长度: ${blockText.length}`);
       
@@ -248,118 +311,246 @@ export class TextAlignmentService {
       const normalizedSentence = this.normalizeText(sentenceText);
       const normalizedBlock = this.normalizeText(blockText);
       
-      console.log(`- 规范化后句子长度: ${normalizedSentence.length}`);
-      console.log(`- 规范化后块文本长度: ${normalizedBlock.length}`);
+      // 检查块文本是否以引号开头
+      const startsWithQuote = /^["'"]/.test(blockText.trim());
       
-      // 句子比块文本长的处理
-      if (normalizedSentence.length > normalizedBlock.length) {
-        // 与整个块比较相似度
-        const similarity = stringSimilarity.compareTwoStrings(
-          normalizedSentence.substring(0, normalizedBlock.length),
-          normalizedBlock
-        );
-        
-        if (similarity >= 0.6) {
-          return {
-            score: similarity,
-            startIndex: 0,
-            matchedText: blockText
-          };
-        }
-        
-        return { score: 0.4, startIndex: 0, matchedText: null };
-      }
+      // 使用句子的前N个字符进行匹配，但排除引号
+      const sentenceStart = sentenceText.replace(/^["'"]/, '').trim();
+      const prefixLength = Math.min(30, sentenceStart.length);
+      const sentencePrefix = this.normalizeText(sentenceStart.substring(0, prefixLength));
+      
+      console.log(`- 使用句子前缀查找起始位置: "${sentencePrefix}"`);
       
       let bestScore = 0;
       let bestStartIndex = 0;
-      let bestEndIndex = 0;
       
-      // 滑动窗口方法查找最佳匹配
-      console.log('- 尝试不同窗口大小进行匹配');
-      const windowSizes = [
-        normalizedSentence.length,
-        normalizedSentence.length + 5,
-        normalizedSentence.length + 10,
-        Math.round(normalizedSentence.length * 1.2)
-      ];
-      
-      console.log(`- 窗口大小: ${windowSizes.join(', ')}`);
-      
-      // 存储匹配详情的数组，用于调试
-      const matchDetails: Array<{
-        windowSize: number;
-        bestScoreForWindow: number;
-        bestStartForWindow: number;
-        bestEndForWindow: number;
-        candidateText: string;
-      }> = [];
-      
-      // 对每个窗口大小尝试匹配
-      for (const windowSize of windowSizes) {
-        let localBestScore = 0;
-        let localBestStart = 0;
-        let localBestEnd = 0;
+      // 在块文本中滑动窗口，查找最佳的起始位置
+      const searchText = startsWithQuote ? normalizedBlock.replace(/^["'"]/, '').trim() : normalizedBlock;
+      for (let i = 0; i <= searchText.length - prefixLength; i++) {
+        const blockSegment = searchText.substring(i, i + prefixLength);
+        const score = stringSimilarity.compareTwoStrings(sentencePrefix, blockSegment);
         
-        // 滑动窗口
-        for (let i = 0; i <= normalizedBlock.length - windowSize; i++) {
-          const candidateText = normalizedBlock.substring(i, i + windowSize);
-          const score = stringSimilarity.compareTwoStrings(
-            normalizedSentence, 
-            candidateText
-          );
+        if (score > bestScore) {
+          bestScore = score;
+          bestStartIndex = i;
+        }
+      }
+      
+      // 如果块文本以引号开头，且匹配位置很靠前，确保包含开头引号
+      if (startsWithQuote && bestStartIndex <= 3) {
+        bestStartIndex = 0; // 从真正的开头开始，包含引号
+      }
+      
+      console.log(`- 找到最佳起始位置: ${bestStartIndex}, 分数: ${bestScore.toFixed(2)}`);
+      
+      // 从找到的起始位置确定句子的结束位置
+      const endResult = this.findSentenceEndPosition(sentenceText, blockText, bestStartIndex);
+      
+      return {
+        score: endResult.score,
+        startIndex: bestStartIndex,
+        matchedText: endResult.matchedText
+      };
+    } catch (error) {
+      console.error('查找句子开始位置失败:', error);
+      return { score: 0, startIndex: 0, matchedText: null };
+    }
+  }
+  
+  /**
+   * 查找句子在文本中的结束位置（从指定位置开始匹配）
+   */
+  private static findSentenceEndPosition(sentenceText: string, blockText: string, startPosition: number) {
+    try {
+      console.log('【查找句子结束位置】:');
+      console.log(`- 句子文本: ${sentenceText}`);
+      console.log(`- 开始位置: ${startPosition}`);
+      
+      // 如果起始位置已经超出文本范围，直接返回失败
+      if (startPosition >= blockText.length) {
+        return { score: 0, matchedText: null };
+      }
+      
+      // 预处理文本
+      const normalizedSentence = this.normalizeText(sentenceText);
+      const availableText = blockText.substring(startPosition);
+      const normalizedAvailable = this.normalizeText(availableText);
+      
+      // 计算基本的句子长度和扩展长度
+      const basicLength = normalizedSentence.length;
+      
+      // 首先检查原句是否以句号等标点结尾
+      const endsWithPunctuation = /[.!?,;:"'）】）』」》][\s"']*$/.test(sentenceText);
+      
+      // 调整扩展长度，确保能够包含完整句子
+      let extendedLength = Math.min(
+        // 如果句子以标点结尾，给予更多余量，确保能找到句号
+        endsWithPunctuation ? Math.round(basicLength * 1.5) : Math.round(basicLength * 1.3),
+        normalizedAvailable.length
+      );
+      
+      // 如果原句以句号结尾，则尝试在可用文本中找到下一个句号位置
+      if (endsWithPunctuation) {
+        // 从基本长度位置开始寻找下一个句号
+        let searchStart = Math.max(0, basicLength - 10); // 稍微往前一点找
+        let punctIndex = -1;
+        
+        // 检查各种可能的句子结束标点
+        ['.', '!', '?', ',', ';', ':', '"', "'"].forEach(punct => {
+          const idx = availableText.indexOf(punct, searchStart);
+          if (idx > -1 && (punctIndex === -1 || idx < punctIndex)) {
+            punctIndex = idx;
+          }
+        });
+        
+        // 如果找到了标点，且在合理范围内
+        if (punctIndex > -1 && punctIndex < basicLength * 2) {
+          extendedLength = punctIndex + 1; // 包含标点
           
-          if (score > localBestScore) {
-            localBestScore = score;
-            localBestStart = i;
-            localBestEnd = i + windowSize;
+          // 特殊处理：如果是引号，尝试找到匹配的闭合引号
+          if (availableText[punctIndex] === '"' || availableText[punctIndex] === "'") {
+            const nextQuote = availableText.indexOf(availableText[punctIndex], punctIndex + 1);
+            if (nextQuote > -1 && nextQuote < punctIndex + 20) { // 合理范围内有闭合引号
+              extendedLength = nextQuote + 1; // 扩展到闭合引号
+            }
+          }
+          
+          // 如果标点后有空格，也包含它
+          if (punctIndex + 1 < availableText.length && availableText[punctIndex + 1] === ' ') {
+            extendedLength++;
           }
         }
+      }
+      
+      // 尝试不同的长度匹配，找到最佳结束位置
+      let bestScore = 0;
+      let bestEndLength = 0;
+      
+      // 先尝试基本长度
+      const basicMatch = normalizedAvailable.substring(0, basicLength);
+      bestScore = stringSimilarity.compareTwoStrings(normalizedSentence, basicMatch);
+      bestEndLength = basicLength;
+      
+      console.log(`- 基本长度匹配分数: ${bestScore.toFixed(2)}`);
+      
+      // 然后尝试扩展长度
+      if (extendedLength > basicLength) {
+        const extendedMatch = normalizedAvailable.substring(0, extendedLength);
+        const extendedScore = stringSimilarity.compareTwoStrings(normalizedSentence, extendedMatch);
         
-        // 记录当前窗口大小的最佳匹配
-        if (localBestScore > 0) {
-          matchDetails.push({
-            windowSize,
-            bestScoreForWindow: localBestScore,
-            bestStartForWindow: localBestStart,
-            bestEndForWindow: localBestEnd,
-            candidateText: normalizedBlock.substring(localBestStart, localBestEnd)
-          });
-        }
+        console.log(`- 扩展长度匹配分数: ${extendedScore.toFixed(2)}`);
         
-        // 更新全局最佳匹配
-        if (localBestScore > bestScore) {
-          bestScore = localBestScore;
-          bestStartIndex = localBestStart;
-          bestEndIndex = localBestEnd;
+        if (extendedScore > bestScore) {
+          bestScore = extendedScore;
+          bestEndLength = extendedLength;
         }
       }
       
-      // 输出匹配详情以便调试
-      if (matchDetails.length > 0) {
-        console.log('- 各窗口最佳匹配:');
-        matchDetails.forEach(detail => {
-          console.log(`  窗口大小 ${detail.windowSize}: 分数 ${detail.bestScoreForWindow.toFixed(2)}, 匹配文本: "${detail.candidateText.substring(0, 50)}${detail.candidateText.length > 50 ? '...' : ''}"`);
-        });
+      // 如果分数太低，再尝试更短的匹配
+      if (bestScore < 0.6 && basicLength > 20) {
+        console.log('- 尝试使用更短的匹配');
+        for (let length = basicLength - 5; length >= Math.max(10, basicLength * 0.7); length -= 5) {
+          const shorterMatch = normalizedAvailable.substring(0, length);
+          const shorterScore = stringSimilarity.compareTwoStrings(
+            normalizedSentence.substring(0, length), 
+            shorterMatch
+          );
+          
+          if (shorterScore > bestScore) {
+            bestScore = shorterScore;
+            bestEndLength = length;
+          }
+        }
       }
       
-      console.log(`- 最终最佳匹配: 分数 ${bestScore.toFixed(2)}, 位置 ${bestStartIndex}~${bestEndIndex}`);
+      // 如果分数仍然太低，放弃匹配
+      if (bestScore < 0.4) {
+        console.log('- 匹配分数过低，放弃匹配');
+        return { score: bestScore, matchedText: null };
+      }
       
-      // 优化匹配边界处理成对标点符号
-      const matchedText = this.optimizeMatchBoundaries(
-        blockText, 
-        bestStartIndex, 
-        bestEndIndex
-      );
+      // 获取原始匹配文本
+      let matchedText = availableText.substring(0, bestEndLength);
+      
+      // 优化句子边界
+      matchedText = this.optimizeSentenceBoundary(matchedText);
+      
+      // 新增: 使用精确边界匹配进一步优化
+      matchedText = this.findExactSentenceEnd(sentenceText, matchedText);
+      
+      console.log(`- 最终匹配文本: "${matchedText.substring(0, 50)}${matchedText.length > 50 ? '...' : ''}"`);
       
       return {
         score: bestScore,
-        startIndex: bestStartIndex,
         matchedText: matchedText
       };
     } catch (error) {
-      console.error('文本匹配计算失败:', error);
-      return { score: 0, startIndex: 0, matchedText: null };
+      console.error('查找句子结束位置失败:', error);
+      return { score: 0, matchedText: null };
     }
+  }
+  
+  /**
+   * 优化句子边界，确保句子边界合理
+   */
+  private static optimizeSentenceBoundary(text: string): string {
+    if (!text) return '';
+    
+    // 检查文本是否以完整句子结束（句号、问号、感叹号）
+    const sentenceEndingMatch = text.match(/[.!?]["'\s]*$/);
+    if (sentenceEndingMatch) {
+      // 已经是一个完整句子，不需要进一步处理
+      return text;
+    }
+    
+    // 查找最后一个句子结束符号
+    const lastPeriodIndex = Math.max(
+      text.lastIndexOf('. '),
+      text.lastIndexOf('! '),
+      text.lastIndexOf('? ')
+    );
+    
+    // 查找最后一个逗号或分号
+    const lastCommaIndex = Math.max(
+      text.lastIndexOf(', '),
+      text.lastIndexOf('; ')
+    );
+    
+    // 如果找到了句子结束符号，并且它不在文本的开头附近
+    if (lastPeriodIndex > text.length * 0.5) {
+      // 截取到这个句子结束符号后
+      return text.substring(0, lastPeriodIndex + 2);
+    }
+    
+    // 如果找到了逗号或分号，尝试在那里截断
+    if (lastCommaIndex > text.length * 0.75) {
+      return text.substring(0, lastCommaIndex + 2);
+    }
+    
+    // 检查是否有未闭合的引号
+    const quoteCount = (text.match(/["'"]/g) || []).length;
+    if (quoteCount % 2 !== 0) {
+      // 有未闭合的引号，手动查找引号位置
+      let quotePositions: number[] = [];
+      const quoteRegex = /["'"]/g;
+      let match: RegExpExecArray | null;
+      
+      // 手动收集所有引号位置
+      while ((match = quoteRegex.exec(text)) !== null) {
+        quotePositions.push(match.index);
+      }
+      
+      // 检查是否有足够的引号
+      if (quotePositions.length > 1) {
+        const lastButOneQuotePos = quotePositions[quotePositions.length - 2];
+        if (lastButOneQuotePos > text.length * 0.5) {
+          return text.substring(0, lastButOneQuotePos + 1);
+        }
+      }
+    }
+    
+    // 如果上述方法都不适用，保留原始文本
+    return text;
   }
   
   /**
@@ -371,185 +562,6 @@ export class TextAlignmentService {
       .toLowerCase()
       .replace(/\s+/g, ' ')
       .trim();
-  }
-  
-  /**
-   * 优化匹配边界，特别处理引号等成对标点
-   */
-  private static optimizeMatchBoundaries(
-    originalText: string, 
-    startIndex: number, 
-    endIndex: number
-  ): string {
-    // 如果边界无效，直接返回空字符串
-    if (startIndex >= endIndex || startIndex < 0 || endIndex > originalText.length) {
-      return '';
-    }
-    
-    let optimizedStart = startIndex;
-    let optimizedEnd = endIndex;
-    
-    // 初始文本
-    let matchedText = originalText.substring(optimizedStart, optimizedEnd);
-    console.log(`- 初始匹配文本: "${matchedText}"`);
-    
-    // 改进处理引号闭合的逻辑
-    // 检查是否有未闭合的引号
-    const quoteChars = ['"', "'", '"', '"'];
-    let unclosedQuotes = [];
-    
-    for (let i = optimizedStart; i < optimizedEnd; i++) {
-      if (quoteChars.includes(originalText[i])) {
-        // 如果是引号字符，检查是否已在未闭合列表中
-        const quoteIndex = unclosedQuotes.indexOf(originalText[i]);
-        if (quoteIndex === -1) {
-          // 添加到未闭合列表
-          unclosedQuotes.push(originalText[i]);
-        } else {
-          // 从未闭合列表中移除
-          unclosedQuotes.splice(quoteIndex, 1);
-        }
-      }
-    }
-    
-    // 如果有未闭合的引号，尝试向右查找闭合引号
-    if (unclosedQuotes.length > 0) {
-      const rightContext = originalText.substring(optimizedEnd, Math.min(originalText.length, optimizedEnd + 30));
-      
-      for (const unclosedQuote of unclosedQuotes) {
-        const matchingQuote = unclosedQuote === '"' ? '"' : 
-                             unclosedQuote === "'" ? "'" : 
-                             unclosedQuote === '"' ? '"' : 
-                             unclosedQuote === '"' ? '"' : null;
-        
-        if (matchingQuote) {
-          const quotePos = rightContext.indexOf(matchingQuote);
-          if (quotePos !== -1 && quotePos < 20) { // 只考虑不太远的引号
-            optimizedEnd = optimizedEnd + quotePos + 1; // +1 包含引号本身
-            console.log(`- 向右扩展以闭合引号 ${unclosedQuote}→${matchingQuote}`);
-          }
-        }
-      }
-    }
-    
-    // 处理右侧边界 - 向右扩展查找引号等成对标点
-    const rightExtensionChars = ['"', '"', ')', ']', '}', '\u2019', '\u00BB', ':', ';'];
-    const rightContextEnd = Math.min(originalText.length, optimizedEnd + 15);
-    const rightContext = originalText.substring(optimizedEnd, rightContextEnd);
-    
-    // 先查找成对标点符号
-    let foundPunctuation = false;
-    for (const char of rightExtensionChars) {
-      const firstIndex = rightContext.indexOf(char);
-      if (firstIndex !== -1 && firstIndex < 5) { // 只考虑很近的标点
-        const newEnd = optimizedEnd + firstIndex + 1; // +1 to include the char itself
-        // 对于结束标点，扩展边界
-        if (this.isClosingPunctuation(char) || char === ':' || char === ';') {
-          console.log(`- 向右扩展边界，包含闭合标点 ${char} 字符`);
-          optimizedEnd = newEnd;
-          foundPunctuation = true;
-          break;
-        }
-      }
-    }
-    
-    // 最终文本
-    matchedText = originalText.substring(optimizedStart, optimizedEnd);
-    console.log(`- 优化后匹配文本: "${matchedText}"`);
-    
-    return matchedText;
-  }
-  
-  /**
-   * 检查是否为开放性标点符号（左引号、左括号等）
-   */
-  private static isOpeningPunctuation(char: string): boolean {
-    return ['"', '(', '[', '{', '\u2019', '\u00AB'].includes(char);
-  }
-  
-  /**
-   * 检查是否为闭合性标点符号（右引号、右括号等）
-   */
-  private static isClosingPunctuation(char: string): boolean {
-    return ['"', ')', ']', '}', '\u2019', '\u00BB'].includes(char);
-  }
-  
-  /**
-   * 检查是否为句子结束符号
-   */
-  private static isSentenceEnding(char: string): boolean {
-    return ['.', '!', '?'].includes(char);
-  }
-  
-  /**
-   * 检查文本中的成对标点符号是否平衡
-   */
-  private static hasPunctuationImbalance(text: string): boolean {
-    const pairs = [
-      ['"', '"'],
-      ['(', ')'],
-      ['[', ']'],
-      ['{', '}'],
-      ['\u2019', '\u2019'],
-      ['\u00AB', '\u00BB']
-    ];
-    
-    for (const [opening, closing] of pairs) {
-      const openCount = (text.match(new RegExp(this.escapeRegExp(opening), 'g')) || []).length;
-      const closeCount = (text.match(new RegExp(this.escapeRegExp(closing), 'g')) || []).length;
-      
-      if (openCount !== closeCount) {
-        console.log(`- 标点不平衡: ${opening}=${openCount}, ${closing}=${closeCount}`);
-        return true;
-      }
-    }
-    
-    return false;
-  }
-  
-  /**
-   * 转义正则表达式特殊字符
-   */
-  private static escapeRegExp(string: string): string {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-  
-  /**
-   * 修复文本中不平衡的标点符号
-   */
-  private static balancePunctuation(
-    text: string, 
-    originalText: string, 
-    startIndex: number, 
-    endIndex: number
-  ): string {
-    // 检查和修复引号
-    const quoteImbalance = (text.match(/"/g) || []).length % 2;
-    if (quoteImbalance !== 0) {
-      // 向右查找缺失的引号
-      const rightContext = originalText.substring(endIndex, endIndex + 20);
-      const quoteIndex = rightContext.indexOf('"');
-      
-      if (quoteIndex !== -1) {
-        // 扩展文本以包含缺失的引号
-        console.log(`- 向右扩展以包含缺失的引号，位置 +${quoteIndex}`);
-        return originalText.substring(startIndex, endIndex + quoteIndex + 1);
-      }
-      
-      // 向左查找缺失的引号
-      const leftContext = originalText.substring(Math.max(0, startIndex - 20), startIndex);
-      const leftQuoteIndex = leftContext.lastIndexOf('"');
-      
-      if (leftQuoteIndex !== -1) {
-        // 扩展文本以包含缺失的引号
-        const newStart = Math.max(0, startIndex - 20) + leftQuoteIndex;
-        console.log(`- 向左扩展以包含缺失的引号，位置 -${startIndex - newStart}`);
-        return originalText.substring(newStart, endIndex);
-      }
-    }
-    
-    // 如果无法修复，返回原文本
-    return text;
   }
   
   /**
@@ -908,5 +920,119 @@ export class TextAlignmentService {
     } catch (error) {
       console.log(`- 单词变更: 获取单词数据失败`);
     }
+  }
+
+  /**
+   * 精确匹配句子边界，避免边界溢出
+   */
+  private static findExactSentenceEnd(sentenceText: string, matchedText: string): string {
+    // 如果已经完全匹配了，直接返回
+    if (this.normalizeText(matchedText) === this.normalizeText(sentenceText)) {
+      return matchedText;
+    }
+    
+    // 将句子按词拆分
+    const sentenceWords = sentenceText.split(/\s+/);
+    if (sentenceWords.length === 0) return matchedText;
+    
+    // 检查句子的最后部分是否有精确匹配
+    // 从完整句子开始，逐渐缩小范围
+    for (let endWordCount = sentenceWords.length; endWordCount > 0; endWordCount--) {
+      // 获取句子最后N个单词组成的短语
+      const endPhrase = sentenceWords.slice(sentenceWords.length - endWordCount).join(' ');
+      if (endPhrase.length < 4) continue; // 短语太短跳过
+      
+      // 在匹配文本中查找这个短语的最后出现位置
+      const phraseIndex = matchedText.lastIndexOf(endPhrase);
+      if (phraseIndex >= 0) {
+        // 找到匹配，截取到短语结束的位置
+        const endPosition = phraseIndex + endPhrase.length;
+        
+        // 查找后续的标点和引号
+        const newEndPosition = this.findPunctuationAfterEnd(matchedText, endPosition);
+        
+        return matchedText.substring(0, newEndPosition);
+      }
+    }
+    
+    // 如果没找到精确匹配，再尝试单个单词匹配
+    const lastWord = sentenceWords[sentenceWords.length - 1];
+    if (lastWord.length >= 3) { // 避免太短的单词
+      const lastWordIndex = matchedText.lastIndexOf(lastWord);
+      if (lastWordIndex >= 0) {
+        const endPosition = lastWordIndex + lastWord.length;
+        
+        // 同样改进标点符号和引号处理
+        let newEndPosition = endPosition;
+        let i = endPosition;
+        
+        while (i < matchedText.length && i < endPosition + 5) {
+          const char = matchedText[i];
+          if (/[.,;:!?"'）】）』」》]/.test(char)) {
+            newEndPosition = i + 1;
+            i++;
+          } else if (/\s/.test(char) && i === endPosition) {
+            newEndPosition = i + 1;
+            i++;
+          } else if (!/\s/.test(char)) {
+            break;
+          } else {
+            break;
+          }
+        }
+        
+        return matchedText.substring(0, newEndPosition);
+      }
+    }
+    
+    // 如果上述方法都失败，保留原始匹配
+    return matchedText;
+  }
+
+  /**
+   * 查找句子结束位置后的标点符号和引号
+   */
+  private static findPunctuationAfterEnd(text: string, position: number): number {
+    if (position >= text.length) return position;
+    
+    let endPos = position;
+    let foundPunctuation = false;
+    let foundClosingQuote = false;
+    
+    // 检查最多5个字符
+    for (let i = position; i < Math.min(text.length, position + 5); i++) {
+      const char = text[i];
+      
+      // 处理标点
+      if (/[.!?,;:]/.test(char)) {
+        endPos = i + 1;
+        foundPunctuation = true;
+        continue;
+      }
+      
+      // 处理引号
+      if (/["'"]/.test(char)) {
+        // 如果已经找到标点，或者这是唯一要处理的字符
+        if (foundPunctuation || i === position) {
+          endPos = i + 1;
+          foundClosingQuote = true;
+          continue;
+        }
+      }
+      
+      // 允许空格继续
+      if (/\s/.test(char) && (foundPunctuation || foundClosingQuote)) {
+        continue;
+      }
+      
+      // 遇到其他字符停止
+      if (foundPunctuation || foundClosingQuote) {
+        break;
+      }
+      
+      break;
+    }
+    
+    return endPos;
   }
 } 
