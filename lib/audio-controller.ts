@@ -102,32 +102,81 @@ class AudioControllerClass {
   private initAudioEvents() {
     if (!this.audio) return;
     
+    console.log('[AudioController] 初始化音频事件监听器');
+    
     this.audio.addEventListener('loadedmetadata', this.handleLoadedMetadata);
     this.audio.addEventListener('timeupdate', this.handleTimeUpdate);
     this.audio.addEventListener('ended', this.handleEnded);
     this.audio.addEventListener('error', this.handleError);
-    this.audio.addEventListener('play', () => this.updateState({ isPlaying: true }));
-    this.audio.addEventListener('pause', () => this.updateState({ isPlaying: false }));
+    this.audio.addEventListener('play', () => {
+      console.log('[AudioController] 音频开始播放');
+      this.updateState({ isPlaying: true });
+    });
+    this.audio.addEventListener('pause', () => {
+      console.log('[AudioController] 音频暂停');
+      this.updateState({ isPlaying: false });
+    });
     
-    // 定期检查循环状态
+    // 清除旧的定时器
+    if (this.timeUpdateInterval) {
+      clearInterval(this.timeUpdateInterval);
+    }
+    
+    // 设置新的定时器检查循环状态
     this.timeUpdateInterval = setInterval(() => {
       if (this.audio && this.state.isPlaying) {
+        // 检查循环边界
         this.checkLoopBoundaries();
+        
+        // 广播时间更新
         this.broadcastTimeUpdate();
       }
-    }, 50); // 更新频率更高，以确保UI流畅
+    }, 20); // 更高频率检查，确保不会错过循环点
+    
+    console.log('[AudioController] 循环检测定时器已设置，间隔: 20ms');
   }
   
-  // 检查是否需要循环
+  // 修改检查循环边界的方法
   private checkLoopBoundaries() {
     if (!this.audio || !this.state.loop.active) return;
     
     const currentTimeSec = this.audio.currentTime;
-    const currentTimeMs = currentTimeSec * 1000;
+    const currentTimeMs = Math.floor(currentTimeSec * 1000);
+    const loopEndMs = this.state.loop.end;
     
-    // 如果超出循环范围，重置到开始位置
-    if (currentTimeMs >= this.state.loop.end) {
-      this.audio.currentTime = this.state.loop.start / 1000;
+    // 每秒记录一次当前状态(调试用)
+    if (currentTimeMs % 1000 < 50) {
+      console.log(`[AudioController] 循环状态:`, {
+        当前时间: currentTimeMs,
+        循环终点: loopEndMs,
+        循环起点: this.state.loop.start,
+        剩余时间: loopEndMs - currentTimeMs
+      });
+    }
+    
+    // 当到达循环终点时
+    if (currentTimeMs >= loopEndMs) {
+      console.log(`[AudioController] 检测到循环点!`, {
+        当前时间: currentTimeMs,
+        循环终点: loopEndMs,
+        时间差: currentTimeMs - loopEndMs
+      });
+      
+      // 1. 暂停
+      this.audio.pause();
+      
+      // 2. 重置到开始位置
+      const startTimeSec = this.state.loop.start / 1000;
+      console.log(`[AudioController] 重置到开始位置: ${startTimeSec}秒`);
+      this.audio.currentTime = startTimeSec;
+      
+      // 3. 100ms后恢复播放(给一个明显的暂停感)
+      setTimeout(() => {
+        console.log('[AudioController] 恢复播放');
+        this.audio?.play().catch(err => {
+          console.error('[AudioController] 循环播放失败:', err);
+        });
+      }, 100);
     }
   }
   
@@ -177,7 +226,13 @@ class AudioControllerClass {
   
   // 时间更新处理
   private handleTimeUpdate = () => {
+    // 处理时间更新
     this.broadcastTimeUpdate();
+    
+    // 在这里也检查循环边界(双重保障)
+    if (this.state.loop.active) {
+      this.checkLoopBoundaries();
+    }
   };
   
   // 播放结束处理
@@ -333,7 +388,80 @@ class AudioControllerClass {
     this.audio.addEventListener('error', handleError);
   }
   
-  // 播放音频
+  // 修改 setPlayMode 方法
+  setPlayMode(mode: PlayMode, currentTimeMs?: number, endTimeMs?: number): void {
+    console.log('[AudioController] 设置播放模式', {
+      mode,
+      currentTimeMs,
+      endTimeMs,
+      currentState: {
+        currentTime: this.audio?.currentTime,
+        isPlaying: this.state.isPlaying,
+        loop: this.state.loop,
+        currentMode: this.state.mode
+      }
+    });
+
+    // 更新状态
+    this.state.mode = mode;
+
+    switch (mode) {
+      case 'sentence':
+      case 'block':
+        if (currentTimeMs !== undefined && endTimeMs !== undefined) {
+          // 如果当前已经在循环，且范围相同，不需要重新设置
+          if (this.state.loop.active &&
+              this.state.loop.start === currentTimeMs &&
+              this.state.loop.end === endTimeMs) {
+            return;
+          }
+
+          console.log('[AudioController] 启用循环模式', {
+            start: currentTimeMs,
+            end: endTimeMs,
+            mode
+          });
+          
+          this.state.loop.active = true;
+          this.state.loop.start = currentTimeMs;
+          this.state.loop.end = endTimeMs;
+
+          // 如果当前时间不在循环范围内，立即调整
+          if (this.audio) {
+            const currentTime = this.audio.currentTime * 1000;
+            if (currentTime < currentTimeMs || currentTime > endTimeMs) {
+              console.log('[AudioController] 调整当前时间到循环范围内', {
+                from: currentTime,
+                to: currentTimeMs
+              });
+              this.audio.currentTime = currentTimeMs / 1000;
+            }
+          }
+        }
+        break;
+
+      case 'continuous':
+      case 'none':
+        // 禁用循环
+        if (this.state.loop.active) {
+          console.log('[AudioController] 禁用循环模式');
+          this.state.loop.active = false;
+          this.state.loop.start = 0;
+          this.state.loop.end = 0;
+        }
+        break;
+    }
+
+    // 广播模式变更事件
+    window.dispatchEvent(new CustomEvent('play-mode-changed', {
+      detail: { 
+        mode,
+        loop: this.state.loop
+      }
+    }));
+  }
+  
+  // 修改 play 方法
   async play(options: {
     url?: string;
     startTime?: number;
@@ -343,69 +471,80 @@ class AudioControllerClass {
     speechId?: string;
     onEnd?: () => void;
   } = {}): Promise<void> {
+    console.log('[AudioController] 播放请求', {
+      options,
+      currentState: {
+        url: this.state.url,
+        isPlaying: this.state.isPlaying,
+        currentTime: this.audio?.currentTime,
+        mode: this.state.mode,
+        loop: this.state.loop
+      }
+    });
+
     try {
-      // 检查是否需要切换音频
-      if (options.speechId && options.speechId !== this.state.speechId) {
-        const cachedUrl = this.getCachedAudioUrl(options.speechId);
-        
-        if (cachedUrl) {
-          // 如果已经预加载过，切换会更快
-          await this.setSource(cachedUrl, options.speechId);
-        }
+      // 如果提供了新的URL，设置新的音频源
+      if (options.url && options.url !== this.state.url) {
+        console.log('[AudioController] 设置新的音频源', {
+          url: options.url
+        });
+        await this.setSource(options.url, options.speechId);
       }
-      
-      // 确保在浏览器环境且已初始化
-      if (typeof window === 'undefined' || !this.audio) {
-        return Promise.resolve();
+
+      if (!this.audio) {
+        throw new Error('音频实例未初始化');
       }
-      
-      // 如果提供了URL且与当前不同，或者提供了新的speechId
-      if ((options.url && options.url !== this.state.url) || 
-          (options.speechId && options.speechId !== this.state.speechId)) {
-        await this.setSource(options.url || this.state.url, options.speechId);
-      }
-      
-      // 设置上下文
-      if (options.context) {
-        this.updateState({ context: options.context });
-      }
-      
+
       // 设置开始时间
       if (options.startTime !== undefined) {
-        this.audio.currentTime = options.startTime / 1000; // 转换为秒
+        console.log('[AudioController] 设置开始时间', {
+          startTime: options.startTime
+        });
+        this.audio.currentTime = options.startTime / 1000;
       }
-      
+
       // 设置循环
-      if (options.endTime !== undefined) {
-        this.updateState({
-          loop: {
-            active: !!options.loop,
-            start: options.startTime || 0,
-            end: options.endTime
-          }
+      if (options.loop && options.startTime !== undefined && options.endTime !== undefined) {
+        console.log('[AudioController] 设置循环范围', {
+          start: options.startTime,
+          end: options.endTime
         });
-      } else if (options.loop !== undefined) {
-        this.updateState({
-          loop: {
-            ...this.state.loop,
-            active: options.loop
-          }
-        });
+        this.state.loop.active = true;
+        this.state.loop.start = options.startTime;
+        this.state.loop.end = options.endTime;
       }
-      
+
+      // 设置上下文
+      if (options.context) {
+        console.log('[AudioController] 设置播放上下文', {
+          context: options.context
+        });
+        this.state.context = options.context;
+      }
+
+      // 设置结束回调
+      if (options.onEnd) {
+        const handleEnd = () => {
+          console.log('[AudioController] 播放结束，执行回调');
+          options.onEnd?.();
+          this.audio?.removeEventListener('ended', handleEnd);
+        };
+        this.audio.addEventListener('ended', handleEnd);
+      }
+
       // 开始播放
+      console.log('[AudioController] 开始播放');
       await this.audio.play();
-      this.updateState({ isPlaying: true });
-      
-      // 在播放结束时调用 onEnd
-      this.audio.addEventListener('ended', () => {
-        options.onEnd?.();
-      }, { once: true });  // 使用 once 确保只触发一次
-      
-      return Promise.resolve();
+
+      // 更新状态
+      this.updateState({
+        isPlaying: true,
+        currentTime: this.audio.currentTime * 1000
+      });
+
     } catch (error) {
-      console.error('播放失败:', error);
-      return Promise.reject(error);
+      console.error('[AudioController] 播放失败:', error);
+      throw error;
     }
   }
   
@@ -442,11 +581,6 @@ class AudioControllerClass {
     
     this.audio.playbackRate = rate;
     this.updateState({ playbackRate: rate });
-  }
-  
-  // 设置播放模式
-  setPlayMode(mode: PlayMode): void {
-    this.updateState({ mode });
   }
   
   // 获取当前状态

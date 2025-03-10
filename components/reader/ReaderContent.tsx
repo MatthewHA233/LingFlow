@@ -985,25 +985,48 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
     });
   };
 
-  // 添加事件监听器以接收循环模式变更
+  // 修改播放模式变更处理函数
+  const handlePlayModeChange = (newMode: 'sentence' | 'block' | 'continuous') => {
+    console.log('[ReaderContent] 切换播放模式', {
+      newMode,
+      currentMode: playMode
+    });
+    
+    // 如果模式没有变化，不做处理
+    if (newMode === playMode) return;
+    
+    // 更新播放模式状态
+    setPlayMode(newMode);
+    
+    // 广播全局播放模式变更事件
+    window.dispatchEvent(new CustomEvent('global-loop-mode-change', {
+      detail: { mode: newMode }
+    }));
+  };
+
+  // 修改播放模式事件监听
   useEffect(() => {
     const handleSetPlayMode = (e: CustomEvent) => {
-      const mode = e.detail.mode;
+      const { mode } = e.detail;
       if (mode && ['sentence', 'block', 'continuous'].includes(mode)) {
-        setPlayMode(mode as any);
-        toast.info(`已设置全局播放模式为: ${
-          mode === 'sentence' ? '句子循环' : 
-          mode === 'block' ? '段落循环' : '连续播放'
-        }`);
+        console.log('[ReaderContent] 收到播放模式变更事件', {
+          mode,
+          currentMode: playMode
+        });
+        
+        // 如果模式没有变化，不做处理
+        if (mode === playMode) return;
+        
+        setPlayMode(mode);
       }
     };
     
-    window.addEventListener('set-play-mode', handleSetPlayMode as EventListener);
+    window.addEventListener('play-mode-changed', handleSetPlayMode as EventListener);
     
     return () => {
-      window.removeEventListener('set-play-mode', handleSetPlayMode as EventListener);
+      window.removeEventListener('play-mode-changed', handleSetPlayMode as EventListener);
     };
-  }, []);
+  }, [playMode]);
 
   // 在组件挂载和卸载时清理音频
   useEffect(() => {
@@ -1015,28 +1038,6 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
       AudioController.stop();
     };
   }, []);
-
-  // 修改播放模式
-  const handlePlayModeChange = (newMode: 'sentence' | 'block' | 'continuous') => {
-    setPlayMode(newMode);
-    
-    // 通知AudioController
-    AudioController.setPlayMode(newMode);
-    
-    // 修正toast的用法
-    toast(`已设置全局播放模式为: ${
-      newMode === 'continuous' ? '连续播放' :
-      newMode === 'block' ? '段落循环' : '句子循环'
-    }`);
-  };
-
-  // 如果你在多个地方调用，也可以添加节流逻辑
-  const throttledSetPlayMode = useCallback(
-    throttle((newMode: 'sentence' | 'block' | 'continuous') => {
-      handlePlayModeChange(newMode);
-    }, 2000), // 2秒内不重复显示
-    [handlePlayModeChange]
-  );
 
   // 修改分栏视图显示函数，添加加载状态控制
   const handleShowSplitView = useCallback(async (blockId: string, type: 'source' | 'translation') => {

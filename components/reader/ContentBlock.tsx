@@ -150,10 +150,17 @@ export function ContentBlock({
 
   // 完全重写的playSentence函数
   const playSentence = useCallback((sentence: any, index: number) => {
-    console.log('播放句子，当前 speech_id:', blockSpeechId);
+    console.log('[ContentBlock] 播放句子', {
+      index,
+      sentence,
+      playMode,
+      isPlaying,
+      activeIndex
+    });
     
     // 如果点击当前播放的句子，则停止播放
     if (activeIndex === index && isPlaying) {
+      console.log('[ContentBlock] 停止当前句子播放');
       AudioController.stop();
       setIsPlaying(false);
       setActiveIndex(null);
@@ -161,7 +168,8 @@ export function ContentBlock({
       return;
     }
     
-    // 广播当前活跃块ID - 这会通知其他块清除高亮
+    // 广播当前活跃块ID
+    console.log('[ContentBlock] 广播活跃块ID', { blockId: block.id });
     window.dispatchEvent(new CustomEvent(ACTIVE_BLOCK_CHANGED_EVENT, {
       detail: { activeBlockId: block.id }
     }));
@@ -171,7 +179,7 @@ export function ContentBlock({
     
     // 检查句子数据
     if (!sentence || !audioUrl) {
-      console.error('无法播放：句子数据或音频URL缺失', sentence);
+      console.error('[ContentBlock] 无法播放：句子数据或音频URL缺失', { sentence, audioUrl });
       return;
     }
     
@@ -180,15 +188,23 @@ export function ContentBlock({
     const endTime = sentence.end_time;
     
     if (beginTime === undefined || endTime === undefined) {
-      console.error('句子缺少时间信息', sentence);
+      console.error('[ContentBlock] 句子缺少时间信息', sentence);
       return;
     }
     
-    console.log(`播放句子 ${index}:`, beginTime, endTime);
+    console.log(`[ContentBlock] 准备播放句子`, {
+      index,
+      beginTime,
+      endTime,
+      playMode
+    });
     
     // 先设置状态，确保UI立即反应
     setActiveIndex(index);
     setIsPlaying(true);
+    
+    // 根据当前播放模式设置循环
+    const shouldLoop = playMode === 'sentence';
     
     // 使用AudioController播放
     AudioController.play({
@@ -196,19 +212,20 @@ export function ContentBlock({
       startTime: beginTime,
       endTime: endTime,
       context: 'sentence',
-      loop: false,
-      speechId: blockSpeechId,
+      loop: shouldLoop,
       onEnd: () => {
-          // 在句子播放结束时执行的操作，例如清除高亮
+        if (!shouldLoop) {
+          console.log('[ContentBlock] 非循环模式播放结束，清除状态');
           setActiveIndex(null);
           setIsPlaying(false);
           setActiveWordId(null);
+        }
       }
     });
     
     // 更新父组件时间
     onTimeChange?.(beginTime);
-  }, [activeIndex, isPlaying, audioUrl, block.id, onTimeChange, blockSpeechId]);
+  }, [activeIndex, isPlaying, audioUrl, block.id, onTimeChange, playMode]);
 
   // 更新引用
   useEffect(() => {
@@ -222,7 +239,7 @@ export function ContentBlock({
     
     // 监听音频时间更新事件 - 用于句子和单词高亮
     const handleTimeUpdate = (e: CustomEvent) => {
-      const { currentTime, playerId, context } = e.detail;
+      const { currentTime } = e.detail;
       
       const adjustedTime = currentTime + 0.5;
       setCurrentAudioTime(adjustedTime);
@@ -235,16 +252,14 @@ export function ContentBlock({
           setActiveIndex(null);
           setIsPlaying(false);
           setActiveWordId(null);
-          // 同时清除 activeBlockId
           if (activeBlockId === block.id) {
-            onSelect?.(null, {} as React.MouseEvent); // 使用 onSelect 传递 null
+            onSelect?.(null, {} as React.MouseEvent);
           }
         }
         return;
       }
 
       let inAnySentenceRange = false;
-      let foundSentence = false;
 
       for (let i = 0; i < sentenceIds.length; i++) {
         const sentenceId = sentenceIds[i];
@@ -252,52 +267,61 @@ export function ContentBlock({
 
         if (!sentence) continue;
 
-        if (adjustedTime >= sentence.begin_time + 0.4 - 0.4 &&
+        if (adjustedTime >= sentence.begin_time &&
             adjustedTime <= sentence.end_time) {
           inAnySentenceRange = true;
 
           if (activeIndex !== i) {
-            console.log(`高亮句子 ${i}: ${adjustedTime}秒在范围 ${sentence.begin_time}~${sentence.end_time}`);
+            console.log(`[ContentBlock] 进入新句子范围`, {
+              index: i,
+              currentTime: adjustedTime,
+              beginTime: sentence.begin_time,
+              endTime: sentence.end_time,
+              playMode
+            });
+            
             setActiveIndex(i);
             setIsPlaying(true);
-            // 更新 activeBlockId
             onSelect?.(block.id, {} as React.MouseEvent);
+
+            // 只在句子循环模式下设置循环范围
+            if (playMode === 'sentence') {
+              AudioController.setPlayMode('sentence', sentence.begin_time, sentence.end_time);
+            } else if (playMode === 'block' && i === 0) {
+              // 在块循环模式下，只在进入第一句时设置整个块的循环范围
+              const lastSentence = embeddedSentences.get(sentenceIds[sentenceIds.length - 1]);
+              if (lastSentence) {
+                AudioController.setPlayMode('block', sentence.begin_time, lastSentence.end_time);
+              }
+            }
           }
 
-          foundSentence = true;
-
-          // 单词高亮逻辑：只在需要改变时更新
+          // 单词高亮逻辑
           if (sentence.words && Array.isArray(sentence.words)) {
-            let newActiveWordId = null; // 记录新的活动单词ID
-
+            let newActiveWordId = null;
             for (const word of sentence.words) {
-              if (adjustedTime >= word.begin_time - 0.2 &&
+              if (adjustedTime >= word.begin_time &&
                   adjustedTime <= word.end_time) {
                 newActiveWordId = word.id;
                 break;
               }
             }
-
-            // 只有当新的活动单词ID与当前的不同时，才更新状态
             if (newActiveWordId !== activeWordId) {
               setActiveWordId(newActiveWordId);
             }
           }
-
           break;
         }
       }
 
-      // 修改这部分逻辑，去掉 context 的判断
       if (!inAnySentenceRange) {
         if (activeIndex !== null || isPlaying) {
-          console.log('音频时间超出语境块句子范围，清除高亮');
+          console.log('[ContentBlock] 超出句子范围，清除高亮');
           setActiveIndex(null);
           setIsPlaying(false);
           setActiveWordId(null);
-          // 同时清除 activeBlockId
           if (activeBlockId === block.id) {
-            onSelect?.(null, {} as React.MouseEvent); // 使用 onSelect 传递 null
+            onSelect?.(null, {} as React.MouseEvent);
           }
         }
       }
@@ -308,7 +332,7 @@ export function ContentBlock({
     return () => {
       window.removeEventListener(AUDIO_EVENTS.TIME_UPDATE, handleTimeUpdate as EventListener);
     };
-  }, [activeIndex, isPlaying, embeddedSentences, getSentenceIdsFromContent, activeBlockId, block.id, onSelect, currentAudioTime, blockSpeechId]);
+  }, [activeIndex, isPlaying, embeddedSentences, getSentenceIdsFromContent, activeBlockId, block.id, onSelect, activeWordId, playMode]);
 
   // 2. 然后是其他函数和useEffect，保持原有顺序
   const parseAndLoadEmbeddedSentences = useCallback(async () => {
@@ -1064,6 +1088,146 @@ export function ContentBlock({
       window.removeEventListener('audio-switch-start', handleAudioSwitch as EventListener);
     };
   }, []);
+
+  // 修改播放模式变化的useEffect
+  useEffect(() => {
+    if (!audioUrl || activeIndex === null) return;
+    
+    console.log('[ContentBlock] 播放模式变化', {
+      playMode,
+      activeIndex,
+      audioUrl
+    });
+    
+    // 获取当前句子的时间范围
+    const sentenceIds = getSentenceIdsFromContent();
+    if (activeIndex >= 0 && activeIndex < sentenceIds.length) {
+      const sentenceId = sentenceIds[activeIndex];
+      const sentence = embeddedSentences.get(sentenceId);
+      
+      if (sentence) {
+        console.log('[ContentBlock] 当前活动句子', {
+          sentenceId,
+          beginTime: sentence.begin_time,
+          endTime: sentence.end_time
+        });
+        
+        // 根据播放模式设置循环
+        switch (playMode) {
+          case 'sentence':
+            console.log('[ContentBlock] 切换到句子循环模式');
+            AudioController.setPlayMode('sentence', sentence.begin_time, sentence.end_time);
+            break;
+          
+          case 'block':
+            // 语境块循环 - 使用整个块的时间范围
+            const firstSentence = embeddedSentences.get(sentenceIds[0]);
+            const lastSentence = embeddedSentences.get(sentenceIds[sentenceIds.length - 1]);
+            
+            if (firstSentence && lastSentence) {
+              console.log('[ContentBlock] 切换到块循环模式', {
+                blockStart: firstSentence.begin_time,
+                blockEnd: lastSentence.end_time
+              });
+              AudioController.setPlayMode('block', firstSentence.begin_time, lastSentence.end_time);
+            }
+            break;
+        }
+      }
+    }
+  }, [playMode, activeIndex, audioUrl, embeddedSentences, getSentenceIdsFromContent]);
+
+  // 添加对循环事件的监听
+  useEffect(() => {
+    const handleAudioLoop = (e: CustomEvent) => {
+      const { startTime, endTime, mode } = e.detail;
+      
+      console.log('[ContentBlock] 收到循环事件', {
+        startTime,
+        endTime,
+        mode,
+        blockId: block.id
+      });
+      
+      // 检查是否是当前块的循环
+      const sentenceIds = getSentenceIdsFromContent();
+      const firstSentence = embeddedSentences.get(sentenceIds[0]);
+      const lastSentence = embeddedSentences.get(sentenceIds[sentenceIds.length - 1]);
+      
+      if (firstSentence && lastSentence) {
+        const blockStart = firstSentence.begin_time;
+        const blockEnd = lastSentence.end_time;
+        
+        console.log('[ContentBlock] 检查循环范围', {
+          blockStart,
+          blockEnd,
+          loopStart: startTime,
+          loopEnd: endTime
+        });
+        
+        // 如果循环范围在当前块内，更新状态
+        if (startTime >= blockStart && endTime <= blockEnd) {
+          // 找到对应的句子索引
+          for (let i = 0; i < sentenceIds.length; i++) {
+            const sentence = embeddedSentences.get(sentenceIds[i]);
+            if (sentence && sentence.begin_time === startTime) {
+              console.log('[ContentBlock] 找到循环句子', {
+                index: i,
+                sentenceId: sentenceIds[i]
+              });
+              setActiveIndex(i);
+              setIsPlaying(true);
+              break;
+            }
+          }
+        }
+      }
+    };
+    
+    window.addEventListener('audio-loop', handleAudioLoop as EventListener);
+    
+    return () => {
+      window.removeEventListener('audio-loop', handleAudioLoop as EventListener);
+    };
+  }, [getSentenceIdsFromContent, embeddedSentences, block.id]);
+
+  // 添加对模式变更事件的监听
+  useEffect(() => {
+    const handleAudioModeChange = (e: CustomEvent) => {
+      const { mode, currentTime, endTime } = e.detail;
+      
+      // 检查是否是当前块的模式变更
+      const sentenceIds = getSentenceIdsFromContent();
+      const firstSentence = embeddedSentences.get(sentenceIds[0]);
+      const lastSentence = embeddedSentences.get(sentenceIds[sentenceIds.length - 1]);
+      
+      if (firstSentence && lastSentence) {
+        const blockStart = firstSentence.begin_time;
+        const blockEnd = lastSentence.end_time;
+        
+        // 如果时间范围在当前块内，更新状态
+        if (currentTime >= blockStart && currentTime <= blockEnd) {
+          // 找到对应的句子索引
+          for (let i = 0; i < sentenceIds.length; i++) {
+            const sentence = embeddedSentences.get(sentenceIds[i]);
+            if (sentence && 
+                currentTime >= sentence.begin_time && 
+                currentTime <= sentence.end_time) {
+              setActiveIndex(i);
+              setIsPlaying(true);
+              break;
+            }
+          }
+        }
+      }
+    };
+    
+    window.addEventListener('audio-mode-change', handleAudioModeChange as EventListener);
+    
+    return () => {
+      window.removeEventListener('audio-mode-change', handleAudioModeChange as EventListener);
+    };
+  }, [getSentenceIdsFromContent, embeddedSentences]);
 
   return (
     <div
