@@ -21,7 +21,7 @@ interface DraggableAudioPlayerProps {
 // 修改物理参数 - 基础值
 const BASE_ROTATION_SPEED = 90; // 基础最大转速
 const BASE_ACCELERATION = 120; // 基础加速度
-const BASE_DECELERATION = 180; // 基础减速度
+const BASE_DECELERATION = 130; // 基础减速度
 const MIN_ROTATION_SPEED = 0.1; // 最小转速
 
 // 添加倍速选项
@@ -619,9 +619,14 @@ export function DraggableAudioPlayer({
         {/* 唱片主体部分 */}
         <div className="relative select-none">
           {/* 倍速控制 */}
-          <div className="absolute top-8 left-1/2 -translate-x-1/2 z-30 cursor-pointer select-none"
+          <div 
+            className="absolute left-1/2 -translate-x-1/2 z-30 cursor-pointer select-none"
+            style={{ 
+              top: '110px'
+            }}
             onClick={(e) => {
-              e.stopPropagation();
+              e.stopPropagation();  // 已有这个，很好
+              e.preventDefault();    // 添加这个以确保完全阻止事件
               const currentIndex = PLAYBACK_RATES.indexOf(playbackRate);
               const nextIndex = (currentIndex + 1) % PLAYBACK_RATES.length;
               handlePlaybackRateChange(PLAYBACK_RATES[nextIndex]);
@@ -642,7 +647,7 @@ export function DraggableAudioPlayer({
               transition: 'none',
             }}
           >
-            {/* 唱片内容容器 - 添加溢出隐藏 */}
+            {/* 唱片内容容器 */}
             <div className="absolute inset-0 rounded-full overflow-hidden border-8 border-black select-none">
               {/* 唱片封面图 */}
               <div className="absolute inset-0 bg-gradient-to-r from-blue-900 to-indigo-900 select-none">
@@ -672,12 +677,59 @@ export function DraggableAudioPlayer({
               }}
             />
 
-            {/* 中心区域 */}
+            {/* 中心区域 - 移除倍速按钮 */}
             <div className="absolute inset-0 flex items-center justify-center" style={{ pointerEvents: 'none' }}>
               {/* 黑色圆环背景 */}
               <div className="w-12 h-12 rounded-full bg-black flex items-center justify-center" style={{ pointerEvents: 'none' }}>
                 {/* 白色中心孔 */}
                 <div className="absolute w-4 h-4 rounded-full bg-white/20 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* 循环模式按钮 */}
+            <div 
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-10 h-10 rounded-full cursor-pointer flex items-center justify-center"
+              onClick={(e) => {
+                e.stopPropagation();  // 已有这个，很好
+                e.preventDefault();    // 添加这个以确保完全阻止事件
+                handleLoopModeChange();
+              }}
+            >
+              <div className="w-8 h-8 rounded-full flex items-center justify-center">
+                <svg 
+                  width="16" 
+                  height="16" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="white" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  className="opacity-90"
+                >
+                  {/* 循环模式图标 */}
+                  {loopMode === 'continuous' ? (
+                    <>
+                      <path d="M4 12h16" />
+                      <path d="M16 6l6 6-6 6" />
+                    </>
+                  ) : loopMode === 'sentence' ? (
+                    <>
+                      <path d="M17 2l4 4-4 4" />
+                      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+                      <path d="M7 22l-4-4 4-4" />
+                      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+                      <path d="M11 12h2" />
+                    </>
+                  ) : (
+                    <>
+                      <path d="M17 2l4 4-4 4" />
+                      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+                      <path d="M7 22l-4-4 4-4" />
+                      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+                    </>
+                  )}
+                </svg>
               </div>
             </div>
           </div>
@@ -907,7 +959,7 @@ export function DraggableAudioPlayer({
                               {volume === 0 ? (
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
                                   className="text-blue-300" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                                  <polygon points="11 5 6 9 2 9 2 15 6 15 19 11 19 11 5"></polygon>
                                   <line x1="23" y1="9" x2="17" y2="15"></line>
                                   <line x1="17" y1="9" x2="23" y2="15"></line>
                                 </svg>
@@ -946,14 +998,14 @@ export function DraggableAudioPlayer({
         {/* 大型唱片指针 */}
         <div 
           className={cn(
-            "absolute -top-6 left-1/2 z-40 transform-gpu cursor-pointer select-none", 
-            isPlaying ? "rotate-[-20deg]" : "rotate-[-45deg]"
+            "absolute -top-8 left-1/3 z-40 transform-gpu cursor-pointer select-none",
+            isPlaying ? "rotate-[15deg]" : "rotate-[-10deg]"
           )}
           style={{ 
             transformOrigin: "90% 75%", 
-            transition: "all 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
-            transform: isPlaying ? 'rotate(-20deg)' : 'rotate(-45deg)',
-            pointerEvents: 'auto', // 确保唱针可点击
+            transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+            transform: isPlaying ? 'rotate(15deg)' : 'rotate(-10deg)',
+            pointerEvents: 'auto',
           }}
           onClick={(e) => {
             e.stopPropagation();
@@ -1028,55 +1080,6 @@ export function DraggableAudioPlayer({
               }}
             />
           </svg>
-        </div>
-        
-        {/* 单独放置循环模式控制按钮，确保在最顶层 */}
-        <div 
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-10 h-10 rounded-full cursor-pointer flex items-center justify-center"
-          style={{
-            pointerEvents: 'auto' // 确保可以接收点击事件
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            handleLoopModeChange();
-          }}
-        >
-          <div className="w-8 h-8 rounded-full flex items-center justify-center">
-            <svg 
-              width="16" 
-              height="16" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="white" 
-              strokeWidth="2" 
-              strokeLinecap="round" 
-              strokeLinejoin="round"
-              className="opacity-90"
-            >
-              {loopMode === 'continuous' ? (
-                <>
-                  <path d="M4 12h16" />
-                  <path d="M16 6l6 6-6 6" />
-                </>
-              ) : loopMode === 'sentence' ? (
-                <>
-                  <path d="M17 2l4 4-4 4" />
-                  <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
-                  <path d="M7 22l-4-4 4-4" />
-                  <path d="M21 13v1a4 4 0 0 1-4 4H3" />
-                  <path d="M11 12h2" />
-                </>
-              ) : (
-                <>
-                  <path d="M17 2l4 4-4 4" />
-                  <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
-                  <path d="M7 22l-4-4 4-4" />
-                  <path d="M21 13v1a4 4 0 0 1-4 4H3" />
-                </>
-              )}
-            </svg>
-          </div>
         </div>
       </motion.div>
     </>
