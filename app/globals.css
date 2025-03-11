@@ -47,6 +47,22 @@
     --input: 270 30% 15%;
     --ring: 230 95% 65%;
   }
+
+  * {
+    @apply border-[hsl(var(--border))];
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  
+  /* 确保毛玻璃效果的容器有正确的渲染上下文 */
+  .fixed, .sticky {
+    transform: translateZ(0);
+    will-change: transform;
+    backface-visibility: hidden;
+  }
 }
 
 /* 启用毛玻璃效果所需的基础样式 */
@@ -69,22 +85,31 @@
       transform: translateX(-100%);
     }
   }
-}
 
-@layer base {
-  * {
-    @apply border-border;
+  @keyframes pulse-slow {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
   }
-  body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+
+  @keyframes pulse-fast {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
   }
-  
-  /* 确保毛玻璃效果的容器有正确的渲染上下文 */
-  .fixed, .sticky {
-    transform: translateZ(0);
-    will-change: transform;
-    backface-visibility: hidden;
+
+  .animate-pulse-slow {
+    animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .animate-pulse-fast {
+    animation: pulse-fast 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 }
 
@@ -413,4 +438,416 @@
   border-radius: 9999px !important;
   font-size: 0.65rem !important;
   font-weight: 500 !important;
+}
+
+/* 修改能量流动动画 - 红色 - 增强荧光效果 */
+@keyframes energy-flow-red {
+  0% { 
+    stroke: white; 
+    stroke-width: 2;
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+    filter: none;
+  }
+  50% { 
+    stroke: white; 
+    stroke-width: 3;
+    stroke-dasharray: 100;
+    stroke-dashoffset: 0;
+    filter: drop-shadow(0 0 3px rgba(255,77,77,1)) 
+           drop-shadow(0 0 6px rgba(255,77,77,0.8))
+           drop-shadow(0 0 12px rgba(255,0,0,0.6));
+  }
+  100% { 
+    stroke: white;
+    stroke-width: 2; 
+    filter: none;
+  }
+}
+
+/* 修改能量流动动画 - 蓝色 - 增强荧光效果 */
+@keyframes energy-flow-blue {
+  0% { 
+    stroke: white; 
+    stroke-width: 2;
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+    filter: none;
+  }
+  50% { 
+    stroke: white; 
+    stroke-width: 3;
+    stroke-dasharray: 100;
+    stroke-dashoffset: 0;
+    filter: drop-shadow(0 0 3px rgba(77,159,255,1)) 
+           drop-shadow(0 0 6px rgba(77,159,255,0.8))
+           drop-shadow(0 0 12px rgba(0,100,255,0.6));
+  }
+  100% { 
+    stroke: white; 
+    stroke-width: 2;
+    filter: none;
+  }
+}
+
+/* 修改闪烁动画，让荧光效果保持 */
+@keyframes flash-red {
+  0% { 
+    color: white; 
+    text-shadow: none;
+    font-weight: normal;
+  }
+  20% { /* 提前到达高峰 */
+    color: white; 
+    text-shadow: 0 0 3px rgba(255,77,77,1),
+                0 0 6px rgba(255,77,77,0.8),
+                0 0 12px rgba(255,0,0,0.6);
+    font-weight: bold;
+  }
+  100% { /* 保持荧光效果 */
+    color: white; 
+    text-shadow: 0 0 2px rgba(255,77,77,0.7),
+                0 0 4px rgba(255,77,77,0.5),
+                0 0 8px rgba(255,0,0,0.3);
+    font-weight: bold;
+  }
+}
+
+@keyframes flash-blue {
+  0% { 
+    color: white; 
+    text-shadow: none;
+    font-weight: normal;
+  }
+  20% { /* 提前到达高峰 */
+    color: white; 
+    text-shadow: 0 0 3px rgba(77,159,255,1),
+                0 0 6px rgba(77,159,255,0.8),
+                0 0 12px rgba(0,100,255,0.6);
+    font-weight: bold;
+  }
+  100% { /* 保持荧光效果 */
+    color: white; 
+    text-shadow: 0 0 2px rgba(77,159,255,0.7),
+                0 0 4px rgba(77,159,255,0.5),
+                0 0 8px rgba(0,100,255,0.3);
+    font-weight: bold;
+  }
+}
+
+.animate-energy-flow-red {
+  animation: energy-flow-red 0.6s ease-in-out;
+}
+
+.animate-energy-flow-blue {
+  animation: energy-flow-blue 0.6s ease-in-out;
+}
+
+.animate-flash-red {
+  animation: flash-red 0.6s ease-in-out;
+}
+
+.animate-flash-blue {
+  animation: flash-blue 0.6s ease-in-out;
+}
+
+/* 循环模式动画 - 修复循环按钮的放大和荧光效果 */
+@keyframes loop-glow-green {
+  0% { 
+    filter: none;
+  }
+  50% { 
+    filter: drop-shadow(0 0 5px rgba(72,187,120,1)) 
+           drop-shadow(0 0 10px rgba(72,187,120,0.9))
+           drop-shadow(0 0 15px rgba(0,255,127,0.8))
+           drop-shadow(0 0 20px rgba(0,255,127,0.6));
+  }
+  100% { 
+    filter: drop-shadow(0 0 3px rgba(72,187,120,1)) 
+           drop-shadow(0 0 6px rgba(72,187,120,0.9))
+           drop-shadow(0 0 10px rgba(0,255,127,0.7));
+  }
+}
+
+@keyframes loop-glow-orange {
+  0% { 
+    filter: none;
+  }
+  50% { 
+    filter: drop-shadow(0 0 5px rgba(237,137,54,1)) 
+           drop-shadow(0 0 10px rgba(237,137,54,0.9))
+           drop-shadow(0 0 15px rgba(255,165,0,0.8))
+           drop-shadow(0 0 20px rgba(255,140,0,0.6));
+  }
+  100% { 
+    filter: drop-shadow(0 0 3px rgba(237,137,54,1)) 
+           drop-shadow(0 0 6px rgba(237,137,54,0.9))
+           drop-shadow(0 0 10px rgba(255,165,0,0.7));
+  }
+}
+
+/* 持续的荧光效果类 - 强化版 */
+.glow-green {
+  transform: scale(1.08);
+  filter: drop-shadow(0 0 3px rgba(72,187,120,1)) 
+         drop-shadow(0 0 6px rgba(72,187,120,0.9))
+         drop-shadow(0 0 10px rgba(0,255,127,0.7));
+}
+
+.glow-orange {
+  transform: scale(1.08);
+  filter: drop-shadow(0 0 3px rgba(237,137,54,1)) 
+         drop-shadow(0 0 6px rgba(237,137,54,0.9))
+         drop-shadow(0 0 10px rgba(255,165,0,0.7));
+}
+
+/* 修改荧光效果，增强文字荧光 */
+.speed-state-slow {
+  color: white !important;
+  font-weight: bold;
+  text-shadow: 0 0 5px rgba(255,77,77,1),
+               0 0 10px rgba(255,77,77,0.9),
+               0 0 15px rgba(255,0,0,0.7);
+}
+
+.speed-state-fast {
+  color: white !important;
+  font-weight: bold;
+  text-shadow: 0 0 5px rgba(77,159,255,1),
+               0 0 10px rgba(77,159,255,0.9),
+               0 0 15px rgba(0,100,255,0.7);
+}
+
+/* 火箭升起和悬浮动画 */
+@keyframes rocket-up {
+  0% { 
+    transform: translate(-40px, 40px) rotate(-45deg) scale(0.7); /* 从左下角进入 */
+    opacity: 0;
+    filter: drop-shadow(0 0 6px rgba(77,159,255,1)) 
+           drop-shadow(0 0 12px rgba(77,159,255,0.9))
+           drop-shadow(0 0 18px rgba(0,100,255,0.8))
+           drop-shadow(0 0 24px rgba(0,100,255,0.6));
+  }
+  40% { 
+    transform: translate(0, 15px) rotate(-15deg) scale(0.9);
+    opacity: 0.6;
+    filter: drop-shadow(0 0 6px rgba(77,159,255,1)) 
+           drop-shadow(0 0 12px rgba(77,159,255,0.9))
+           drop-shadow(0 0 18px rgba(0,100,255,0.8))
+           drop-shadow(0 0 24px rgba(0,100,255,0.6));
+  }
+  70% {
+    transform: translate(0, -2px) rotate(5deg) scale(1.1);
+    opacity: 0.8;
+    filter: drop-shadow(0 0 8px rgba(77,159,255,1)) 
+           drop-shadow(0 0 16px rgba(77,159,255,0.9))
+           drop-shadow(0 0 24px rgba(0,100,255,0.8))
+           drop-shadow(0 0 32px rgba(0,100,255,0.6));
+  }
+  100% { 
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 1;
+    filter: drop-shadow(0 0 5px rgba(77,159,255,1)) 
+           drop-shadow(0 0 10px rgba(77,159,255,0.9))
+           drop-shadow(0 0 15px rgba(0,100,255,0.8))
+           drop-shadow(0 0 20px rgba(0,100,255,0.6));
+  }
+}
+
+/* 火箭持续悬浮动画 - 增强荧光脉冲 */
+@keyframes rocket-hover {
+  0% { 
+    transform: translate(0px, 0px);
+    filter: drop-shadow(0 0 5px rgba(77,159,255,1)) 
+           drop-shadow(0 0 10px rgba(77,159,255,0.9))
+           drop-shadow(0 0 15px rgba(0,100,255,0.8))
+           drop-shadow(0 0 20px rgba(0,100,255,0.6));
+  }
+  50% { 
+    transform: translate(0px, -1px);
+    filter: drop-shadow(0 0 6px rgba(77,159,255,1)) 
+           drop-shadow(0 0 12px rgba(77,159,255,0.9))
+           drop-shadow(0 0 18px rgba(0,100,255,0.8))
+           drop-shadow(0 0 24px rgba(0,100,255,0.6));
+  }
+  75% {
+    transform: translate(0px, 2px);
+    filter: drop-shadow(0 0 5px rgba(77,159,255,1)) 
+           drop-shadow(0 0 10px rgba(77,159,255,0.9))
+           drop-shadow(0 0 15px rgba(0,100,255,0.8))
+           drop-shadow(0 0 20px rgba(0,100,255,0.6));
+  }
+  100% { 
+    transform: translate(0px, 0px);
+    filter: drop-shadow(0 0 5px rgba(77,159,255,1)) 
+           drop-shadow(0 0 10px rgba(77,159,255,0.9))
+           drop-shadow(0 0 15px rgba(0,100,255,0.8))
+           drop-shadow(0 0 20px rgba(0,100,255,0.6));
+  }
+}
+
+/* 乌龟入场和摇摆动画 */
+@keyframes turtle-walk {
+  0% { 
+    transform: translate(-40px, 0) rotate(-20deg) scale(0.7); /* 从左侧水平进入 */
+    opacity: 0;
+    filter: drop-shadow(0 0 4px rgba(255,77,77,1)) 
+           drop-shadow(0 0 8px rgba(255,0,0,0.6));
+  }
+  40% { 
+    transform: translate(0, 15px) rotate(-10deg) scale(0.9);
+    opacity: 0.6;
+    filter: drop-shadow(0 0 3px rgba(255,77,77,1)) 
+           drop-shadow(0 0 6px rgba(255,0,0,0.6));
+  }
+  70% {
+    transform: translate(0, -2px) rotate(8deg) scale(1.1);
+    opacity: 0.8;
+    filter: drop-shadow(0 0 4px rgba(255,77,77,1)) 
+           drop-shadow(0 0 8px rgba(255,0,0,0.6));
+  }
+  100% { 
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 1;
+    filter: drop-shadow(0 0 2px rgba(255,77,77,0.7)) 
+           drop-shadow(0 0 4px rgba(255,0,0,0.3));
+  }
+}
+
+/* 乌龟持续摇摆动画 - 增加左移幅度 */
+@keyframes turtle-waddle {
+  0% { 
+    transform: rotate(-3deg) translateX(-4px); /* 增加左移幅度 */
+  }
+  50% { 
+    transform: rotate(3deg) translateX(4px); /* 右移幅度保持不变 */
+  }
+  100% { 
+    transform: rotate(-3deg) translateX(-4px); /* 增加左移幅度 */
+  }
+}
+
+.animate-rocket {
+  animation: 
+    rocket-up 0.6s ease-out forwards,
+    rocket-hover 2s ease-in-out infinite;
+}
+
+.animate-turtle {
+  animation: 
+    turtle-walk 0.6s ease-out forwards,
+    turtle-waddle 3s ease-in-out infinite;
+}
+
+/* 箭头闪烁动画 */
+@keyframes arrow-flash {
+  0% { 
+    opacity: 0.5;
+  }
+  50% { 
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  100% { 
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-arrow {
+  animation: arrow-flash 0.6s ease-out forwards;
+}
+
+/* 添加内联动画定义 */
+@keyframes custom-turtle-slide {
+  0% {
+    transform: translate(-50px, 0) rotate(-15deg) scale(0.8);
+    opacity: 0;
+    filter: drop-shadow(0 0 4px rgba(255,77,77,1)) 
+           drop-shadow(0 0 8px rgba(255,77,77,0.8))
+           drop-shadow(0 0 15px rgba(255,0,0,0.7));
+  }
+  100% {
+    transform: translate(0, 0) rotate(0) scale(1);
+    opacity: 1;
+    filter: drop-shadow(0 0 4px rgba(255,77,77,1)) 
+           drop-shadow(0 0 8px rgba(255,77,77,0.8))
+           drop-shadow(0 0 15px rgba(255,0,0,0.7));
+  }
+}
+
+@keyframes custom-rocket-slide {
+  0% {
+    transform: translate(-50px, 50px) rotate(-45deg) scale(0.8);
+    opacity: 0;
+    filter: drop-shadow(0 0 6px rgba(77,159,255,1)) 
+           drop-shadow(0 0 12px rgba(77,159,255,0.9))
+           drop-shadow(0 0 18px rgba(0,100,255,0.8))
+           drop-shadow(0 0 24px rgba(0,100,255,0.6));
+  }
+  100% {
+    transform: translate(0, 0) rotate(0) scale(1);
+    opacity: 1;
+    filter: drop-shadow(0 0 6px rgba(77,159,255,1)) 
+           drop-shadow(0 0 12px rgba(77,159,255,0.9))
+           drop-shadow(0 0 18px rgba(0,100,255,0.8))
+           drop-shadow(0 0 24px rgba(0,100,255,0.6));
+  }
+}
+
+/* 添加恒定的荧光效果类 - 轻量版 */
+.red-glow {
+  filter: drop-shadow(0 0 3px rgba(255,77,77,0.8)) 
+         drop-shadow(0 0 6px rgba(255,77,77,0.6))
+         drop-shadow(0 0 10px rgba(255,0,0,0.4));
+}
+
+.blue-glow {
+  filter: drop-shadow(0 0 3px rgba(77,159,255,0.8)) 
+         drop-shadow(0 0 6px rgba(77,159,255,0.6))
+         drop-shadow(0 0 10px rgba(0,100,255,0.4));
+}
+
+/* 火箭浮动动画 - 更快的速度 */
+@keyframes rocket-float {
+  0% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-3px) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(0) rotate(0deg);
+  }
+  75% {
+    transform: translateY(2px) rotate(2deg);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+}
+
+/* 乌龟爬行动画 - 更远的水平移动距离和更快的转向 */
+@keyframes turtle-crawl {
+  0% {
+    transform: translateX(0) scaleX(1);
+  }
+  20% { /* 在水平方向移动更远 */
+    transform: translateX(15px) scaleX(1);
+  }
+  30% { /* 快速转向 */
+    transform: translateX(15px) scaleX(-1);
+  }
+  50% { /* 开始向左移动 */
+    transform: translateX(0) scaleX(-1);
+  }
+  70% { /* 左侧最远点 */
+    transform: translateX(-15px) scaleX(-1);
+  }
+  80% { /* 快速转回 */
+    transform: translateX(-15px) scaleX(1);
+  }
+  100% {
+    transform: translateX(0) scaleX(1);
+  }
 }
