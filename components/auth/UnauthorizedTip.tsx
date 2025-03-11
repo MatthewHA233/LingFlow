@@ -20,10 +20,11 @@ export function UnauthorizedTip() {
   const [showLine3, setShowLine3] = useState(false);
   const [showExploreButton, setShowExploreButton] = useState(false);
 
-  // 检测设备性能决定是否显示流体特效
+  // 检测设备性能和屏幕尺寸决定是否显示流体特效
   useEffect(() => {
     const isHighEnd = window.navigator.hardwareConcurrency > 4;
-    setShowSplash(isHighEnd);
+    const isMobile = window.innerWidth < 768; // 使用 768px 作为移动端断点
+    setShowSplash(isHighEnd && !isMobile);
   }, []);
 
   // 修复类型错误：更改ref回调函数
@@ -137,14 +138,39 @@ export function UnauthorizedTip() {
     <div key="intro" className="h-screen flex flex-col items-center justify-center" ref={setSlideRef(0)}>
       <div className="text-center w-full max-w-3xl mx-auto px-4 sm:px-6">
         <div className="mb-12">
-          <SplitText
-            text="当语言学习遇见自然生长"
-            className="text-3xl sm:text-4xl md:text-6xl font-bold tracking-tighter block"
-            delay={80}
-            animationFrom={{ opacity: 0, transform: 'translate3d(0,30px,0)' }}
-            animationTo={{ opacity: 1, transform: 'translate3d(0,0,0)' }}
-            onLetterAnimationComplete={() => setShowLine1(true)}
-          />
+          <div className="mb-8">
+            <SplitText
+              text="当语言学习遇见"
+              className="text-3xl sm:text-4xl md:text-6xl font-bold tracking-tighter inline-block"
+              delay={40}
+              animationFrom={{ opacity: 0, transform: 'translate3d(0,30px,0)' }}
+              animationTo={{ opacity: 1, transform: 'translate3d(0,0,0)' }}
+              onLetterAnimationComplete={() => {
+                setShowLine1(true);
+                setTimeout(() => setShowLine2(true), 300);
+                setTimeout(() => setShowLine3(true), 600);
+                setTimeout(() => setShowExploreButton(true), 900);
+              }}
+            />
+            <motion.span 
+              className="text-3xl sm:text-4xl md:text-6xl font-bold tracking-tighter inline-block ml-2 text-primary relative"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+            >
+              自然生长
+              <motion.div 
+                className="absolute bottom-0 left-0 h-1 bg-primary rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: "100%" }}
+                transition={{ 
+                  duration: 1.5, 
+                  delay: 0.5, 
+                  ease: "easeOut" 
+                }}
+              />
+            </motion.span>
+          </div>
         </div>
         
         <div className="flex flex-col gap-8 text-base sm:text-lg text-muted-foreground w-full">
@@ -667,10 +693,12 @@ export function UnauthorizedTip() {
   return (
     <>
       <div className="relative overflow-x-hidden bg-background">
-        {/* 流体背景特效 - 移到最底层 */}
-        <div className="fixed inset-0 z-0">
-          {showSplash && <SplashCursor />}
-        </div>
+        {/* 流体背景特效 - 只在非移动端显示 */}
+        {showSplash && (
+          <div className="fixed inset-0 z-0">
+            <SplashCursor />
+          </div>
+        )}
         
         {/* 所有内容包装在一个相对定位的容器中，确保在流体特效上方 */}
         <div className="relative z-10">
