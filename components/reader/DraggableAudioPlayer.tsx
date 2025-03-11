@@ -119,6 +119,18 @@ export function DraggableAudioPlayer({
   // 修改展开控制逻辑，在移动端使用点击而非悬停
   const [isControlExpanded, setIsControlExpanded] = useState<boolean>(false);
   
+  // 首先添加状态来控制动画触发
+  const [slowdownAnimation, setSlowdownAnimation] = useState(false);
+  const [speedupAnimation, setSpeedupAnimation] = useState(false);
+  
+  // 首先添加两个ref来跟踪动画定时器
+  const slowdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const speedupTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // 添加循环模式动画的状态
+  const [loopAnimation, setLoopAnimation] = useState<'none' | 'green' | 'orange' | 'scale'>('none');
+  const loopAnimationTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
   // 动画函数
   const animate = useCallback((time: number) => {
     // 第一帧初始化
@@ -473,8 +485,41 @@ export function DraggableAudioPlayer({
     };
   }, []);
 
-  // 处理倍速变化
-  const handlePlaybackRateChange = (newRate: number) => {
+  // 然后修改处理播放速率变化的函数
+  const handlePlaybackRateChange = useCallback((newRate: number) => {
+    // 清除所有现有的动画状态和定时器
+    if (slowdownTimerRef.current) {
+      clearTimeout(slowdownTimerRef.current);
+      slowdownTimerRef.current = null;
+    }
+    if (speedupTimerRef.current) {
+      clearTimeout(speedupTimerRef.current);
+      speedupTimerRef.current = null;
+    }
+    
+    // 重置动画状态
+    setSlowdownAnimation(false);
+    setSpeedupAnimation(false);
+    
+    // 设置微小延迟后再触发新动画，确保DOM完全重置
+    setTimeout(() => {
+      // 检测速度变化方向来触发相应动画
+      if (newRate < playbackRate) {
+        setSlowdownAnimation(true);
+        slowdownTimerRef.current = setTimeout(() => {
+          setSlowdownAnimation(false);
+          slowdownTimerRef.current = null;
+        }, 600);
+      } else if (newRate > playbackRate) {
+        setSpeedupAnimation(true);
+        speedupTimerRef.current = setTimeout(() => {
+          setSpeedupAnimation(false);
+          speedupTimerRef.current = null;
+        }, 600);
+      }
+    }, 10);
+    
+    // 设置新速度
     AudioController.setPlaybackRate(newRate);
     setPlaybackRate(newRate);
     playbackRateRef.current = newRate;
@@ -484,20 +529,61 @@ export function DraggableAudioPlayer({
       position: 'bottom-right',
       duration: 1500,
     });
-  };
+  }, [playbackRate]);
 
-  // 处理循环模式变化
+  // 清理定时器 - 添加到组件卸载时
+  useEffect(() => {
+    return () => {
+      if (slowdownTimerRef.current) clearTimeout(slowdownTimerRef.current);
+      if (speedupTimerRef.current) clearTimeout(speedupTimerRef.current);
+    };
+  }, []);
+
+  // 修改处理循环模式变化函数
   const handleLoopModeChange = () => {
+    // 清除现有动画状态和定时器
+    if (loopAnimationTimerRef.current) {
+      clearTimeout(loopAnimationTimerRef.current);
+      loopAnimationTimerRef.current = null;
+    }
+    
     const modes: ('continuous' | 'sentence' | 'block')[] = ['continuous', 'sentence', 'block'];
     const currentIndex = modes.indexOf(loopMode);
     const nextIndex = (currentIndex + 1) % modes.length;
-    setLoopMode(modes[nextIndex]);
-    AudioController.setPlayMode(modes[nextIndex]);
+    const nextMode = modes[nextIndex];
     
-    // 修复toast消息中的文本重复问题
-    toast.success(`已切换到${modes[nextIndex] === 'continuous' ? '顺序播放' : 
-      modes[nextIndex] === 'sentence' ? '句子循环' : '语境块循环'}`);
+    // 设置新的循环模式
+    setLoopMode(nextMode);
+    AudioController.setPlayMode(nextMode);
+    
+    // 根据新模式设置不同的动画状态 - 不再使用定时器清除
+    if (nextMode === 'sentence') {
+      setLoopAnimation('green'); // 句子循环使用绿色动画
+    } else if (nextMode === 'block') {
+      setLoopAnimation('orange'); // 语境块循环使用橙色动画
+    } else {
+      setLoopAnimation('scale'); // 顺序播放时无荧光
+      
+      // 对于顺序播放模式，我们仍然使用短暂动画然后恢复
+      loopAnimationTimerRef.current = setTimeout(() => {
+        setLoopAnimation('none');
+        loopAnimationTimerRef.current = null;
+      }, 600);
+    }
+    
+    // 提示消息
+    toast.success(`已切换到${nextMode === 'continuous' ? '顺序播放' : 
+      nextMode === 'sentence' ? '句子循环' : '语境块循环'}`);
   };
+
+  // 组件卸载时清理循环动画定时器
+  useEffect(() => {
+    return () => {
+      if (loopAnimationTimerRef.current) {
+        clearTimeout(loopAnimationTimerRef.current);
+      }
+    };
+  }, []);
 
   // 格式化时间函数
   const formatTime = (ms: number): string => {
@@ -618,23 +704,208 @@ export function DraggableAudioPlayer({
       >
         {/* 唱片主体部分 */}
         <div className="relative select-none">
-          {/* 倍速控制 */}
+          {/* 左侧减速箭头 - 优化点击区域 */}
+          <div 
+            className="absolute z-30 cursor-pointer select-none transition-transform hover:scale-110"
+            style={{ 
+              top: '75px',
+              left: '30px',
+              transform: 'rotate(-90deg)',
+              width: '40px', // 减小容器尺寸
+              height: '30px',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center'
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              const currentIndex = PLAYBACK_RATES.indexOf(playbackRate);
+              if (currentIndex > 0) {
+                handlePlaybackRateChange(PLAYBACK_RATES[currentIndex - 1]);
+              }
+            }}
+          >
+            <svg 
+              width="40" 
+              height="30" 
+              viewBox="0 0 50 40" 
+              fill="none" 
+              strokeWidth="2"
+              style={{ pointerEvents: 'none' }} // 禁用SVG内部的点击事件，只在父div上响应
+              className={`
+                transition-all duration-200 
+                stroke-white 
+                ${!slowdownAnimation && 'hover:stroke-red-400'} 
+                active:scale-90 
+                ${slowdownAnimation ? 'animate-energy-flow-red' : ''}
+              `}
+            >
+              <path d="M45,35 Q25,15 5,35" strokeLinecap="round"/>  
+              <path d="M10,35 L5,35 L5,30" strokeLinecap="round" strokeLinejoin="round"/>  
+            </svg>
+          </div>
+
+          {/* 倍速显示 */}
           <div 
             className="absolute left-1/2 -translate-x-1/2 z-30 cursor-pointer select-none"
             style={{ 
-              top: '110px'
+              top: '58px',
+              width: '48px', // 限制点击区域宽度
+              height: '24px', // 限制点击区域高度
             }}
             onClick={(e) => {
-              e.stopPropagation();  // 已有这个，很好
-              e.preventDefault();    // 添加这个以确保完全阻止事件
+              e.stopPropagation();
+              e.preventDefault();
               const currentIndex = PLAYBACK_RATES.indexOf(playbackRate);
               const nextIndex = (currentIndex + 1) % PLAYBACK_RATES.length;
               handlePlaybackRateChange(PLAYBACK_RATES[nextIndex]);
             }}
           >
-            <span className="text-xs font-medium text-white/90 drop-shadow-lg select-none">
-              {playbackRate}x
-            </span>
+            <div className={cn(
+              "flex flex-col items-center",
+              "mechanical-font",
+              playbackRate < 1 && "speed-state-slow",
+              playbackRate > 1 && "speed-state-fast",
+              slowdownAnimation && "animate-flash-red", 
+              speedupAnimation && "animate-flash-blue"
+            )}
+            style={{
+              clipPath: playbackRate !== 1 ? 'polygon(0 0, 100% 0, 95% 50%, 100% 100%, 0 100%, 5% 50%)' : undefined,
+              padding: playbackRate !== 1 ? '0 12px' : undefined,
+            }}
+            >
+              {/* 速度数值 */}
+              <span 
+                className={cn(
+                  "text-sm drop-shadow-lg select-none transition-colors text-white/90",
+                  playbackRate !== 1 ? "font-extrabold" : "font-medium"
+                )}
+              >
+                {playbackRate}x
+              </span>
+            </div>
+
+            {/* 将图标移到外层，但仍然保持相对定位 */}
+            {playbackRate !== 1 && (
+              <div 
+                className="relative"
+                style={{
+                  marginTop: '-3rem',
+                  pointerEvents: 'none',
+                  position: 'absolute',
+                  left: '35%',
+                  transform: 'translateX(-50%)',
+                  width: '150px',
+                  height: '150px',
+                  overflow: 'visible',
+                  zIndex: 50
+                }}
+              >
+                {/* 乌龟图标 */}
+                {playbackRate < 1 && (
+                  <div 
+                    className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
+                    style={{
+                      animation: 'custom-turtle-slide 1s forwards, turtle-crawl 12s ease-in-out infinite 1s'
+                    }}
+                  >
+                    <svg 
+                      width="14" 
+                      height="14"
+                      viewBox="0 0 26 24" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      strokeWidth="2" 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round"
+                      className="opacity-90 red-glow"
+                    >
+                      <path d="M13 8a6 8 0 1 0 0 12 6 8 0 0 0 0-12" transform="rotate(90 12 14)" />
+                      <path d="M12 10a4 6 0 1 0 0 8 4 6 0 0 0 0-8" transform="rotate(90 12 14)" />
+                      <path d="M9 10v9" transform="rotate(90 12 14)" strokeWidth="1" />
+                      <path d="M6 13q3-4 6 0" transform="rotate(90 12 14)" strokeWidth="1" />
+                      <path d="M6 15q3+4 6 0" transform="rotate(90 12 14)" strokeWidth="1" />
+                      <path d="M8 5c-1-1-1-2-0.5-2.5" strokeWidth="1.8" />
+                      <path d="M8 17c-1 1-1 2-0.5 2.5" strokeWidth="1.8" />
+                      <path d="M16 5c1-1 1-2 0.5-2.5" strokeWidth="1.8" />
+                      <path d="M16 17c1 1 1 2 0.5 2.5" strokeWidth="1.8" />
+                      <path d="M18 11c3.5 0 5.5-1.5 6-3" strokeWidth="2.8" />
+                      <path d="M6 11c-2.5 0-4-1-4.5-2.5" strokeWidth="1.8" />
+                    </svg>
+                  </div>
+                )}
+                
+                {/* 火箭图标 */}
+                {playbackRate > 1 && (
+                  <div 
+                    className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
+                    style={{
+                      animation: 'custom-rocket-slide 1s forwards, rocket-float 1.4s ease-in-out infinite 1s'
+                    }}
+                  >
+                    <svg 
+                      width="14" 
+                      height="14"
+                      viewBox="0 0 26 24" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      strokeWidth="2" 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round"
+                      className="opacity-90 blue-glow"
+                    >
+                      <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
+                      <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
+                      <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
+                      <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
+                    </svg>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 右侧加速箭头 - 优化点击区域 */}
+          <div 
+            className="absolute z-30 cursor-pointer select-none transition-transform hover:scale-110"
+            style={{ 
+              top: '75px',
+              right: '30px',
+              transform: 'rotate(90deg)',
+              width: '40px', // 减小容器尺寸
+              height: '30px',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center'
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              const currentIndex = PLAYBACK_RATES.indexOf(playbackRate);
+              if (currentIndex < PLAYBACK_RATES.length - 1) {
+                handlePlaybackRateChange(PLAYBACK_RATES[currentIndex + 1]);
+              }
+            }}
+          >
+            <svg 
+              width="40" 
+              height="30" 
+              viewBox="0 0 50 40" 
+              fill="none" 
+              strokeWidth="2"
+              style={{ pointerEvents: 'none' }} // 禁用SVG内部的点击事件，只在父div上响应
+              className={`
+                transition-all duration-200 
+                stroke-white 
+                ${!speedupAnimation && 'hover:stroke-blue-400'} 
+                active:scale-90 
+                ${speedupAnimation ? 'animate-energy-flow-blue' : ''}
+              `}
+            >
+              <path d="M5,35 Q25,15 45,35" strokeLinecap="round"/>  
+              <path d="M40,35 L45,35 L45,30" strokeLinecap="round" strokeLinejoin="round"/>  
+            </svg>
           </div>
 
           {/* 实际唱片圆盘 */}
@@ -705,9 +976,16 @@ export function DraggableAudioPlayer({
                   strokeWidth="2" 
                   strokeLinecap="round" 
                   strokeLinejoin="round"
-                  className="opacity-90"
+                  className={cn(
+                    "opacity-90",
+                    loopMode === 'sentence' && 'glow-green',
+                    loopMode === 'block' && 'glow-orange',
+                    loopAnimation === 'green' && 'animate-loop-green',
+                    loopAnimation === 'orange' && 'animate-loop-orange',
+                    loopAnimation === 'scale' && 'animate-loop-scale'
+                  )}
                 >
-                  {/* 循环模式图标 */}
+                  {/* 保持现有的循环模式图标不变 */}
                   {loopMode === 'continuous' ? (
                     <>
                       <path d="M4 12h16" />
@@ -957,19 +1235,21 @@ export function DraggableAudioPlayer({
                               }}
                             >
                               {volume === 0 ? (
+                                // 静音图标
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
                                   className="text-blue-300" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <polygon points="11 5 6 9 2 9 2 15 6 15 19 11 19 11 5"></polygon>
-                                  <line x1="23" y1="9" x2="17" y2="15"></line>
-                                  <line x1="17" y1="9" x2="23" y2="15"></line>
-                                </svg>
+                                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                                    <line x1="23" y1="9" x2="17" y2="15"></line>
+                                    <line x1="17" y1="9" x2="23" y2="15"></line>
+                                  </svg>
                               ) : (
+                                // 音量图标
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
                                   className="text-blue-300" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-                                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
-                                </svg>
+                                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                                  </svg>
                               )}
                             </button>
                             
