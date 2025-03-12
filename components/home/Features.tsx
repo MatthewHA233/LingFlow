@@ -55,20 +55,22 @@ export function Features() {
   }, []);
 
   return (
-    <section className="py-8 px-4 sm:px-6 lg:px-8" ref={sectionRef}>
-      <div className="max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+    <section className="py-8 px-4 sm:px-6 lg:px-8 overflow-hidden w-full" ref={sectionRef}>
+      <div className="max-w-7xl mx-auto w-full">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8 w-full">
           {FEATURES_DATA.map((feature, index) => (
             <div 
               key={feature.title}
-              ref={el => cardRefs.current[index] = el}
+              ref={el => {
+                if (el) cardRefs.current[index] = el;
+              }}
               className="bg-card/50 backdrop-blur-sm p-6 rounded-lg border border-primary/10 overflow-hidden transition-all duration-300"
             >
               <div className="icon-container h-12 w-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
                 <feature.icon className="h-6 w-6 text-primary" />
               </div>
               <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
-              <p className="text-muted-foreground">{feature.description}</p>
+              <p className="text-muted-foreground text-sm sm:text-base">{feature.description}</p>
             </div>
           ))}
         </div>
