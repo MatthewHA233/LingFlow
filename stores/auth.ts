@@ -221,32 +221,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   checkRole: async () => {
     const state = get();
-    console.log('检查用户角色:', {
-      userId: state.user?.id,
-      currentRole: state.role,
-    });
     
     if (!state.user) {
-      console.log('未找到用户，返回 null');
       return null;
     }
+
+    // 优先使用缓存的角色
     if (state.role) {
-      console.log('使用缓存的角色:', state.role);
       return state.role;
     }
 
-    console.log('从数据库获取角色');
-    // 如果没有角色信息，从数据库获取
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', state.user.id)
-      .single();
+    try {
+      // 从数据库获取角色
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', state.user.id)
+        .single();
 
-    const role = profile?.role || 'user';
-    console.log('获取到的角色:', role);
-    set({ role });
-    return role;
+      const role = profile?.role || 'user';
+      set({ role });  // 更新状态
+      return role;
+    } catch (error) {
+      console.error('获取角色失败:', error);
+      return null;
+    }
   },
 
   sendPhoneVerification: async (phone: string) => {

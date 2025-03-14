@@ -16,83 +16,88 @@ interface ReaderPageProps {
 
 export default function ReaderPage({ params }: ReaderPageProps) {
   const [book, setBook] = useState<Book | null>(null);
-  const [arrayBuffer, setArrayBuffer] = useState<ArrayBuffer | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user, loading: authLoading } = useAuthStore();
+  const [bookDataFetched, setBookDataFetched] = useState(false);
+  const { user, loading: authLoading, checkRole } = useAuthStore();
   const router = useRouter();
   const { openLoginDialog } = useLoginDialog();
 
   useEffect(() => {
+    if (bookDataFetched) return;
+    
     async function loadBook() {
       if (!authLoading && !user) {
         openLoginDialog();
         return;
       }
       
-      if (authLoading || user) {
-        try {
-          const { data: bookData, error: bookError } = await supabase
-            .from('books')
-            .select(`
-              *,
-              chapters (*, order_index)
-            `)
-            .eq('id', params.id)
-            .single();
+      if (authLoading || !user) return;
+      
+      try {
+        setLoading(true);
+        
+        const { data: bookData, error: bookError } = await supabase
+          .from('books')
+          .select(`
+            *,
+            chapters (*, order_index)
+          `)
+          .eq('id', params.id)
+          .single();
 
-          if (bookError) throw bookError;
-
-          if (!bookData) {
-            setError('未找到书籍');
-            return;
-          }
-
-          const sortedBook = {
-            ...bookData,
-            chapters: bookData.chapters?.sort((a: { order_index: number }, b: { order_index: number }) => 
-              a.order_index - b.order_index
-            ) || []
-          };
-
-          const { data: resources, error: resourceError } = await supabase
-            .from('book_resources')
-            .select('*')
-            .eq('book_id', params.id);
-
-          if (resourceError) throw resourceError;
-
-          const response = await fetch(sortedBook.epub_path);
-          if (!response.ok) throw new Error('无法加载电子书文件');
-          
-          const arrayBuffer = await response.arrayBuffer();
-
-          setBook({
-            ...sortedBook,
-            resources: {
-              manifest: resources?.reduce((acc: any, resource) => {
-                acc[resource.id] = {
-                  href: resource.original_path,
-                  'media-type': resource.mime_type,
-                  oss_url: resource.oss_path
-                };
-                return acc;
-              }, {}) || {}
-            }
-          });
-          
-          setArrayBuffer(arrayBuffer);
-        } catch (error: any) {
-          console.error('加载书籍失败:', error);
-          setError(error.message || '加载书籍失败');
-        } finally {
-          setLoading(false);
+        if (bookError) throw bookError;
+        if (!bookData) {
+          setError('未找到书籍');
+          return;
         }
+        
+        const role = await checkRole();
+        
+        const hasPermission = role === 'admin' || bookData.user_id === user.id;
+        if (!hasPermission) {
+          setError('您没有权限访问此书籍');
+          return;
+        }
+
+        const { data: resources, error: resourceError } = await supabase
+          .from('book_resources')
+          .select('*')
+          .eq('book_id', params.id);
+
+        if (resourceError) throw resourceError;
+
+        const sortedBook = {
+          ...bookData,
+          chapters: bookData.chapters?.sort((a: { order_index: number }, b: { order_index: number }) => 
+            a.order_index - b.order_index
+          ) || [],
+          resources: {
+            manifest: resources?.reduce((acc, resource) => {
+              acc[resource.id] = {
+                href: resource.original_path,
+                'media-type': resource.mime_type,
+                oss_url: resource.oss_path
+              };
+              return acc;
+            }, {}) || {}
+          }
+        };
+
+        setBook(sortedBook);
+        setBookDataFetched(true);
+      } catch (error: any) {
+        console.error('加载书籍失败:', error);
+        setError(error.message || '加载书籍失败');
+      } finally {
+        setLoading(false);
       }
     }
 
-    loadBook();
-  }, [params.id, user, authLoading, router, openLoginDialog]);
+    if (!bookDataFetched) {
+      loadBook();
+    }
+  }, [params.id, user, authLoading, bookDataFetched, openLoginDialog, checkRole]);
 
   if (authLoading) {
     return (
@@ -118,7 +123,7 @@ export default function ReaderPage({ params }: ReaderPageProps) {
     );
   }
 
-  if (error || !book || !arrayBuffer) {
+  if (error || !book) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="text-center">
@@ -128,5 +133,5 @@ export default function ReaderPage({ params }: ReaderPageProps) {
     );
   }
 
-  return <ReaderContent book={book} arrayBuffer={arrayBuffer} />;
+  return <ReaderContent book={book} />;
 } 

@@ -14,6 +14,26 @@ export interface Chapter {
   book_id: string;
   parent_id: string;
   content?: string; // 向后兼容，新版使用context_blocks
+  contentParent?: {
+    id: string;
+    content_type: string;
+    title: string;
+    description?: string;
+    contextBlocks: Array<{
+      id: string;
+      block_type: string;
+      content: string;
+      order_index: number;
+      metadata?: Record<string, any>;
+      begin_time?: number | null;
+      end_time?: number | null;
+      speech_id?: string | null;
+      original_content?: string | null;
+      conversion_status?: string;
+      conversion_metadata?: Record<string, any>;
+    }>;
+  };
+  showBlockDetails?: boolean; // 用于UI中控制是否显示块详情
 }
 
 export interface Resource {
@@ -27,11 +47,32 @@ export interface ResourceManifest {
   [key: string]: Resource;
 }
 
+export interface ChapterStatistics {
+  chapter_id: string;
+  chapter_title: string;
+  order_index: number;
+  block_count: number;
+  text_block_count: number;
+  heading_block_count: number;
+  image_block_count: number;
+  audio_block_count: number;
+}
+
+export interface BookStatistics {
+  chapter_count: number;
+  text_block_count: number;
+  heading_block_count: number;
+  image_block_count: number;
+  audio_block_count: number;
+  total_block_count: number;
+  chapter_statistics: ChapterStatistics[];
+}
+
 export interface Book {
   id: string;
   title: string;
   author: string;
-  cover_url: string;
+  cover_url?: string;
   epub_path: string;
   audio_path: string;
   user_id: string;
@@ -56,6 +97,8 @@ export interface Book {
     }>;
   };
   progress?: number;
+  isDeleting?: boolean;
+  stats?: BookStatistics;
 }
 
 export interface BookProgress {

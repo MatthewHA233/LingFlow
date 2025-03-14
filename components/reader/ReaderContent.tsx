@@ -32,7 +32,6 @@ import { createPortal } from 'react-dom';
 
 interface ReaderContentProps {
   book: Book;
-  arrayBuffer: ArrayBuffer;
 }
 
 interface WordHistoryItem {
@@ -42,7 +41,7 @@ interface WordHistoryItem {
   original_word?: string;
 }
 
-export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
+export function ReaderContent({ book }: ReaderContentProps) {
   const [currentChapter, setCurrentChapter] = useState(0);
   const [resources, setResources] = useState<Array<{ original_path: string; oss_path: string }>>([]);
   const [currentTime, setCurrentTime] = useState(0);
@@ -1432,7 +1431,7 @@ export function ReaderContent({ book, arrayBuffer }: ReaderContentProps) {
               <>
                 <HoverBorderGradient
                   containerClassName="rounded-md"
-                  className="flex items-center gap-1.5 text-xs px-2 py-1 hover:bg-accent/50 transition-colors"
+                  className="flex items-center gap-1.5 text-xs"
                   onClick={() => setIsUploadDialogOpen(true)}
                 >
                   <Upload className="w-3 h-3" />

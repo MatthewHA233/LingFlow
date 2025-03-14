@@ -41,7 +41,7 @@
     --muted-foreground: 270 20% 65%;
     --accent: 230 95% 65%;
     --accent-foreground: 270 35% 15%;
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 270 35% 25%;
     --destructive-foreground: 270 15% 98%;
     --border: 270 30% 15%;
     --input: 270 30% 15%;
@@ -854,5 +854,77 @@
   }
   100% {
     transform: translateX(0) scaleX(1);
+  }
+}
+
+/* 修改确认对话框的样式 */
+.react-confirm-alert-button-red {
+  background: rgb(239 68 68) !important; /* red-500 */
+  color: white !important;
+}
+
+.react-confirm-alert-button-red:hover {
+  background: rgb(220 38 38) !important; /* red-600 */
+}
+
+/* 添加确认对话框的暗色主题 */
+.react-confirm-alert-overlay {
+  background: rgba(0, 0, 0, 0.5) !important;
+  z-index: 999;
+}
+
+.react-confirm-alert {
+  background: white !important;
+  color: black !important;
+  border: 1px solid hsl(270 30% 60%) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+}
+
+.react-confirm-alert-body {
+  padding: 24px;
+}
+
+.react-confirm-alert-button-group {
+  justify-content: flex-end;
+}
+
+.react-confirm-alert-button-group button {
+  border-radius: 4px;
+  padding: 8px 16px;
+  background: #333 !important;
+  color: white !important;
+}
+
+@keyframes dissolve {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.95);
+    filter: blur(4px);
+  }
+}
+
+.dissolving {
+  animation: dissolve 0.5s ease-in-out forwards;
+}
+
+/* 添加到globals.css末尾 */
+.skeleton-shine {
+  background-size: 200% 100%;
+  animation: shine 1.5s infinite linear;
+  pointer-events: none;
+}
+
+@keyframes shine {
+  0% {
+    background-position: -100% 0;
+  }
+  100% {
+    background-position: 100% 0;
   }
 }

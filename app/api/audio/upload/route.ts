@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { uploadToOSS } from '@/lib/oss-client'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -36,22 +37,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '缺少必要参数' }, { status: 400 })
     }
     
-    // 3. 上传到OSS
-    const { default: OSS } = await import('ali-oss')
-    
-    const client = new OSS({
-      region: 'oss-cn-beijing',
-      accessKeyId: process.env.ALIYUN_AK_ID!,
-      accessKeySecret: process.env.ALIYUN_AK_SECRET!,
-      bucket: 'chango-url',
-      secure: true
-    })
-
-    const buffer = Buffer.from(await file.arrayBuffer())
+    // 3. 使用原来的路径格式
     const filename = `audio/${bookId}/${Date.now()}_${file.name}`
+    const buffer = Buffer.from(await file.arrayBuffer())
     
-    const result = await client.put(filename, buffer)
-    const audioUrl = result.url.replace('http://', 'https://')
+    // 使用 uploadToOSS 但保持原来的路径格式
+    const uploadResult = await uploadToOSS(buffer, filename)
+    const audioUrl = uploadResult.url
 
     // 4. 创建语音识别任务记录
     const { data: speechResult, error: createError } = await supabase

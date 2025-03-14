@@ -1,6 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/stores/auth';
+import { Card } from '@/components/ui/card';
 import { BookUploader } from '@/components/reader/BookUploader';
 import { ReaderContent } from '@/components/reader/ReaderContent';
 import { Book } from '@/types/book';
@@ -17,14 +20,46 @@ const serializeBook = (book: Book) => {
   };
 };
 
-export default function ReaderPage() {
+export default function ReadingPage() {
+  const router = useRouter();
+  const { user, loading } = useAuthStore();
   const [book, setBook] = useState<Book | null>(null);
   const [arrayBuffer, setArrayBuffer] = useState<ArrayBuffer | null>(null);
+
+  useEffect(() => {
+    // 如果用户已加载完成且没有登录，则重定向到首页
+    if (!loading && !user) {
+      router.push('/');
+    }
+  }, [user, loading, router]);
 
   const handleBookLoaded = (loadedBook: Book, buffer: ArrayBuffer) => {
     setBook(loadedBook);
     setArrayBuffer(buffer);
   };
+
+  // 用户正在加载中，显示加载状态
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center">正在检查登录状态...</div>
+      </div>
+    );
+  }
+
+  // 用户没有登录，显示错误信息
+  if (!user) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Card className="p-6">
+          <div className="text-center">
+            <h1 className="text-xl font-semibold mb-2">需要登录</h1>
+            <p className="text-muted-foreground">请先登录后再访问阅读器</p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -35,7 +70,7 @@ export default function ReaderPage() {
             <BookUploader onBookLoaded={handleBookLoaded} />
           </>
         ) : (
-          <ReaderContent book={book} arrayBuffer={arrayBuffer!} />
+          <ReaderContent book={book} />
         )}
       </div>
     </div>
