@@ -18,6 +18,40 @@ import { confirmAlert } from 'react-confirm-alert';
 import 'react-confirm-alert/src/react-confirm-alert.css';
 import { toast } from 'sonner';
 import { CardContainer, CardBody, CardItem } from '@/components/ui/3d-card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import * as z from "zod";
+
+// 将bookFormSchema移动到全局范围内，以便在两个组件中都能访问
+const bookFormSchema = z.object({
+  title: z.string().min(1, "书名不能为空"),
+  author: z.string().optional(),
+  publisher: z.string().optional(),
+  language: z.string().optional(),
+  cover_url: z.string().optional(),
+});
 
 export default function BookshelfPage() {
   const [books, setBooks] = useState<Book[]>([]);
@@ -30,56 +64,16 @@ export default function BookshelfPage() {
   const [loginError, setLoginError] = useState('');
   const { user } = useAuthStore();
   const router = useRouter();
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editingBook, setEditingBook] = useState<Book | null>(null);
+  const [bookResources, setBookResources] = useState<Array<any>>([]);
+  const [resourcesLoading, setResourcesLoading] = useState(false);
+  const [savingBook, setSavingBook] = useState(false);
+  const [editingBookIds, setEditingBookIds] = useState<Record<string, boolean>>({});
 
   // 添加引用以跟踪当前活动的菜单
   const activeMenuButtonRef = useRef<Record<string, HTMLButtonElement | null>>({});
   const activeMenuRef = useRef<Record<string, HTMLDivElement | null>>({});
-
-  // 处理全局点击事件，关闭所有打开的菜单
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      // 检查点击是否在任何活动菜单或按钮内
-      const isOutsideClick = Object.keys(expandedMenus).every(bookId => {
-        if (!expandedMenus[bookId]) return true;
-        
-        const menuButtonEl = activeMenuButtonRef.current[bookId];
-        const menuEl = activeMenuRef.current[bookId];
-        
-        return !(menuButtonEl?.contains(e.target as Node) || menuEl?.contains(e.target as Node));
-      });
-
-      // 如果点击在所有菜单外，关闭所有菜单
-      if (isOutsideClick && Object.values(expandedMenus).some(Boolean)) {
-        setExpandedMenus({});
-      }
-    };
-
-    // 添加点击事件监听
-    document.addEventListener('click', handleOutsideClick);
-    
-    // 清理
-    return () => {
-      document.removeEventListener('click', handleOutsideClick);
-    };
-  }, [expandedMenus]);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError('');
-    
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      if (error) throw error;
-      
-      router.refresh();
-    } catch (error: any) {
-      setLoginError(error.message || '登录失败，请重试');
-    }
-  };
 
   useEffect(() => {
     async function loadBooks() {
@@ -274,6 +268,167 @@ export default function BookshelfPage() {
     }
     return num.toString();
   }
+
+  // 处理编辑按钮点击
+  const handleEditBook = async (book: Book, e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // 关闭菜单
+    setExpandedMenus(prev => ({...prev, [book.id]: false}));
+    
+    // 关闭任何已经打开的编辑对话框
+    setShowEditDialog(false);
+    
+    // 清除之前的编辑书籍和资源
+    setEditingBook(null);
+    setBookResources([]);
+    
+    // 设置编辑加载状态
+    setEditingBookIds(prev => ({...prev, [book.id]: true}));
+    
+    try {
+      // 设置正在编辑的书籍
+      setEditingBook(book);
+      
+      // 加载书籍资源
+      await loadBookResources(book.id);
+      
+      // 显示编辑对话框
+      setShowEditDialog(true);
+    } catch (error) {
+      console.error('准备编辑书籍时出错:', error);
+      toast.error('加载编辑信息失败');
+    } finally {
+      // 无论成功失败，都清除加载状态
+      setEditingBookIds(prev => ({...prev, [book.id]: false}));
+    }
+  };
+  
+  // 加载书籍资源
+  const loadBookResources = async (bookId: string) => {
+    try {
+      setResourcesLoading(true);
+      const response = await fetch(`/api/books/${bookId}/resources`, {
+        headers: {
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+        }
+      });
+      
+      if (!response.ok) throw new Error('加载资源失败');
+      
+      const data = await response.json();
+      setBookResources(data.resources || []);
+    } catch (error) {
+      console.error('加载资源失败:', error);
+      toast.error('加载资源失败');
+    } finally {
+      setResourcesLoading(false);
+    }
+  };
+  
+  // 保存书籍信息
+  const saveBookInfo = async (values: z.infer<typeof bookFormSchema>) => {
+    if (!editingBook) return;
+    
+    try {
+      setSavingBook(true);
+      
+      const response = await fetch(`/api/books/update-cover`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+        },
+        body: JSON.stringify({
+          bookId: editingBook.id,
+          title: values.title,
+          author: values.author,
+          coverUrl: values.cover_url,
+          metadata: {
+            ...(editingBook.metadata || {}),
+            publisher: values.publisher,
+            language: values.language,
+          }
+        })
+      });
+      
+      if (!response.ok) throw new Error('更新书籍信息失败');
+      
+      const data = await response.json();
+      
+      // 更新本地书籍数据
+      setBooks(books.map(book => 
+        book.id === editingBook.id
+          ? {
+              ...book,
+              title: values.title,
+              author: values.author || book.author,
+              cover_url: values.cover_url || book.cover_url,
+              metadata: {
+                ...(book.metadata || {}),
+                publisher: values.publisher,
+                language: values.language,
+              }
+            }
+          : book
+      ));
+      
+      toast.success('书籍信息已更新');
+      setShowEditDialog(false);
+    } catch (error) {
+      console.error('更新书籍信息失败:', error);
+      toast.error('更新书籍信息失败');
+    } finally {
+      setSavingBook(false);
+    }
+  };
+
+  // 在菜单项中添加编辑功能
+  const renderBookMenu = (book: Book) => (
+    <CardItem
+      translateZ="70"
+      rotateZ="-0.5"
+      className="absolute right-1.5 top-7 lg:right-2 lg:top-9 z-30 bg-black border border-white/10 rounded-lg shadow-lg overflow-hidden [transform-style:preserve-3d] w-28 lg:w-36"
+      ref={(el: HTMLDivElement | null) => activeMenuRef.current[book.id] = el}
+    >
+      <button 
+        onClick={(e) => handleDeleteBook(book.id, book.title, e)}
+        className="flex items-center px-3 py-2 lg:px-4 lg:py-2.5 text-xs lg:text-sm text-white w-full hover:bg-red-900/40 transition-colors border-b border-white/10"
+      >
+        <Trash className="w-3 h-3 lg:w-4 lg:h-4 mr-2" />
+        <span>删除</span>
+      </button>
+      
+      <button 
+        onClick={(e) => handleEditBook(book, e)}
+        className="flex items-center px-3 py-2 lg:px-4 lg:py-2.5 text-xs lg:text-sm text-white w-full hover:bg-white/10 transition-colors border-b border-white/10"
+      >
+        <Edit className="w-3 h-3 lg:w-4 lg:h-4 mr-2" />
+        <span>编辑信息</span>
+      </button>
+      
+      <button 
+        onClick={(e) => handleMenuItemClick(book.id, e)}
+        className="flex items-center px-3 py-2 lg:px-4 lg:py-2.5 text-xs lg:text-sm text-white w-full hover:bg-white/10 transition-colors"
+      >
+        <Share className="w-3 h-3 lg:w-4 lg:h-4 mr-2" />
+        <span>分享</span>
+      </button>
+    </CardItem>
+  );
+
+  // 在BookshelfPage组件中添加一个函数来处理对话框关闭
+  const handleEditDialogChange = (open: boolean) => {
+    if (!open) {
+      // 如果对话框正在关闭，清理状态
+      setTimeout(() => {
+        setEditingBook(null);
+        setBookResources([]);
+      }, 300); // 等待对话框关闭动画完成
+    }
+    setShowEditDialog(open);
+  };
 
   if (!user) {
     return <UnauthorizedTip />;
@@ -480,7 +635,7 @@ export default function BookshelfPage() {
                           </div>
                         </CardItem>
 
-                        {/* 音频块 - 当数量大于0时使用橙色强调 */}
+                        {/* 点读块 - 当数量大于0时使用橙色强调 */}
                         <CardItem
                           translateZ={15}
                           className={`text-[8px] lg:text-[11px] text-center ${
@@ -502,7 +657,7 @@ export default function BookshelfPage() {
                                 ? 'text-orange-400' 
                                 : 'text-gray-400'
                             }`}>
-                              音频块
+                              点读块
                             </span>
                           </div>
                         </CardItem>
@@ -532,50 +687,402 @@ export default function BookshelfPage() {
                     <MoreHorizontal className="w-3 h-3 lg:w-4 lg:h-4" />
                   </CardItem>
                   
-                  {expandedMenus[book.id] && (
-                    <CardItem
-                      translateZ="70"
-                      rotateZ="-0.5"
-                      className="absolute right-1.5 top-7 lg:right-2 lg:top-9 z-30 bg-black border border-white/10 rounded-lg shadow-lg overflow-hidden [transform-style:preserve-3d] w-28 lg:w-36"
-                      ref={(el: HTMLDivElement | null) => activeMenuRef.current[book.id] = el}
-                    >
-                      <button 
-                        onClick={(e) => handleDeleteBook(book.id, book.title, e)}
-                        className="flex items-center px-3 py-2 lg:px-4 lg:py-2.5 text-xs lg:text-sm text-white w-full hover:bg-red-900/40 transition-colors border-b border-white/10"
-                      >
-                        <Trash className="w-3 h-3 lg:w-4 lg:h-4 mr-2" />
-                        <span>删除</span>
-                      </button>
-                      
-                      <button 
-                        onClick={(e) => handleMenuItemClick(book.id, e)}
-                        className="flex items-center px-3 py-2 lg:px-4 lg:py-2.5 text-xs lg:text-sm text-white w-full hover:bg-white/10 transition-colors border-b border-white/10"
-                      >
-                        <Edit className="w-3 h-3 lg:w-4 lg:h-4 mr-2" />
-                        <span>编辑信息</span>
-                      </button>
-                      
-                      <button 
-                        onClick={(e) => handleMenuItemClick(book.id, e)}
-                        className="flex items-center px-3 py-2 lg:px-4 lg:py-2.5 text-xs lg:text-sm text-white w-full hover:bg-white/10 transition-colors"
-                      >
-                        <Share className="w-3 h-3 lg:w-4 lg:h-4 mr-2" />
-                        <span>分享</span>
-                      </button>
-                    </CardItem>
-                  )}
-                  
-                  {book.isDeleting && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-lg z-50">
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-500" />
-                    </div>
-                  )}
+                  {expandedMenus[book.id] && renderBookMenu(book)}
                 </CardBody>
               </CardContainer>
+              
+              {/* 编辑加载状态 - 移到CardContainer外部，作为兄弟元素 */}
+              {editingBookIds[book.id] && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm rounded-lg z-[100]">
+                  <div className="flex flex-col items-center space-y-2">
+                    <div className="relative w-10 h-10">
+                      <div className="absolute inset-0 rounded-full border-t-2 border-emerald-500 animate-spin"></div>
+                      <div className="absolute inset-1 rounded-full border-r-2 border-emerald-300/30 animate-spin animate-delay-150"></div>
+                      <div className="absolute inset-2 rounded-full border-b-2 border-emerald-400/50 animate-spin animate-delay-300"></div>
+                    </div>
+                    <div className="text-xs text-emerald-400 font-medium">加载编辑信息</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      
+      {/* 编辑书籍对话框 */}
+      {editingBook && (
+        <BookEditDialog
+          book={editingBook}
+          resources={bookResources.filter(r => r.resource_type === 'image')}
+          resourcesLoading={resourcesLoading}
+          isOpen={showEditDialog}
+          onOpenChange={handleEditDialogChange}
+          onSave={saveBookInfo}
+          isSaving={savingBook}
+        />
+      )}
+    </div>
+  );
+}
+
+// 编辑书籍信息对话框组件
+function BookEditDialog({ 
+  book, 
+  resources, 
+  resourcesLoading, 
+  isOpen, 
+  onOpenChange, 
+  onSave,
+  isSaving
+}: { 
+  book: Book, 
+  resources: any[], 
+  resourcesLoading: boolean,
+  isOpen: boolean, 
+  onOpenChange: (open: boolean) => void,
+  onSave: (values: any) => Promise<void>,
+  isSaving: boolean
+}) {
+  // 表单定义 - 先定义表单
+  const form = useForm({
+    resolver: zodResolver(bookFormSchema),
+    defaultValues: {
+      title: book?.title || '',
+      author: book?.author || '',
+      publisher: book?.metadata?.publisher || '',
+      language: book?.metadata?.language || '',
+      cover_url: book?.cover_url || '',
+    }
+  });
+  
+  // 选中的封面状态
+  const [selectedCover, setSelectedCover] = useState(book?.cover_url || '');
+  
+  // 添加编辑状态跟踪
+  const [editableFields, setEditableFields] = useState<Record<string, boolean>>({
+    title: false,
+    author: false,
+    publisher: false,
+    language: false,
+    cover_url: false
+  });
+  
+  // 使用useEffect监听book变化时重置表单，并添加正确的依赖项
+  useEffect(() => {
+    if (book && isOpen) {
+      // 重置表单值
+      form.reset({
+        title: book.title,
+        author: book.author || '',
+        publisher: book.metadata?.publisher || '',
+        language: book.metadata?.language || '',
+        cover_url: book.cover_url || '',
+      });
+      
+      // 重置选中封面
+      setSelectedCover(book.cover_url || '');
+      
+      // 重置编辑状态
+      setEditableFields({
+        title: false,
+        author: false,
+        publisher: false,
+        language: false,
+        cover_url: false
+      });
+    }
+  }, [book, isOpen, form]); // 添加正确的依赖项
+  
+  // 切换字段的可编辑状态
+  const toggleFieldEdit = (fieldName: string) => {
+    setEditableFields(prev => ({
+      ...prev,
+      [fieldName]: !prev[fieldName]
+    }));
+  };
+  
+  // 选择封面
+  const handleSelectCover = (url: string) => {
+    setSelectedCover(url);
+    form.setValue('cover_url', url);
+  };
+  
+  // 提交表单
+  const onSubmit = async (values: z.infer<typeof bookFormSchema>) => {
+    await onSave(values);
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-black border border-white/[0.2] shadow-emerald-500/10 max-w-2xl max-h-[85vh] rounded-xl overflow-hidden p-4">
+        <DialogHeader className="mb-2">
+          <DialogTitle className="relative text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-white to-gray-300 pb-0.5">
+            编辑书籍信息
+            <div className="absolute -bottom-1 left-0 w-full h-0.5 bg-gradient-to-r from-emerald-500/70 via-emerald-400 to-transparent"></div>
+          </DialogTitle>
+          <DialogDescription className="text-gray-400 text-sm">
+            修改书籍的基本信息和封面图片
+          </DialogDescription>
+        </DialogHeader>
+        
+        <Tabs defaultValue="info" className="mt-2">
+          <TabsList className="grid w-full grid-cols-2 bg-black/50 border border-white/10 rounded-lg p-1">
+            <TabsTrigger 
+              value="info" 
+              className="data-[state=active]:bg-emerald-950 data-[state=active]:text-emerald-300"
+            >
+              基本信息
+            </TabsTrigger>
+            <TabsTrigger 
+              value="cover" 
+              className="data-[state=active]:bg-emerald-950 data-[state=active]:text-emerald-300"
+            >
+              选择封面
+            </TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="info" className="mt-3">
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
+                <div className="flex gap-4">
+                  {/* 封面预览 */}
+                  {selectedCover && (
+                    <div className="w-28 h-40 flex-shrink-0 rounded-md border border-white/10 bg-black/20 overflow-hidden relative">
+                      <Image
+                        src={selectedCover}
+                        alt="封面预览"
+                        fill
+                        className="object-cover"
+                      />
+                    </div>
+                  )}
+                  
+                  <div className="flex-1 space-y-3">
+                    <FormField
+                      control={form.control}
+                      name="title"
+                      render={({ field }) => (
+                        <FormItem>
+                          <div className="flex justify-between items-center">
+                            <FormLabel className="text-gray-300 text-sm">书名</FormLabel>
+                      <button 
+                              type="button"
+                              onClick={() => toggleFieldEdit('title')}
+                              className="text-emerald-500 hover:text-emerald-400 transition-colors"
+                      >
+                              <Edit className="h-3.5 w-3.5" />
+                      </button>
+                          </div>
+                          <FormControl>
+                            <Input 
+                              {...field} 
+                              className={`h-9 bg-black/40 border-white/10 focus:border-emerald-500/50 text-white ${!editableFields.title ? 'cursor-default' : ''}`}
+                              readOnly={!editableFields.title}
+                            />
+                          </FormControl>
+                          <FormMessage className="text-red-400 text-xs" />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="author"
+                      render={({ field }) => (
+                        <FormItem>
+                          <div className="flex justify-between items-center">
+                            <FormLabel className="text-gray-300 text-sm">作者</FormLabel>
+                      <button 
+                              type="button"
+                              onClick={() => toggleFieldEdit('author')}
+                              className="text-emerald-500 hover:text-emerald-400 transition-colors"
+                      >
+                              <Edit className="h-3.5 w-3.5" />
+                      </button>
+                          </div>
+                          <FormControl>
+                            <Input 
+                              {...field} 
+                              className={`h-9 bg-black/40 border-white/10 focus:border-emerald-500/50 text-white ${!editableFields.author ? 'cursor-default' : ''}`}
+                              readOnly={!editableFields.author}
+                            />
+                          </FormControl>
+                          <FormMessage className="text-red-400 text-xs" />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name="publisher"
+                    render={({ field }) => (
+                      <FormItem>
+                        <div className="flex justify-between items-center">
+                          <FormLabel className="text-gray-300 text-sm">出版商</FormLabel>
+                      <button 
+                            type="button"
+                            onClick={() => toggleFieldEdit('publisher')}
+                            className="text-emerald-500 hover:text-emerald-400 transition-colors"
+                      >
+                            <Edit className="h-3.5 w-3.5" />
+                      </button>
+                        </div>
+                        <FormControl>
+                          <Input 
+                            {...field} 
+                            className={`h-9 bg-black/40 border-white/10 focus:border-emerald-500/50 text-white ${!editableFields.publisher ? 'cursor-default' : ''}`}
+                            readOnly={!editableFields.publisher}
+                          />
+                        </FormControl>
+                        <FormMessage className="text-red-400 text-xs" />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="language"
+                    render={({ field }) => (
+                      <FormItem>
+                        <div className="flex justify-between items-center">
+                          <FormLabel className="text-gray-300 text-sm">语言</FormLabel>
+                          <button 
+                            type="button"
+                            onClick={() => toggleFieldEdit('language')}
+                            className="text-emerald-500 hover:text-emerald-400 transition-colors"
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <FormControl>
+                          <Input 
+                            {...field} 
+                            className={`h-9 bg-black/40 border-white/10 focus:border-emerald-500/50 text-white ${!editableFields.language ? 'cursor-default' : ''}`}
+                            readOnly={!editableFields.language}
+                            placeholder="例如: zh-CN, en-US" 
+                          />
+                        </FormControl>
+                        <FormMessage className="text-red-400 text-xs" />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                
+                <FormField
+                  control={form.control}
+                  name="cover_url"
+                  render={({ field }) => (
+                    <FormItem>
+                      <div className="flex justify-between items-center">
+                        <FormLabel className="text-gray-300 text-sm">封面链接</FormLabel>
+                        <button 
+                          type="button"
+                          onClick={() => toggleFieldEdit('cover_url')}
+                          className="text-emerald-500 hover:text-emerald-400 transition-colors"
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                      <FormControl>
+                        <Input 
+                          {...field} 
+                          className={`h-9 bg-black/40 border-white/10 focus:border-emerald-500/50 text-white font-mono text-xs ${!editableFields.cover_url ? 'cursor-default' : ''}`}
+                          readOnly={!editableFields.cover_url}
+                          onChange={(e) => {
+                            field.onChange(e);
+                            setSelectedCover(e.target.value);
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage className="text-red-400 text-xs" />
+                    </FormItem>
+                  )}
+                />
+              </form>
+            </Form>
+          </TabsContent>
+          
+          <TabsContent value="cover" className="mt-3">
+            <div className="h-[320px] overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-3">
+              {resourcesLoading ? (
+                <div className="flex h-full items-center justify-center">
+                  <div className="animate-spin h-8 w-8 rounded-full border-b-2 border-emerald-500"></div>
+                </div>
+              ) : resources.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center space-y-2 text-gray-400">
+                  <BookOpen className="h-8 w-8" />
+                  <p>没有发现可用的图片资源</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
+                  {resources.map((resource) => (
+                    <div 
+                      key={resource.id} 
+                      className={`
+                        relative aspect-[3/4] bg-black/70 rounded-lg overflow-hidden cursor-pointer
+                        border transition-all duration-200
+                        ${selectedCover === resource.oss_path 
+                          ? 'border-emerald-500 shadow-emerald-500/20 shadow-md' 
+                          : 'border-white/10 hover:border-white/30'
+                        }
+                      `}
+                      onClick={() => handleSelectCover(resource.oss_path)}
+                    >
+                      <Image
+                        src={resource.oss_path}
+                        alt=""
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 768px) 33vw, 25vw"
+                        priority={selectedCover === resource.oss_path}
+                        onError={(e) => {
+                          // 处理图片加载错误
+                          const target = e.target as HTMLImageElement;
+                          target.src = "/placeholder-image.png"; // 提供一个占位图
+                          console.error(`图片加载失败: ${resource.oss_path}`);
+                        }}
+                      />
+                      
+                      {selectedCover === resource.oss_path && (
+                        <div className="absolute bottom-2 right-2 bg-emerald-500 text-white rounded-full p-1 shadow-md z-10">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                          </svg>
+                        </div>
+                      )}
             </div>
           ))}
         </div>
       )}
     </div>
+          </TabsContent>
+        </Tabs>
+        
+        <DialogFooter className="mt-4 space-x-2">
+          <Button 
+            variant="outline" 
+            onClick={() => onOpenChange(false)}
+            className="h-9 bg-transparent border-white/20 text-gray-300 hover:bg-white/5"
+          >
+            取消
+          </Button>
+          <Button 
+            onClick={form.handleSubmit(onSubmit)}
+            disabled={isSaving}
+            className="h-9 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white"
+          >
+            {isSaving ? (
+              <>
+                <div className="animate-spin mr-2 h-4 w-4 border-b-2 border-white rounded-full"></div>
+                保存中...
+              </>
+            ) : "保存更改"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 } 
