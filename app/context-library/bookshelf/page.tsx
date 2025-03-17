@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
-import { Upload, BookOpen, Mail, Lock, X, ChevronRight, MoreHorizontal, Trash, Share, Edit } from 'lucide-react';
+import { Upload, BookOpen, Mail, Lock, X, ChevronRight, MoreHorizontal, Trash, Share, Edit, Download } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { useRouter } from 'next/navigation';
 import { UnauthorizedTip } from '@/components/auth/UnauthorizedTip';
@@ -767,6 +767,22 @@ function BookEditDialog({
     cover_url: false
   });
   
+  // 在BookEditDialog组件内，添加原始值跟踪
+  const [originalValues, setOriginalValues] = useState<Record<string, any>>({});
+
+  // 在useEffect中初始化原始值
+  useEffect(() => {
+    if (book) {
+      setOriginalValues({
+        title: book.title || '',
+        author: book.author || '',
+        publisher: book.metadata?.publisher || '',
+        language: book.metadata?.language || '',
+        cover_url: book.cover_url || ''
+      });
+    }
+  }, [book]);
+  
   // 使用useEffect监听book变化时重置表单，并添加正确的依赖项
   useEffect(() => {
     if (book && isOpen) {
@@ -794,11 +810,17 @@ function BookEditDialog({
   }, [book, isOpen, form]); // 添加正确的依赖项
   
   // 切换字段的可编辑状态
-  const toggleFieldEdit = (fieldName: string) => {
+  const toggleFieldEdit = (fieldName: string, forceState?: boolean) => {
     setEditableFields(prev => ({
       ...prev,
-      [fieldName]: !prev[fieldName]
+      [fieldName]: forceState !== undefined ? forceState : !prev[fieldName]
     }));
+  };
+  
+  // 检查字段是否已更改
+  const isFieldChanged = (fieldName: "title" | "author" | "publisher" | "language" | "cover_url") => {
+    const currentValue = form.getValues(fieldName);
+    return currentValue !== originalValues[fieldName];
   };
   
   // 选择封面
@@ -863,22 +885,49 @@ function BookEditDialog({
                       name="title"
                       render={({ field }) => (
                         <FormItem>
-                          <div className="flex justify-between items-center">
-                            <FormLabel className="text-gray-300 text-sm">书名</FormLabel>
-                      <button 
-                              type="button"
-                              onClick={() => toggleFieldEdit('title')}
-                              className="text-emerald-500 hover:text-emerald-400 transition-colors"
-                      >
-                              <Edit className="h-3.5 w-3.5" />
-                      </button>
-                          </div>
+                          <FormLabel className="text-gray-300 text-sm">书名</FormLabel>
                           <FormControl>
-                            <Input 
-                              {...field} 
-                              className={`h-9 bg-black/40 border-white/10 focus:border-emerald-500/50 text-white ${!editableFields.title ? 'cursor-default' : ''}`}
-                              readOnly={!editableFields.title}
-                            />
+                            <div className="relative">
+                              <Input 
+                                {...field} 
+                                className={`h-9 bg-black/40 border-white/10 focus:border-emerald-500/50 text-white pr-10 
+                                  ${!editableFields.title ? 'cursor-default' : ''}
+                                  ${isFieldChanged('title') ? 'border-amber-500/40 border-opacity-70' : ''}
+                                `}
+                                readOnly={!editableFields.title}
+                                ref={(input) => {
+                                  if (editableFields.title && input) {
+                                    input.focus();
+                                  }
+                                }}
+                                onBlur={() => {
+                                  toggleFieldEdit('title', false);
+                                  // 如果值已更改，添加变更指示器
+                                  if (isFieldChanged('title')) {
+                                    // 值已更改，样式会通过className应用
+                                  }
+                                }}
+                              />
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
+                                {/* 显示更改指示器 */}
+                                {isFieldChanged('title') && (
+                                  <span className="w-2 h-2 rounded-full bg-amber-400 mr-2" title="值已更改"></span>
+                                )}
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    toggleFieldEdit('title');
+                                    setTimeout(() => {
+                                      const input = document.querySelector('input[name="title"]') as HTMLInputElement;
+                                      if (input) input.focus();
+                                    }, 0);
+                                  }}
+                                  className="text-gray-400 hover:text-emerald-500 transition-colors"
+                                >
+                                  <Edit className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
                           </FormControl>
                           <FormMessage className="text-red-400 text-xs" />
                         </FormItem>
@@ -890,22 +939,49 @@ function BookEditDialog({
                       name="author"
                       render={({ field }) => (
                         <FormItem>
-                          <div className="flex justify-between items-center">
-                            <FormLabel className="text-gray-300 text-sm">作者</FormLabel>
-                      <button 
-                              type="button"
-                              onClick={() => toggleFieldEdit('author')}
-                              className="text-emerald-500 hover:text-emerald-400 transition-colors"
-                      >
-                              <Edit className="h-3.5 w-3.5" />
-                      </button>
-                          </div>
+                          <FormLabel className="text-gray-300 text-sm">作者</FormLabel>
                           <FormControl>
-                            <Input 
-                              {...field} 
-                              className={`h-9 bg-black/40 border-white/10 focus:border-emerald-500/50 text-white ${!editableFields.author ? 'cursor-default' : ''}`}
-                              readOnly={!editableFields.author}
-                            />
+                            <div className="relative">
+                              <Input 
+                                {...field} 
+                                className={`h-9 bg-black/40 border-white/10 focus:border-emerald-500/50 text-white pr-10 
+                                  ${!editableFields.author ? 'cursor-default' : ''}
+                                  ${isFieldChanged('author') ? 'border-amber-500/40 border-opacity-70' : ''}
+                                `}
+                                readOnly={!editableFields.author}
+                                ref={(input) => {
+                                  if (editableFields.author && input) {
+                                    input.focus();
+                                  }
+                                }}
+                                onBlur={() => {
+                                  toggleFieldEdit('author', false);
+                                  // 如果值已更改，添加变更指示器
+                                  if (isFieldChanged('author')) {
+                                    // 值已更改，样式会通过className应用
+                                  }
+                                }}
+                              />
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
+                                {/* 显示更改指示器 */}
+                                {isFieldChanged('author') && (
+                                  <span className="w-2 h-2 rounded-full bg-amber-400 mr-2" title="值已更改"></span>
+                                )}
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    toggleFieldEdit('author');
+                                    setTimeout(() => {
+                                      const input = document.querySelector('input[name="author"]') as HTMLInputElement;
+                                      if (input) input.focus();
+                                    }, 0);
+                                  }}
+                                  className="text-gray-400 hover:text-emerald-500 transition-colors"
+                                >
+                                  <Edit className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
                           </FormControl>
                           <FormMessage className="text-red-400 text-xs" />
                         </FormItem>
@@ -920,22 +996,49 @@ function BookEditDialog({
                     name="publisher"
                     render={({ field }) => (
                       <FormItem>
-                        <div className="flex justify-between items-center">
-                          <FormLabel className="text-gray-300 text-sm">出版商</FormLabel>
-                      <button 
-                            type="button"
-                            onClick={() => toggleFieldEdit('publisher')}
-                            className="text-emerald-500 hover:text-emerald-400 transition-colors"
-                      >
-                            <Edit className="h-3.5 w-3.5" />
-                      </button>
-                        </div>
+                        <FormLabel className="text-gray-300 text-sm">出版社</FormLabel>
                         <FormControl>
-                          <Input 
-                            {...field} 
-                            className={`h-9 bg-black/40 border-white/10 focus:border-emerald-500/50 text-white ${!editableFields.publisher ? 'cursor-default' : ''}`}
-                            readOnly={!editableFields.publisher}
-                          />
+                          <div className="relative">
+                            <Input 
+                              {...field} 
+                              className={`h-9 bg-black/40 border-white/10 focus:border-emerald-500/50 text-white pr-10 
+                                ${!editableFields.publisher ? 'cursor-default' : ''}
+                                ${isFieldChanged('publisher') ? 'border-amber-500/40 border-opacity-70' : ''}
+                              `}
+                              readOnly={!editableFields.publisher}
+                              ref={(input) => {
+                                if (editableFields.publisher && input) {
+                                  input.focus();
+                                }
+                              }}
+                              onBlur={() => {
+                                toggleFieldEdit('publisher', false);
+                                // 如果值已更改，添加变更指示器
+                                if (isFieldChanged('publisher')) {
+                                  // 值已更改，样式会通过className应用
+                                }
+                              }}
+                            />
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
+                              {/* 显示更改指示器 */}
+                              {isFieldChanged('publisher') && (
+                                <span className="w-2 h-2 rounded-full bg-amber-400 mr-2" title="值已更改"></span>
+                              )}
+                              <button 
+                                type="button"
+                                onClick={() => {
+                                  toggleFieldEdit('publisher');
+                                  setTimeout(() => {
+                                    const input = document.querySelector('input[name="publisher"]') as HTMLInputElement;
+                                    if (input) input.focus();
+                                  }, 0);
+                                }}
+                                className="text-gray-400 hover:text-emerald-500 transition-colors"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
                         </FormControl>
                         <FormMessage className="text-red-400 text-xs" />
                       </FormItem>
@@ -947,23 +1050,49 @@ function BookEditDialog({
                     name="language"
                     render={({ field }) => (
                       <FormItem>
-                        <div className="flex justify-between items-center">
-                          <FormLabel className="text-gray-300 text-sm">语言</FormLabel>
-                          <button 
-                            type="button"
-                            onClick={() => toggleFieldEdit('language')}
-                            className="text-emerald-500 hover:text-emerald-400 transition-colors"
-                          >
-                            <Edit className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
+                        <FormLabel className="text-gray-300 text-sm">语言</FormLabel>
                         <FormControl>
-                          <Input 
-                            {...field} 
-                            className={`h-9 bg-black/40 border-white/10 focus:border-emerald-500/50 text-white ${!editableFields.language ? 'cursor-default' : ''}`}
-                            readOnly={!editableFields.language}
-                            placeholder="例如: zh-CN, en-US" 
-                          />
+                          <div className="relative">
+                            <Input 
+                              {...field} 
+                              className={`h-9 bg-black/40 border-white/10 focus:border-emerald-500/50 text-white pr-10 
+                                ${!editableFields.language ? 'cursor-default' : ''}
+                                ${isFieldChanged('language') ? 'border-amber-500/40 border-opacity-70' : ''}
+                              `}
+                              readOnly={!editableFields.language}
+                              ref={(input) => {
+                                if (editableFields.language && input) {
+                                  input.focus();
+                                }
+                              }}
+                              onBlur={() => {
+                                toggleFieldEdit('language', false);
+                                // 如果值已更改，添加变更指示器
+                                if (isFieldChanged('language')) {
+                                  // 值已更改，样式会通过className应用
+                                }
+                              }}
+                            />
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
+                              {/* 显示更改指示器 */}
+                              {isFieldChanged('language') && (
+                                <span className="w-2 h-2 rounded-full bg-amber-400 mr-2" title="值已更改"></span>
+                              )}
+                              <button 
+                                type="button"
+                                onClick={() => {
+                                  toggleFieldEdit('language');
+                                  setTimeout(() => {
+                                    const input = document.querySelector('input[name="language"]') as HTMLInputElement;
+                                    if (input) input.focus();
+                                  }, 0);
+                                }}
+                                className="text-gray-400 hover:text-emerald-500 transition-colors"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
                         </FormControl>
                         <FormMessage className="text-red-400 text-xs" />
                       </FormItem>
@@ -976,26 +1105,63 @@ function BookEditDialog({
                   name="cover_url"
                   render={({ field }) => (
                     <FormItem>
-                      <div className="flex justify-between items-center">
-                        <FormLabel className="text-gray-300 text-sm">封面链接</FormLabel>
-                        <button 
-                          type="button"
-                          onClick={() => toggleFieldEdit('cover_url')}
-                          className="text-emerald-500 hover:text-emerald-400 transition-colors"
-                        >
-                          <Edit className="h-3.5 w-3.5" />
-                        </button>
-                    </div>
+                      <FormLabel className="text-gray-300 text-sm">封面链接</FormLabel>
                       <FormControl>
-                        <Input 
-                          {...field} 
-                          className={`h-9 bg-black/40 border-white/10 focus:border-emerald-500/50 text-white font-mono text-xs ${!editableFields.cover_url ? 'cursor-default' : ''}`}
-                          readOnly={!editableFields.cover_url}
-                          onChange={(e) => {
-                            field.onChange(e);
-                            setSelectedCover(e.target.value);
-                          }}
-                        />
+                        <div className="relative">
+                          <Input 
+                            {...field} 
+                            className={`h-9 bg-black/40 border-white/10 focus:border-emerald-500/50 text-white font-mono text-xs pr-20 
+                              ${!editableFields.cover_url ? 'cursor-default' : ''}
+                              ${isFieldChanged('cover_url') ? 'border-amber-500/40 border-opacity-70' : ''}
+                            `}
+                            readOnly={!editableFields.cover_url}
+                            ref={(input) => {
+                              if (editableFields.cover_url && input) {
+                                input.focus();
+                              }
+                            }}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              setSelectedCover(e.target.value);
+                            }}
+                            onBlur={() => {
+                              toggleFieldEdit('cover_url', false);
+                            }}
+                          />
+                          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-2 items-center">
+                            {/* 显示更改指示器 */}
+                            {isFieldChanged('cover_url') && (
+                              <span className="w-2 h-2 rounded-full bg-amber-400" title="值已更改"></span>
+                            )}
+                            {/* 查看/下载按钮 */}
+                            {field.value && (
+                              <a 
+                                href={field.value} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-gray-400 hover:text-emerald-500 transition-colors"
+                                title="查看/下载"
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                              </a>
+                            )}
+                            {/* 编辑按钮 */}
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                toggleFieldEdit('cover_url');
+                                setTimeout(() => {
+                                  const input = document.querySelector('input[name="cover_url"]') as HTMLInputElement;
+                                  if (input) input.focus();
+                                }, 0);
+                              }}
+                              className="text-gray-400 hover:text-emerald-500 transition-colors"
+                              title="编辑"
+                            >
+                              <Edit className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
                       </FormControl>
                       <FormMessage className="text-red-400 text-xs" />
                     </FormItem>
@@ -1053,11 +1219,11 @@ function BookEditDialog({
                           </svg>
                         </div>
                       )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      )}
-    </div>
           </TabsContent>
         </Tabs>
         
@@ -1065,7 +1231,7 @@ function BookEditDialog({
           <Button 
             variant="outline" 
             onClick={() => onOpenChange(false)}
-            className="h-9 bg-transparent border-white/20 text-gray-300 hover:bg-white/5"
+            className="h-9 bg-transparent border-emerald-800/30 text-gray-300 hover:text-emerald-400 hover:border-emerald-600/50 hover:bg-emerald-950/30 transition-colors"
           >
             取消
           </Button>
