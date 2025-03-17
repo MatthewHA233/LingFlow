@@ -67,7 +67,7 @@ export async function uploadToOSS(data: Buffer, name: string): Promise<{url: str
     
     // 先测试 bucket 权限
     try {
-      await client.getBucketInfo('chango-url');
+      await client.getBucketInfo(process.env.OSS_BUCKET!);
       console.log('Bucket access test passed');
     } catch (error) {
       console.error('Bucket access test failed:', error);

@@ -10,7 +10,8 @@
     "prebuild": "node scripts/env-check.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "migrate": "npx ts-node scripts/migrate-oss-with-structure.ts"
   },
   "dependencies": {
     "@alicloud/nls-filetrans-2018-08-17": "^1.0.0",
@@ -63,6 +64,7 @@
     "cmdk": "^1.0.0",
     "coffeescript": "^2.7.0",
     "date-fns": "^3.6.0",
+    "dotenv": "^16.4.7",
     "embla-carousel-react": "^8.3.0",
     "epubjs": "^0.3.93",
     "eslint": "8.56.0",

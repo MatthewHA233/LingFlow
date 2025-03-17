@@ -68,7 +68,7 @@ export function useBookImageProcessor(arrayBuffer: ArrayBuffer, resources?: { ma
               });
 
               // 如果已经是OSS URL，直接返回
-              if (src.includes('oss-cn-beijing.aliyuncs.com')) {
+              if (src.includes(`${process.env.OSS_REGION}.aliyuncs.com`)) {
                 return `![${alt}](${src})`;
               }
 
