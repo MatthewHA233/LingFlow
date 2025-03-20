@@ -117,7 +117,7 @@ export default function Home() {
                 rel="noopener noreferrer"
                 className="hover:text-gray-300 transition-colors"
               >
-                鄂ICP备2024085025号
+                鄂ICP备2024085025号-2
               </a>
             </div>
           </div>

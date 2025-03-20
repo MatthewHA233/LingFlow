@@ -8,7 +8,7 @@ import { ClientLayout } from '@/components/layout/ClientLayout';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://lf.cc-ty.net.cn'),
+  metadataBase: new URL('https://lingflow.cn'),
   title: '洪流二语习得 - 革新性语言学习平台',
   description: '借助智能化"词锚点域"与大语言模型，构建属于你自己习得语料的宇宙！',
   icons: {
@@ -37,11 +37,11 @@ export const metadata: Metadata = {
     description: '借助智能化"词锚点域"与大语言模型，构建属于你自己习得语料的宇宙！',
     type: 'website',
     locale: 'zh_CN',
-    url: 'https://lf.cc-ty.net.cn',
+    url: 'https://lingflow.cn',
     siteName: '洪流二语习得',
     images: [
       {
-        url: 'https://lf.cc-ty.net.cn/og-image.png',
+        url: 'https://lingflow.cn/og-image.png',
         width: 1200,
         height: 630,
         alt: '洪流二语习得 - 革新性语言学习平台'
@@ -51,7 +51,7 @@ export const metadata: Metadata = {
   other: {
     'wechat-title': '洪流二语习得 - 革新性语言学习平台',
     'wechat-description': '借助智能化"词锚点域"与大语言模型，构建属于你自己习得语料的宇宙！',
-    'wechat-image': 'https://lf.cc-ty.net.cn/og-image.png'
+    'wechat-image': 'https://lingflow.cn/og-image.png'
   }
 };
 
