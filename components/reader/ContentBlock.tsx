@@ -538,49 +538,151 @@ export function ContentBlock({
         const data = JSON.parse(jsonData);
       
         // 检查类型标识 - 块排序
-      if (data.type === 'block' && onOrderChange) {
+        if (data.type === 'block' && onOrderChange) {
           console.log('处理块排序拖拽:', data.id, block.id);
-        const position = getDropPosition(e);
-        onOrderChange(data.id, block.id, position);
-        return;
-      }
+          const position = getDropPosition(e);
+          onOrderChange(data.id, block.id, position);
+          return;
+        }
       
         // 检查类型标识 - 句子对齐（从SentencePlayer拖来的）
-      if (data.type === 'sentence' && block.block_type === 'text') {
+        if (data.type === 'sentence' && block.block_type === 'text') {
           console.log('处理句子对齐拖拽:', data);
-        // 设置当前块为对齐中状态
-        setLocalAligning(true);
-        
-        toast("正在进行文本对齐", { description: "请稍候，正在处理对齐..." });
-        
-        // 实际执行对齐操作
-        const result = await TextAlignmentService.alignSentenceToBlock(
-          block.id,
-          data.sentenceId,
-          data.speechId
-        );
-        
-        if (result.success) {
+          // 设置当前块为对齐中状态
+          setLocalAligning(true);
+          
+          toast("正在进行文本对齐", { description: "请稍候，正在处理对齐..." });
+          
+          // 发送对齐开始事件（仅记录日志，不实际执行操作）
+          console.log('ContentBlock: 发送对齐开始事件');
+          
+          // 实际执行对齐操作
+          let result;
+          try {
+            result = await TextAlignmentService.alignSentenceToBlock(
+              block.id,
+              data.sentenceId,
+              data.speechId
+            );
+          } catch (error) {
+            console.error('对齐操作失败:', error);
+            // 发送失败事件，让SentencePlayer知道可以取消对齐状态
+            window.dispatchEvent(new CustomEvent('sentence-alignment-update', {
+              detail: {
+                sentenceId: data.sentenceId,
+                blockId: block.id,
+                status: 'failed',
+                shouldSkipPageChange: true,
+                alignedSentenceIds: [], // 对齐失败，没有句子被对齐
+                isDragging: true // 这是拖拽引起的对齐
+              }
+            }));
+            
+            setLocalAligning(false);
+            toast.error("对齐处理失败，请重试");
+            return;
+          }
+          
+          if (result.success) {
             // 对齐成功处理
-        } else {
+            console.log('ContentBlock: 对齐成功, 发送更新事件:', result);
+            
+            // 获取所有被对齐的句子ID
+            const alignedSentenceIds = result.alignedSentences.map(s => s.sentenceId);
+            console.log('ContentBlock: 被对齐的句子IDs:', alignedSentenceIds);
+            
+            // 发送对齐更新事件，传递所有被对齐的句子ID
+            window.dispatchEvent(new CustomEvent('sentence-alignment-update', {
+              detail: {
+                sentenceId: data.sentenceId, // 主要拖拽的句子ID
+                blockId: block.id,
+                status: 'processing',
+                shouldSkipPageChange: data.shouldSkipPageChange,
+                alignedSentenceIds: alignedSentenceIds, // 所有被对齐的句子ID列表
+                isDragging: true, // 这是拖拽引起的对齐
+                targetPage: data.targetPage, // 传递目标页码
+                isProcessing: true // 标记为处理中
+              }
+            }));
+            
+            // TextAlignmentService.alignSentenceToBlock方法已经使用await执行了三个步骤：
+            // 1. 保存基础数据
+            // 2. 执行单词级对齐
+            // 3. 创建元数据关联
+            console.log('ContentBlock: TextAlignmentService处理已完成，等待数据库更新...');
+            
+            // 直接发送成功事件，不再使用轮询检查
+            console.log('ContentBlock: 发送对齐完成事件');
+            window.dispatchEvent(new CustomEvent('sentence-alignment-complete', {
+              detail: {
+                sentenceId: data.sentenceId,
+                blockId: block.id,
+                status: 'success',
+                shouldSkipPageChange: data.shouldSkipPageChange,
+                alignedSentenceIds: alignedSentenceIds,
+                targetPage: data.targetPage,
+                isDragging: true // 这是拖拽引起的对齐
+              }
+            }));
+            
+            // 更新本地状态
+            setLocalAligning(false);
+            
+            // 通知父组件对齐完成
+            onAlignmentComplete?.(block.id);
+            
+            toast.success("文本对齐完成");
+          } else {
             // 对齐失败处理
-          setLocalAligning(false);
-          toast.error(result.message || "文本对齐处理失败");
+            console.error('ContentBlock: 对齐失败:', result.message);
+            
+            // 发送失败事件，让SentencePlayer知道可以取消对齐状态
+            window.dispatchEvent(new CustomEvent('sentence-alignment-update', {
+              detail: {
+                sentenceId: data.sentenceId,
+                blockId: block.id,
+                status: 'failed',
+                shouldSkipPageChange: true,
+                alignedSentenceIds: [], // 对齐失败，没有句子被对齐
+                isDragging: true // 这是拖拽引起的对齐
+              }
+            }));
+            
+            setLocalAligning(false);
+            toast.error(result.message || "文本对齐处理失败");
           }
         }
-      } else {
-        // 尝试读取blockId格式
-        const blockId = e.dataTransfer.getData('blockId');
-        if (blockId && onOrderChange) {
-          console.log('处理块排序拖拽(blockId):', blockId, block.id);
-          const position = getDropPosition(e);
-          onOrderChange(blockId, block.id, position);
-        }
+      }
+      // 尝试读取blockId格式
+      const blockId = e.dataTransfer.getData('blockId');
+      if (blockId && onOrderChange) {
+        console.log('处理块排序拖拽(blockId):', blockId, block.id);
+        const position = getDropPosition(e);
+        onOrderChange(blockId, block.id, position);
       }
     } catch (error) {
       console.error('处理拖放操作失败:', error);
       setLocalAligning(false);
       toast.error("处理拖放操作时出错");
+      
+      // 捕获到异常时，也发送失败事件，确保SentencePlayer能恢复正常状态
+      try {
+        const jsonData = e.dataTransfer.getData('application/json');
+        if (jsonData) {
+          const data = JSON.parse(jsonData);
+          if (data.type === 'sentence') {
+            window.dispatchEvent(new CustomEvent('sentence-alignment-update', {
+              detail: {
+                sentenceId: data.sentenceId,
+                status: 'failed',
+                shouldSkipPageChange: true
+              }
+            }));
+          }
+        }
+      } catch (err) {
+        console.error('无法发送失败事件:', err);
+      }
     }
   };
 
@@ -1228,6 +1330,34 @@ export function ContentBlock({
       window.removeEventListener('audio-mode-change', handleAudioModeChange as EventListener);
     };
   }, [getSentenceIdsFromContent, embeddedSentences]);
+
+  // 添加ContentBlock组件的useEffect来处理单词对齐完成事件
+  useEffect(() => {
+    // 监听words-alignment-complete事件，刷新单词数据
+    const handleWordsAlignmentComplete = (e: CustomEvent) => {
+      const detail = e.detail as { 
+        sentenceIds?: string[],
+        speechId?: string,
+        blockId?: string
+      };
+      
+      // 检查是否是针对当前块的事件
+      if (detail.blockId === block.id) {
+        console.log('ContentBlock: 收到单词对齐完成事件，刷新单词数据', detail);
+        
+        // 重新加载涉及到的句子数据
+        if (detail.sentenceIds && detail.sentenceIds.length > 0) {
+          parseAndLoadEmbeddedSentences();
+        }
+      }
+    };
+    
+    window.addEventListener('words-alignment-complete', handleWordsAlignmentComplete as EventListener);
+    
+    return () => {
+      window.removeEventListener('words-alignment-complete', handleWordsAlignmentComplete as EventListener);
+    };
+  }, [block.id, parseAndLoadEmbeddedSentences]);
 
   return (
     <div

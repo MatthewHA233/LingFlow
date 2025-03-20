@@ -47,6 +47,13 @@ interface SpeechResult {
 // 添加处理状态类型
 type ProcessingStatus = 'idle' | 'uploading' | 'processing' | 'completed' | 'error';
 
+// 定义事件常量（必须与SentencePlayer中的一致）
+const ALIGNMENT_EVENTS = {
+  ALIGNMENT_START: 'sentence-alignment-start',
+  ALIGNMENT_UPDATE: 'sentence-alignment-update',
+  ALIGNMENT_COMPLETE: 'sentence-alignment-complete'
+};
+
 export function AudioRecognizer({ 
   bookContent, 
   bookId,
@@ -62,6 +69,8 @@ export function AudioRecognizer({
   const [isAlignMode, setIsAlignMode] = useState(false);
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [hideAligned, setHideAligned] = useState(false);
+  const [lastAlignmentUpdateTime, setLastAlignmentUpdateTime] = useState<string | null>(null);
+  const [alignmentEventType, setAlignmentEventType] = useState<string | null>(null);
 
   // 加载书籍的所有音频记录
   useEffect(() => {
@@ -144,6 +153,68 @@ export function AudioRecognizer({
       window.removeEventListener('speech-id-changed', handleSpeechIdChange as EventListener);
     };
   }, [speechResults]);
+
+  // 修改事件处理器，区分不同类型的对齐事件
+  useEffect(() => {
+    // 对齐开始事件 - 仅记录事件类型，不更新时间戳
+    const handleAlignmentStart = (event: CustomEvent) => {
+      const { shouldSkipPageChange } = event.detail || {};
+      
+      console.log('AudioRecognizer: 收到对齐开始事件');
+      setAlignmentEventType('start');
+      
+      // 不更新时间戳，避免触发不必要的重新渲染
+    };
+    
+    // 对齐更新事件 - 根据来源判断是否更新时间戳
+    const handleAlignmentUpdate = (event: CustomEvent) => {
+      const { status, shouldSkipPageChange, isDragging } = event.detail || {};
+      
+      console.log('AudioRecognizer: 收到对齐更新事件', event.detail);
+      setAlignmentEventType('update');
+      
+      // 只有在需要页面跳转时才更新时间戳
+      // 对于拖拽产生的对齐，不更新时间戳，避免触发立即刷新
+      if (isDragging) {
+        console.log('AudioRecognizer: 忽略拖拽产生的对齐更新，不刷新页面');
+        return;
+      }
+      
+      // 对于不需要跳过页面变化的更新，允许更新时间戳
+      if (!shouldSkipPageChange) {
+        setLastAlignmentUpdateTime(Date.now().toString());
+      }
+    };
+    
+    // 对齐完成事件 - 更新时间戳并刷新组件
+    const handleAlignmentComplete = (event: CustomEvent) => {
+      const { shouldSkipPageChange, isDragging } = event.detail || {};
+      
+      console.log('AudioRecognizer: 收到对齐完成事件');
+      setAlignmentEventType('complete');
+      
+      // 对于拖拽产生的对齐完成，只有在明确要求页面跳转时才更新时间戳
+      if (isDragging && shouldSkipPageChange) {
+        console.log('AudioRecognizer: 忽略拖拽产生的对齐完成，不刷新页面');
+        return;
+      }
+      
+      // 完成事件总是更新时间戳，除非明确指示不要
+      if (!shouldSkipPageChange) {
+        setLastAlignmentUpdateTime(Date.now().toString());
+      }
+    };
+    
+    window.addEventListener(ALIGNMENT_EVENTS.ALIGNMENT_START, handleAlignmentStart as EventListener);
+    window.addEventListener(ALIGNMENT_EVENTS.ALIGNMENT_UPDATE, handleAlignmentUpdate as EventListener);
+    window.addEventListener(ALIGNMENT_EVENTS.ALIGNMENT_COMPLETE, handleAlignmentComplete as EventListener);
+    
+    return () => {
+      window.removeEventListener(ALIGNMENT_EVENTS.ALIGNMENT_START, handleAlignmentStart as EventListener);
+      window.removeEventListener(ALIGNMENT_EVENTS.ALIGNMENT_UPDATE, handleAlignmentUpdate as EventListener);
+      window.removeEventListener(ALIGNMENT_EVENTS.ALIGNMENT_COMPLETE, handleAlignmentComplete as EventListener);
+    };
+  }, []);
 
   // 处理音频切换
   const handleAudioChange = (resultId: string) => {
@@ -351,6 +422,7 @@ export function AudioRecognizer({
             </div>
             <div className="bg-background/50 rounded-md border border-border/50">
               <SentencePlayer
+                key={`player-${speechId}`}
                 speechId={speechId}
                 onTimeChange={setCurrentTime}
                 currentTime={currentTime}

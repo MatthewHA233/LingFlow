@@ -58,6 +58,70 @@ interface SentencePlayerProps {
 // 添加 PlayMode 类型定义
 type PlayMode = 'sentence' | 'block' | 'continuous';
 
+// 添加一个事件名称常量
+const ALIGNMENT_EVENTS = {
+  ALIGNMENT_START: 'sentence-alignment-start',
+  ALIGNMENT_UPDATE: 'sentence-alignment-update',
+  ALIGNMENT_COMPLETE: 'sentence-alignment-complete'
+};
+
+// 修改CSS动画样式
+const animationStyles = `
+  @keyframes pulse {
+    0% { 
+      transform: scale(1); 
+      opacity: 1; 
+      background-color: rgba(34, 197, 94, 0.05);
+      border-color: rgba(34, 197, 94, 0.3);
+    }
+    50% { 
+      transform: scale(1.02); 
+      opacity: 0.9; 
+      background-color: rgba(34, 197, 94, 0.15);
+      border-color: rgba(34, 197, 94, 0.6);
+    }
+    100% { 
+      transform: scale(1); 
+      opacity: 1; 
+      background-color: rgba(34, 197, 94, 0.05);
+      border-color: rgba(34, 197, 94, 0.3);
+    }
+  }
+  
+  @keyframes highlight {
+    0% { 
+      background-color: rgba(34, 197, 94, 0.05);
+      border-color: rgba(34, 197, 94, 0.3);
+    }
+    50% { 
+      background-color: rgba(34, 197, 94, 0.2);
+      border-color: rgba(34, 197, 94, 0.8);
+    }
+    100% { 
+      background-color: rgba(34, 197, 94, 0.1);
+      border-color: rgba(34, 197, 94, 0.5);
+    }
+  }
+  
+  .alignment-pulse {
+    animation: pulse 1.5s infinite ease-in-out;
+    border-width: 2px;
+  }
+  
+  .alignment-complete {
+    animation: highlight 1s ease-out forwards;
+    border-width: 2px;
+  }
+  
+  .sentence-item {
+    transition: all 0.3s ease-out;
+  }
+  
+  .sentence-item.aligning {
+    transform-origin: center left;
+  }
+`;
+
 export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlignMode = false, onToggleAlignMode, disabled = false }: SentencePlayerProps) {
   const [sentences, setSentences] = useState<Sentence[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,6 +140,24 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
   const [aligningIds, setAligningIds] = useState<Set<string>>(new Set());
   const [alignmentCompleted, setAlignmentCompleted] = useState<Set<string>>(new Set());
   const [hasShownPlayModeNotice, setHasShownPlayModeNotice] = useState(false);
+  const [lastAlignmentUpdateTime, setLastAlignmentUpdateTime] = useState(0);
+  const [isAligningInProgress, setIsAligningInProgress] = useState(false);
+
+  // 添加日志记录的辅助函数，方便打印集合内容
+  const logSet = (name: string, set: Set<string>) => {
+    console.log(`${name}: [${Array.from(set).join(', ')}]`);
+  };
+
+  // 修改 setAligningIds 和 setAlignmentCompleted 的调用方式，添加日志
+  const updateAligningIds = (newIds: Set<string>) => {
+    logSet('设置对齐中状态', newIds);
+    setAligningIds(newIds);
+  };
+
+  const updateAlignmentCompleted = (newIds: Set<string>) => {
+    logSet('设置对齐完成状态', newIds);
+    setAlignmentCompleted(newIds);
+  };
 
   // 加载句子数据
   const loadSentences = useCallback(async (page: number) => {
@@ -114,7 +196,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
       // 确保 words 数组按时间排序
       const sortedData = data?.map(sentence => ({
         ...sentence,
-        words: sentence.words.sort((a, b) => a.begin_time - b.begin_time)
+        words: sentence.words.sort((a: Word, b: Word) => a.begin_time - b.begin_time)
       }));
 
       setSentences(sortedData || []);
@@ -128,8 +210,14 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
 
   // 页码变化时重新加载
   useEffect(() => {
+    // 如果正在对齐中，不要立即加载数据
+    if (isAligningInProgress) {
+      console.log('正在对齐中，延迟加载数据');
+      return;
+    }
+    
     loadSentences(currentPage);
-  }, [currentPage, loadSentences]);
+  }, [currentPage, loadSentences, isAligningInProgress]);
 
   // 计算单词的播放进度
   const getWordProgress = useCallback((word: Word, currentTime: number) => {
@@ -224,7 +312,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
   }) => {
     const sentenceContent = useMemo(() => 
       renderSentenceContent(sentence, currentTime),
-      [sentence, currentTime, renderSentenceContent]
+      [sentence, currentTime]
     );
 
     return (
@@ -297,7 +385,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
       });
       e.dataTransfer.setData('application/json', data);
       
-      // 添加标识类型 - 这是关键!
+      // 添加标识类型
       e.dataTransfer.setData('sentence-align-drag', 'true');
       
       // 创建拖拽预览效果
@@ -320,6 +408,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
     }
   };
   
+  // 修改处理拖拽结束的逻辑
   const handleDragEnd = async (e: React.DragEvent<HTMLDivElement>) => {
     e.currentTarget.classList.remove('opacity-50');
     const sentenceId = e.currentTarget.getAttribute('data-sentence-id');
@@ -327,40 +416,85 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
     if (!sentenceId) return;
 
     try {
-      // 1. 获取当前句子的时间戳作为参考点
+      // 1. 标记对齐开始，防止页面变化时立即加载数据
+      setIsAligningInProgress(true);
+      
+      // 2. 获取当前句子以计算目标页码
       const { data: targetSentence } = await supabase
         .from('sentences')
-        .select('begin_time')
+        .select('order')
         .eq('id', sentenceId)
         .single();
 
-      if (!targetSentence) return;
+      if (!targetSentence) {
+        setIsAligningInProgress(false);
+        return;
+      }
 
-      // 2. 获取从这个时间戳开始的所有句子
-      const { data: consecutiveSentences } = await supabase
-        .from('sentences')
-        .select('id')
-        .eq('speech_id', speechId)
-        .gte('begin_time', targetSentence.begin_time)
-        .order('begin_time');
+      // 3. 计算目标句子所在的页码
+      const targetPage = Math.ceil(targetSentence.order / pageSize);
+      
+      // 4. 不再在这里设置所有连续句子为对齐中状态
+      // 相反，只设置被拖拽的句子为对齐中，等待服务返回实际对齐结果
+      setAligningIds(new Set([sentenceId]));
+      
+      console.log('handleDragEnd: 发送对齐开始事件，目标页码:', targetPage);
+      
+      // 5. 广播对齐开始事件，不触发页面跳转
+      window.dispatchEvent(new CustomEvent(ALIGNMENT_EVENTS.ALIGNMENT_START, {
+        detail: {
+          sentenceId: sentenceId,
+          // 不再发送所有连续句子的ID，只发送当前拖拽的句子ID
+          alignedSentenceIds: [sentenceId], // 只设置当前拖拽的句子为对齐中
+          speechId,
+          targetPage,
+          shouldSkipPageChange: true, // 添加标记，表示不要立即跳转页面
+          isDragging: true // 添加标记，表示这是由拖拽引起的对齐
+        }
+      }));
+    } catch (err) {
+      console.error('对齐处理失败:', err);
+      setAligningIds(new Set());
+      setIsAligningInProgress(false);
+    }
+  };
 
-      if (!consecutiveSentences) return;
+  // 恢复正确的对齐点监听（空依赖数组的）
+  useEffect(() => {
+    const handleAlignmentStart = (e: CustomEvent) => {
+      const { sentenceId, sentenceIds, alignedSentenceIds } = e.detail || {};
+      
+      // 优先使用 alignedSentenceIds，其次使用 sentenceIds，最后使用 sentenceId
+      const idsToAlign = alignedSentenceIds || sentenceIds || (sentenceId ? [sentenceId] : []);
+      
+      if (idsToAlign.length > 0) {
+        // 只设置对齐中状态，不触发页面跳转和数据刷新
+        const aligningIdSet = new Set<string>(idsToAlign);
+        console.log('收到对齐开始事件，设置对齐中状态', idsToAlign);
+        updateAligningIds(aligningIdSet);
+      }
+    };
+    
+    window.addEventListener(ALIGNMENT_EVENTS.ALIGNMENT_START, handleAlignmentStart as EventListener);
+    
+    return () => {
+      window.removeEventListener(ALIGNMENT_EVENTS.ALIGNMENT_START, handleAlignmentStart as EventListener);
+    };
+  }, []);
 
-      // 3. 设置所有相关句子为对齐中状态
-      const aligningIdSet = new Set(consecutiveSentences.map(s => s.id));
-      setAligningIds(aligningIdSet);
-
-      // 4. 等待一段时间让对齐操作开始
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // 5. 开始检查对齐状态
-      const checkAlignmentStatus = async () => {
+  // 修改对齐状态更新函数，添加对失败状态的处理
+  const refreshAlignmentStatus = useCallback(async (targetSentenceIds?: string[]) => {
+    if (!speechId || !targetSentenceIds?.length) return;
+    
+    try {
+      // 查询数据库获取最新状态
         const { data: updatedSentences } = await supabase
           .from('sentences')
           .select(`
             id,
             conversion_status,
             text_content,
+          order,
             words (
               id,
               word,
@@ -369,21 +503,48 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
               sentence_id
             )
           `)
-          .in('id', Array.from(aligningIdSet));
-
-        if (!updatedSentences) return false;
-
-        // 检查是否所有句子都已完成对齐
-        const allCompleted = updatedSentences.every(
-          s => s.conversion_status === 'converted'
+        .in('id', targetSentenceIds)
+        .eq('speech_id', speechId);
+      
+      if (!updatedSentences?.length) return;
+      
+      // 检查是否有状态变化
+      const hasStatusChanges = updatedSentences.some(updated => {
+        const current = sentences.find(s => s.id === updated.id);
+        return current?.conversion_status !== updated.conversion_status;
+      });
+      
+      if (hasStatusChanges) {
+        console.log('检测到对齐状态变化，准备更新界面', updatedSentences);
+        
+        // 获取第一个更新的句子的页码
+        const firstUpdatedSentence = updatedSentences[0];
+        const targetPage = Math.ceil(firstUpdatedSentence.order / pageSize);
+        
+        // 更新对齐状态
+        const newAligningIds = new Set(aligningIds);
+        const newCompletedIds = new Set(alignmentCompleted);
+        
+        updatedSentences.forEach(updated => {
+          if (updated.conversion_status === 'converted') {
+            newAligningIds.delete(updated.id);
+            newCompletedIds.add(updated.id);
+          }
+        });
+        
+        // 如果所有句子都已完成对齐
+        const allCompleted = Array.from(aligningIds).every(id => 
+          !newAligningIds.has(id) || newCompletedIds.has(id)
         );
-
-        if (allCompleted) {
-          // 更新本地状态
-          const completedIds = new Set(updatedSentences.map(s => s.id));
-          setAlignmentCompleted(completedIds);
-
-          // 更新句子数据
+        
+        if (allCompleted && newAligningIds.size === 0) {
+          // 1. 先设置完成状态，显示完成动画
+          updateAligningIds(new Set());
+          updateAlignmentCompleted(newCompletedIds);
+          
+          // 2. 等待完成动画显示完毕
+          setTimeout(() => {
+            // 3. 更新句子数据 - 就地更新而不是重新加载
           setSentences(prev => 
             prev.map(s => {
               const updated = updatedSentences.find(us => us.id === s.id);
@@ -391,56 +552,331 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
                 return {
                   ...s,
                   ...updated,
-                  words: updated.words.sort((a: any, b: any) => 
-                    a.begin_time - b.begin_time
-                  )
+                    words: updated.words.sort((a: Word, b: Word) => a.begin_time - b.begin_time)
                 };
               }
               return s;
             })
           );
 
-          // 延迟清除对齐状态
-          setTimeout(() => {
-            setAligningIds(new Set());
-            setAlignmentCompleted(new Set());
-          }, 2000);
-
-          return true;
+            // 4. 清除完成状态
+            updateAlignmentCompleted(new Set());
+            
+            // 5. 最后跳转到目标页面，并允许加载数据
+            setIsAligningInProgress(false);
+            setCurrentPage(targetPage);
+          }, 2000); // 等待2秒让完成动画显示
+        } else {
+          // 仍在对齐中，只更新状态
+          updateAligningIds(newAligningIds);
+          updateAlignmentCompleted(newCompletedIds);
         }
-
-        return false;
-      };
-
-      // 开始轮询检查对齐状态，增加初始延迟和检查间隔
-      let attempts = 0;
-      const maxAttempts = 20; // 最多尝试20次
-      
-      const pollInterval = setInterval(async () => {
-        attempts++;
-        const completed = await checkAlignmentStatus();
         
-        if (completed || attempts >= maxAttempts) {
-          clearInterval(pollInterval);
-          if (!completed) {
-            // 如果超时未完成，清除对齐状态
-            setAligningIds(new Set());
-            console.log('对齐超时或未完成');
+        // 记录更新时间
+        setLastAlignmentUpdateTime(Date.now());
+      }
+    } catch (err) {
+      console.error('刷新对齐状态失败:', err);
+      setIsAligningInProgress(false);
+    }
+  }, [speechId, sentences, aligningIds, alignmentCompleted, pageSize]);
+
+  // 添加对ALIGNMENT_UPDATE和ALIGNMENT_COMPLETE事件的监听
+  useEffect(() => {
+    // 处理对齐更新事件，包括失败状态
+    const handleAlignmentUpdate = (e: CustomEvent) => {
+      const detail = e.detail as {
+        sentenceId?: string,
+        sentenceIds?: string[],
+        alignedSentenceIds?: string[],
+        status?: string,
+        shouldSkipPageChange?: boolean,
+        blockId?: string,
+        isProcessing?: boolean
+      };
+      const { sentenceId, sentenceIds, alignedSentenceIds, status, shouldSkipPageChange, isProcessing } = detail || {};
+      
+      console.log('SentencePlayer: 收到对齐更新事件', detail);
+      
+      // 如果是失败状态，清除对齐中状态
+      if (status === 'failed') {
+        console.log('收到对齐失败事件，清除对齐状态');
+        updateAligningIds(new Set());
+        setIsAligningInProgress(false);
+        return;
+      }
+      
+      // 处理对齐处理中状态
+      if (status === 'processing') {
+        // 获取所有需要设置为对齐中状态的句子ID
+        const idsToAlign = alignedSentenceIds || sentenceIds || (sentenceId ? [sentenceId] : []);
+        
+        if (idsToAlign.length > 0) {
+          console.log('收到对齐处理中事件，设置对齐中状态:', idsToAlign);
+          
+          // 更新对齐中的句子状态，仅针对传入的句子ID
+          const newAligningIds = new Set<string>(idsToAlign);
+          updateAligningIds(newAligningIds);
+          
+          // 设置成对齐进行中，防止页面刷新
+          setIsAligningInProgress(true);
+          
+          // 如果带有isProcessing标志，表示ContentBlock正在处理单词级对齐
+          // 不需要开始轮询，等待ContentBlock发送完成事件
+          if (isProcessing) {
+            console.log('ContentBlock正在处理单词级对齐，等待完成事件...');
+            return;
           }
         }
-      }, 1000); // 每秒检查一次
-
-      // 设置超时保护
+      }
+      
+      // 如果是转换状态（旧的转换已完成但未发送完成事件），处理类似成功
+      if (status === 'converted') {
+        // 获取所有需要设置为对齐中状态的句子ID
+        const idsToCheck = alignedSentenceIds || sentenceIds || (sentenceId ? [sentenceId] : []);
+        
+        if (idsToCheck.length > 0) {
+          console.log('收到转换完成事件，开始轮询状态:', idsToCheck);
+          
+          // 更新对齐中的句子状态，仅针对传入的句子ID
+          const newAligningIds = new Set<string>(idsToCheck);
+          updateAligningIds(newAligningIds);
+          
+          // 设置成对齐进行中，防止页面刷新
+          setIsAligningInProgress(true);
+          
+          // 开始轮询检查对齐状态 - 使用轮询可确保获取最新状态
+          const pollAlignmentStatus = async () => {
+            // 创建一个定时器，每1秒检查一次
+            const timer = setInterval(async () => {
+              try {
+                // 查询数据库获取最新状态
+                const { data: updatedSentences } = await supabase
+                  .from('sentences')
+                  .select('id, conversion_status, order')
+                  .in('id', idsToCheck)
+                  .eq('speech_id', speechId);
+                  
+                if (!updatedSentences || updatedSentences.length === 0) {
+                  return;
+                }
+                
+                // 检查是否所有句子都已对齐完成
+                const allConverted = updatedSentences.every(s => s.conversion_status === 'converted');
+                
+                if (allConverted) {
+                  console.log('所有句子对齐完成，停止轮询');
+                  clearInterval(timer);
+                  
+                  // 找出已完成的句子，添加到完成集合，从对齐中移除
+                  const newCompletedIds = new Set(alignmentCompleted);
+                  const newAligningIds = new Set(aligningIds);
+                  
+                  updatedSentences.forEach(s => {
+                    if (s.conversion_status === 'converted') {
+                      newCompletedIds.add(s.id);
+                      newAligningIds.delete(s.id);
+                    }
+                  });
+                  
+                  // 更新状态，触发完成动画
+                  updateAligningIds(newAligningIds);
+                  updateAlignmentCompleted(newCompletedIds);
+                  
+                  // 2秒后清除完成状态并更新数据
+          setTimeout(() => {
+                    // 计算目标页码
+                    const firstSentence = updatedSentences.sort((a, b) => a.order - b.order)[0];
+                    const targetPage = Math.ceil(firstSentence.order / pageSize);
+                    
+                    // 更新数据 - 就地更新而不是重新加载
+                    setSentences(prev => 
+                      prev.map(s => {
+                        const updated = updatedSentences.find(us => us.id === s.id);
+                        if (updated) {
+                          return {
+                            ...s,
+                            conversion_status: updated.conversion_status
+                          };
+                        }
+                        return s;
+                      })
+                    );
+                    
+                    // 清除完成状态
+                    updateAlignmentCompleted(new Set());
+                    
+                    // 发送单词更新事件，通知ContentBlock重新加载单词数据
+                    console.log('SentencePlayer: 发送单词更新事件，通知ContentBlock重新加载单词数据');
+                    window.dispatchEvent(new CustomEvent('words-alignment-complete', {
+                      detail: {
+                        sentenceIds: Array.from(newCompletedIds),  // 所有被对齐的句子ID
+                        speechId: speechId,
+                        blockId: detail.blockId
+                      }
+                    }));
+                    
+                    // 如果不需要跳过页面变化，则更新页面
+                    if (!shouldSkipPageChange) {
+                      setCurrentPage(targetPage);
+                    }
+                    
+                    // 解除阻塞状态
+                    setIsAligningInProgress(false);
+                    
+                    // 主动请求完整的句子数据（包括words）
+                    loadSentences(targetPage);
+          }, 2000);
+                }
+              } catch (err) {
+                console.error('轮询对齐状态失败:', err);
+              }
+            }, 1000);
+            
+            // 最多轮询30秒
+            setTimeout(() => {
+              clearInterval(timer);
+              // 如果超时，也要解除阻塞状态
+              setIsAligningInProgress(false);
+            }, 30000);
+          };
+          
+          pollAlignmentStatus();
+        }
+      }
+    };
+    
+    // 处理对齐完成事件
+    const handleAlignmentComplete = (e: CustomEvent) => {
+      const detail = e.detail as { 
+        sentenceId?: string,
+        sentenceIds?: string[],
+        alignedSentenceIds?: string[],
+        blockId?: string, 
+        shouldSkipPageChange?: boolean,
+        targetPage?: number,
+        status?: string
+      };
+      const { sentenceId, sentenceIds, alignedSentenceIds, blockId, shouldSkipPageChange, targetPage, status } = detail || {};
+      
+      // 获取完成的句子ID列表
+      const completedIds = alignedSentenceIds || sentenceIds || (sentenceId ? [sentenceId] : []);
+      
+      // 处理超时状态
+      if (status === 'timeout') {
+        console.log('SentencePlayer: 收到对齐超时事件，清除对齐中状态但不显示完成动画');
+        // 直接清除对齐中状态，不显示完成动画
+        updateAligningIds(new Set());
+        setIsAligningInProgress(false);
+        return;
+      }
+      
+      if (completedIds.length > 0) {
+        console.log('SentencePlayer: 收到对齐完成事件，句子IDs:', completedIds);
+        
+        // 由于此时后端处理已经完成，直接查询最新状态
+        (async () => {
+          try {
+            // 查询所有涉及的句子的最新状态
+            const { data: updatedSentences } = await supabase
+              .from('sentences')
+              .select('id, conversion_status, order, text_content')
+              .in('id', completedIds)
+              .eq('speech_id', speechId);
+              
+            if (!updatedSentences || updatedSentences.length === 0) {
+              return;
+            }
+            
+            console.log('对齐完成，获取到更新的句子:', updatedSentences);
+            
+            // 更新对齐中和完成状态 - 仅处理传入的句子ID
+            const newAligningIds = new Set(aligningIds);
+            const newCompletedIds = new Set(alignmentCompleted);
+            
+            // 将所有完成的句子从对齐中移到完成状态
+            completedIds.forEach(id => {
+              newAligningIds.delete(id);
+              
+              // 只有真正转换成功的句子才显示完成动画
+              const sentence = updatedSentences.find(s => s.id === id);
+              if (sentence && sentence.conversion_status === 'converted') {
+                newCompletedIds.add(id);
+              }
+            });
+            
+            // 设置对齐完成状态，触发动画显示
+            updateAligningIds(newAligningIds);
+            updateAlignmentCompleted(newCompletedIds);
+            
+            // 设置计时器，在动画结束后更新数据
+            if (newCompletedIds.size > 0) {
       setTimeout(() => {
-        clearInterval(pollInterval);
-        setAligningIds(new Set());
-      }, 20000); // 20秒超时
-
+                // 更新数据 - 就地更新而不是重新加载
+                setSentences(prev => 
+                  prev.map(s => {
+                    const updated = updatedSentences.find(us => us.id === s.id);
+                    if (updated) {
+                      return {
+                        ...s,
+                        conversion_status: updated.conversion_status,
+                        text_content: updated.text_content
+                      };
+                    }
+                    return s;
+                  })
+                );
+                
+                // 清除完成状态
+                updateAlignmentCompleted(new Set());
+                
+                // 发送单词更新事件，通知ContentBlock重新加载单词数据
+                console.log('SentencePlayer: 发送单词更新事件，通知ContentBlock重新加载单词数据');
+                window.dispatchEvent(new CustomEvent('words-alignment-complete', {
+                  detail: {
+                    sentenceIds: Array.from(newCompletedIds),  // 所有被对齐的句子ID
+                    speechId: speechId,
+                    blockId: blockId
+                  }
+                }));
+                
+                // 确定目标页码 - 优先使用传入的目标页码，否则计算
+                const finalTargetPage = targetPage || Math.ceil(
+                  (updatedSentences.sort((a, b) => a.order - b.order)[0]?.order || 1) / pageSize
+                );
+                
+                // 如果不需要跳过页面变化，则更新页面
+                if (!shouldSkipPageChange) {
+                  setCurrentPage(finalTargetPage);
+                }
+                
+                // 解除阻塞状态
+                setIsAligningInProgress(false);
+                
+                // 主动请求完整的句子数据（包括words）
+                loadSentences(finalTargetPage);
+              }, 2000); // 等待2秒让完成动画显示
+            } else {
+              // 如果没有完成的句子，直接解除阻塞
+              setIsAligningInProgress(false);
+            }
     } catch (err) {
-      console.error('对齐处理失败:', err);
-      setAligningIds(new Set());
-    }
-  };
+            console.error('处理对齐完成事件失败:', err);
+            setIsAligningInProgress(false);
+          }
+        })();
+      }
+    };
+    
+    // 添加事件监听
+    window.addEventListener(ALIGNMENT_EVENTS.ALIGNMENT_UPDATE, handleAlignmentUpdate as EventListener);
+    window.addEventListener(ALIGNMENT_EVENTS.ALIGNMENT_COMPLETE, handleAlignmentComplete as EventListener);
+    
+    return () => {
+      window.removeEventListener(ALIGNMENT_EVENTS.ALIGNMENT_UPDATE, handleAlignmentUpdate as EventListener);
+      window.removeEventListener(ALIGNMENT_EVENTS.ALIGNMENT_COMPLETE, handleAlignmentComplete as EventListener);
+    };
+  }, [speechId, aligningIds, alignmentCompleted, refreshAlignmentStatus, pageSize, loadSentences]);
 
   // 修改togglePlay函数
   const togglePlay = () => {
@@ -453,16 +889,25 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
     
     const playerId = `sentence-${activeSentenceId}`;
     
-    // 播放音频
-    const isPlayStarted = AudioController.play(
-      audioUrl,
-      activeSentence.begin_time,
-      activeSentence.end_time,
-      playerId
-    );
+    // 播放音频 - 使用正确的参数格式
+    let isPlayStarted: boolean = false;
+    try {
+      // AudioController.play 接受一个选项对象
+      AudioController.play({
+        url: audioUrl,
+        startTime: activeSentence.begin_time,
+        endTime: activeSentence.end_time,
+        context: 'sentence',
+        loop: false
+      });
+      isPlayStarted = true;
+    } catch (err) {
+      console.error('音频播放失败:', err);
+      isPlayStarted = false;
+    }
     
     // 更新状态
-    setPlayingStates({ [playerId]: isPlayStarted });
+    setPlayingStates(prev => ({ ...prev, [playerId]: isPlayStarted }));
   };
 
   // 添加状态监听
@@ -477,16 +922,16 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
         
         // 如果状态变更与当前活动句子相关
         if (sentenceIdFromPlayer === activeSentenceId) {
-          setPlayingStates({ [playerId]: newIsPlaying });
+          setPlayingStates(prev => ({ ...prev, [playerId]: newIsPlaying }));
           
           // 如果开始播放，重置活动单词索引
           if (newIsPlaying) {
-            setActiveSentenceIndex(null);
+            setActiveSentenceIndex(-1);
           }
         } else {
           // 如果与其他句子相关，重置自己的状态
-          setPlayingStates({ [playerId]: false });
-          setActiveSentenceIndex(null);
+          setPlayingStates(prev => ({ ...prev, [playerId]: false }));
+          setActiveSentenceIndex(-1);
         }
       }
     };
@@ -496,7 +941,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
     return () => {
       window.removeEventListener(AUDIO_EVENTS.STATE_CHANGE, handleStateChange as EventListener);
     };
-  }, [activeSentenceId]); // 使用activeSentenceId而不是sentence.id
+  }, [activeSentenceId]);
 
   // 修改SentencePlayer中的相关部分
   useEffect(() => {
@@ -552,12 +997,26 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
     }
   };
 
-  // 添加状态指示器的颜色映射
-  const statusColors = {
+  // 定义正确的状态颜色类型映射
+  const statusColors: Record<string, string> = {
     none: 'bg-red-500',
     converted: 'bg-emerald-500',
-    reverted: 'bg-yellow-500'
-  } as const;
+    reverted: 'bg-yellow-500',
+    default: 'bg-gray-500' // 默认颜色
+  };
+
+  // 添加样式到文档
+  useEffect(() => {
+    // 创建样式元素
+    const styleEl = document.createElement('style');
+    styleEl.textContent = animationStyles;
+    document.head.appendChild(styleEl);
+    
+    // 清理函数
+    return () => {
+      document.head.removeChild(styleEl);
+    };
+  }, []);
 
   if (disabled) {
     return (
@@ -591,30 +1050,29 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
                 const isCompleted = alignmentCompleted.has(sentence.id);
 
                 return (
-                  <motion.div
+                  <div
                     key={sentence.id}
                     data-sentence-id={sentence.id}
+                    style={{
+                      transition: 'all 0.3s ease-out'
+                    }}
                     className={cn(
-                      'relative p-1 rounded-sm border shadow-sm',
+                      'relative p-1 rounded-sm border shadow-sm sentence-item',
                       sentence.conversion_status === 'converted' ? 'bg-emerald-950/10' : 'bg-card',
                       activeSentenceId === sentence.id ? 'border-primary' : 'border-border',
                       'cursor-grab active:cursor-grabbing',
-                      isAligning && 'animate-pulse',
+                      isAligning && 'alignment-pulse aligning',
                       isCompleted && 'alignment-complete'
                     )}
                     draggable={true}
                     onDragStart={(e) => handleDragStart(e, sentence)}
                     onDragEnd={handleDragEnd}
-                    animate={{
-                      scale: isAligning ? 1.02 : 1,
-                      transition: { duration: 0.2 }
-                    }}
                   >
                     {/* 状态指示器灯 */}
                     <div 
                       className={cn(
                         "absolute right-1 top-1 w-2 h-2 rounded-full",
-                        statusColors[sentence.conversion_status || 'none']
+                        statusColors[sentence.conversion_status || 'none'] || statusColors.default
                       )}
                       title={`状态: ${
                         sentence.conversion_status === 'converted' ? '已对齐' :
@@ -638,7 +1096,7 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
                         isAligned={sentence.conversion_status === 'converted'}
                       />
                     </div>
-                  </motion.div>
+                  </div>
                 );
               })}
             </div>
