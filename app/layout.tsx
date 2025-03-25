@@ -61,12 +61,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN" suppressHydrationWarning>
+    <html lang="zh-CN" suppressHydrationWarning className="overflow-hidden">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="theme-color" content="#000000" />
       </head>
-      <body className={cn(inter.className, 'min-h-screen bg-background')}>
+      <body className={cn(inter.className, 'w-screen h-screen overflow-hidden bg-background')}>
         <AuthProvider>
           <ClientLayout>
             {children}

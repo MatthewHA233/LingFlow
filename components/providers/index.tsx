@@ -15,14 +15,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="dark"
-      enableSystem={false}
-      storageKey="hongliu-theme"
-      disableTransitionOnChange
-    >
-      {children}
-    </ThemeProvider>
+    <div className="providers-wrapper">
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="dark"
+        enableSystem={false}
+        storageKey="hongliu-theme"
+        disableTransitionOnChange
+      >
+        {children}
+      </ThemeProvider>
+    </div>
   );
 }

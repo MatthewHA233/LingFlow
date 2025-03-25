@@ -54,27 +54,29 @@ export default async function CommunityPage() {
   const shares = MOCK_SHARES;
 
   return (
-    <div className="container mx-auto py-8 px-4">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-2xl font-bold">语境分享</h1>
-          <p className="text-sm text-muted-foreground mt-2">
-            在这里分享你的语言学习语境，将兴趣与情感传达给其他学习者
-          </p>
+    <div className="h-full p-2 sm:p-4">
+      <div className="container mx-auto px-4 sm:px-6">
+        <div className="flex items-center justify-between gap-4 mb-8 px-2 sm:px-4">
+          <div>
+            <h1 className="text-2xl font-bold">语境分享</h1>
+            <p className="text-sm text-muted-foreground mt-2 max-w-md">
+              在这里分享你热爱的语境，将兴趣与情感传达给他人
+            </p>
+          </div>
+          <HoverBorderGradient
+            containerClassName="rounded-full flex-shrink-0"
+            className="flex items-center gap-2 text-sm"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>分享语境</span>
+          </HoverBorderGradient>
         </div>
-        <HoverBorderGradient
-          containerClassName="rounded-full"
-          className="flex items-center gap-2 text-sm"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>分享语境</span>
-        </HoverBorderGradient>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {shares.map((share) => (
-          <ShareCard key={share.id} share={share} />
-        ))}
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 px-2 sm:px-4">
+          {shares.map((share) => (
+            <ShareCard key={share.id} share={share} />
+          ))}
+        </div>
       </div>
     </div>
   );

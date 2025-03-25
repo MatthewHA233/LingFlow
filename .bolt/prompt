@@ -9,3 +9,16 @@ By default, this template supports JSX syntax with Tailwind CSS classes, the sha
 Use icons from lucide-react for logos.
 
 Use stock photos from unsplash where appropriate, only valid URLs you know exist.
+
+
+对于所有要求设计的内容，都要做到美观独特，而不是千篇一律。制作功能完备、适合生产环境的网页。
+
+在 Next.js 的服务器组件中使用客户端钩子（useState 和 useEffect）时，必须在文件顶部添加 "use client" 指令。
+
+不要编写会触发此错误的代码："Warning: Extra attributes from the server: %s%s""class,style"
+
+默认情况下，此模板支持 JSX 语法、Tailwind CSS 类、shadcn/ui 库、React 钩子和 Lucide React 图标。除非绝对必要或我特别要求，否则不要安装其他用于 UI 主题、图标等的包。
+
+使用 lucide-react 中的图标作为 logo。
+
+适当使用 unsplash 的库存照片，仅使用已知存在的有效 URL。

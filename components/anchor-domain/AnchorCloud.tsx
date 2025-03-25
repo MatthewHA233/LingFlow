@@ -67,7 +67,7 @@ export function AnchorCloud({ days }: AnchorCloudProps) {
 
   return (
     <div 
-      className="relative w-full h-[calc(100vh-12rem)] overflow-hidden cursor-grab active:cursor-grabbing"
+      className="relative w-full h-full overflow-hidden cursor-grab active:cursor-grabbing"
       style={{
         background: 'radial-gradient(circle at 50% 50%, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.5) 100%)',
         ...containerStyle

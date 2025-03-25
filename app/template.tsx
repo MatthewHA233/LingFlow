@@ -6,8 +6,12 @@ import { Navbar } from '@/components/layout/Navbar';
 export default function Template({ children }: { children: React.ReactNode }) {
   return (
     <Providers>
-      <Navbar />
-      <main className="pt-16">{children}</main>
+      <div className="flex flex-col h-screen overflow-hidden">
+        <Navbar />
+        <div className="flex-1 overflow-auto pt-12 sm:pt-14">
+          {children}
+        </div>
+      </div>
     </Providers>
   );
 }

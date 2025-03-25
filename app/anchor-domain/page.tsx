@@ -561,25 +561,25 @@ export default async function AnchorDomainPage() {
   console.log('TIME_DOMAINS:', JSON.stringify(TIME_DOMAINS, null, 2));
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-4">
-        <div className="flex justify-between items-center mb-4">
+    <div className="h-full p-2 sm:p-4">
+      <div className="container mx-auto px-4 sm:px-6">
+        <div className="flex items-center justify-between gap-4 mb-4 px-2 sm:px-4">
           <div>
-        <h1 className="text-2xl font-bold">锚点域</h1>
-            <p className="text-sm text-muted-foreground mt-2">
-              在这里探索你的词锚点网络，见证语言知识的时空交织
+            <h1 className="text-2xl font-bold">锚点域</h1>
+            <p className="text-sm text-muted-foreground mt-2 max-w-md">
+              在这里探索你的锚点网络，见证语言知识的时空交织
             </p>
           </div>
-        <HoverBorderGradient
-          containerClassName="rounded-full"
-          className="flex items-center gap-2 text-sm"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>创建锚点</span>
-        </HoverBorderGradient>
-      </div>
+          <HoverBorderGradient
+            containerClassName="rounded-full flex-shrink-0"
+            className="flex items-center gap-2 text-sm"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>创建锚点</span>
+          </HoverBorderGradient>
+        </div>
 
-        <Tabs defaultValue="time" className="h-[calc(100vh-8rem)]">
+        <Tabs defaultValue="time" className="h-[calc(100vh-10rem)] px-2 sm:px-4">
           <TabsList className="grid w-full max-w-md grid-cols-2 mb-4">
             <TabsTrigger value="time" className="flex items-center gap-2">
               <Clock className="w-4 h-4" />

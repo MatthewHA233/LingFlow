@@ -1,0 +1,24 @@
+warning: in the working copy of '.bolt/prompt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/anchor-domain/page.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/community/page.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/context-library/bookshelf/page.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/layout.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/template.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'components/anchor-domain/AnchorCloud.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'components/layout/ClientLayout.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'components/layout/Navbar/index.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'components/providers/index.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'components/reader/ReaderContent.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'lib/utils.ts', LF will be replaced by CRLF the next time Git touches it
+ .bolt/prompt                             |  13 [32m+[m
+ app/anchor-domain/page.tsx               |  30 [32m+[m[31m-[m
+ app/community/page.tsx                   |  42 [32m+[m[31m--[m
+ app/context-library/bookshelf/page.tsx   | 536 [32m++++++++++++++++[m[31m---------------[m
+ app/layout.tsx                           |   4 [32m+[m[31m-[m
+ app/template.tsx                         |   8 [32m+[m[31m-[m
+ components/anchor-domain/AnchorCloud.tsx |   2 [32m+[m[31m-[m
+ components/layout/Navbar/index.tsx       |  19 [32m+[m[31m-[m
+ components/providers/index.tsx           |  20 [32m+[m[31m-[m
+ package-lock.json                        | 280 [32m+++++++++++++++[m[31m-[m
+ package.json                             |   9 [32m+[m[31m-[m
+ 11 files changed, 619 insertions(+), 344 deletions(-)

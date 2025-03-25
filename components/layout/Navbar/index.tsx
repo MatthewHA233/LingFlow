@@ -6,9 +6,10 @@ import { AuthDialog } from '@/components/auth/AuthDialog';
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Home, Book, Network, Users } from 'lucide-react';
+import { Book, Network, Users, MessageCircle } from 'lucide-react';
 import Dock from '../Dock';
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export function Navbar() {
   const { user, loading } = useAuthStore();
@@ -36,11 +37,6 @@ export function Navbar() {
 
   const items = [
     { 
-      icon: <Home size={24} className="text-foreground sm:w-7 sm:h-7" />, 
-      label: '首页', 
-      onClick: () => router.push('/') 
-    },
-    { 
       icon: <Book size={24} className="text-foreground sm:w-7 sm:h-7" />, 
       label: '语境库', 
       onClick: () => router.push('/context-library') 
@@ -49,6 +45,11 @@ export function Navbar() {
       icon: <Network size={24} className="text-foreground sm:w-7 sm:h-7" />, 
       label: '锚点域', 
       onClick: () => router.push('/anchor-domain') 
+    },
+    { 
+      icon: <MessageCircle size={24} className="text-foreground sm:w-7 sm:h-7" />, 
+      label: 'AI对话', 
+      onClick: () => router.push('/llm-chat') 
     },
     { 
       icon: <Users size={24} className="text-foreground sm:w-7 sm:h-7" />, 
@@ -60,8 +61,8 @@ export function Navbar() {
   return (
     <nav className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-sm border-b">
       <div className="container mx-auto px-2 sm:px-4 h-12 sm:h-14 flex items-center justify-between">
-        {/* Logo - 移动设备上只显示图标 */}
-        <div className="flex items-center space-x-2">
+        {/* Logo - 可点击并跳转到首页 */}
+        <Link href="/" className="flex items-center space-x-2 cursor-pointer hover:opacity-80 transition-opacity">
           <div className="relative w-7 h-7 sm:w-8 sm:h-8">
             <Image
               src="/icon-192.png"
@@ -76,7 +77,7 @@ export function Navbar() {
               洪流二语习得
             </span>
           )}
-        </div>
+        </Link>
 
         {/* Dock Navigation */}
         <div className="flex-1 flex justify-center">
