@@ -87,6 +87,16 @@ const DEFAULT_MODELS: LLMModel[] = [
     temperature: 0.7
   },
   {
+    id: 'deepseek-v3-0324',
+    provider: 'mnapi',
+    name: 'deepseek-v3-0324',
+    displayName: 'DeepSeek V3 (3月更新)',
+    description: 'DeepSeek最新版本，2024年3月更新，性能更优',
+    iconSrc: '/icons/deepseek-logo.svg',
+    maxTokens: 4096,
+    temperature: 0.7
+  },
+  {
     id: 'deepseek-r1',
     provider: 'mnapi',
     name: 'deepseek-r1',
@@ -172,6 +182,16 @@ const DEFAULT_MODELS: LLMModel[] = [
     name: 'gemini-2.0-pro',
     displayName: 'Gemini 2.0 Pro',
     description: 'Google最强大的大语言模型',
+    iconSrc: '/icons/gemini-logo.svg',
+    maxTokens: 4096,
+    temperature: 0.7
+  },
+  {
+    id: 'gemini-2.5-pro-exp-03-25',
+    provider: 'mnapi',
+    name: 'gemini-2.5-pro-exp-03-25',
+    displayName: 'Gemini 2.5 Pro',
+    description: 'Google最新一代性能提升的大语言模型',
     iconSrc: '/icons/gemini-logo.svg',
     maxTokens: 4096,
     temperature: 0.7

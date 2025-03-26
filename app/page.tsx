@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { AnimatedButton } from '@/components/ui/animated-button';
 import { Features } from '@/components/home/Features';
 import { HowItWorks } from '@/components/home/HowItWorks';
@@ -9,6 +9,9 @@ import { SequentialTypewriter } from '@/components/ui/typewriter-text';
 
 export default function Home() {
   const [isMobile, setIsMobile] = useState(false);
+  const [scrollPosition, setScrollPosition] = useState(0);
+  const featuresRef = useRef<HTMLDivElement>(null);
+  const howItWorksRef = useRef<HTMLDivElement>(null);
 
   // 检测设备尺寸
   useEffect(() => {
@@ -19,6 +22,23 @@ export default function Home() {
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // 添加滚动监听
+  useEffect(() => {
+    const handleScroll = (e: Event) => {
+      const target = e.target as HTMLDivElement;
+      if (target) {
+        setScrollPosition(target.scrollTop);
+      }
+    };
+    
+    // 找到滚动容器并添加事件监听
+    const scrollContainer = document.querySelector('.overflow-auto') as HTMLDivElement;
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', handleScroll);
+      return () => scrollContainer.removeEventListener('scroll', handleScroll);
+    }
   }, []);
 
   // 桌面端使用打字机效果
@@ -48,25 +68,25 @@ export default function Home() {
     <div className="min-h-screen flex flex-col relative overflow-hidden">
       <MatrixBackground />
       
-      {/* Hero Section - 修复移动端高度问题 */}
-      <section className={`${isMobile ? 'min-h-[100vh]' : 'py-40'} flex-1 flex flex-col items-center justify-center pt-32 pb-10 sm:py-40 px-4 sm:px-6 lg:px-8`}>
-        <div className="max-w-7xl mx-auto text-center">
+      {/* Hero Section - 修改移动端布局使标题垂直居中 */}
+      <section className={`${isMobile ? 'min-h-[100vh] flex' : 'py-40'} flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8`}>
+        <div className={`${isMobile ? 'my-auto py-16' : ''} max-w-7xl mx-auto text-center`}>
           {/* 根据设备类型显示不同的标题 */}
           <div className="mb-4 px-2">
             {isMobile ? (
-              // 移动端显示紧凑的两行打字机效果，确保居中
-              <div className="space-y-2 max-w-xs mx-auto text-center">
+              // 移动端显示紧凑的两行打字机效果，增大字体并确保居中
+              <div className="space-y-3 max-w-xs mx-auto text-center">
                 <div className="flex justify-center">
                   <TypewriterEffectSmooth 
                     words={mobileTitleWords} 
-                    className="text-3xl font-bold tracking-tight text-center"
-                    cursorClassName="bg-purple-400 h-6 hidden"
+                    className="text-5xl font-bold tracking-tight text-center"
+                    cursorClassName="bg-purple-400 h-7 hidden"
                   />
                 </div>
-                <div className="flex justify-center">
+                <div className="flex justify-center py-2">
                   <TypewriterEffectSmooth 
                     words={mobileSubtitleWords} 
-                    className="text-xl font-bold tracking-tight text-center"
+                    className="text-2xl font-bold tracking-tight text-center"
                     cursorClassName="bg-purple-400 h-6"
                   />
                 </div>
@@ -93,20 +113,21 @@ export default function Home() {
           <AnimatedButton />
         </div>
         
-        {/* 移动端添加额外空间，推动Features完全移出初始视图 */}
-        {isMobile && <div className="mt-auto h-32"></div>}
+        {/* 移动端不再需要额外空间，使用flexbox自动居中 */}
       </section>
 
-      {/* Features - 调整移动端距离 */}
-      <div className={isMobile ? 'pt-16' : ''}>
+      {/* Features */}
+      <div ref={featuresRef} className={`${isMobile ? 'pt-16' : ''} relative z-10`}>
         <Features />
       </div>
 
       {/* How it Works */}
-      <HowItWorks />
+      <div ref={howItWorksRef} className="relative z-10">
+        <HowItWorks />
+      </div>
 
       {/* 添加页脚 */}
-      <footer className="w-full py-6 mt-auto border-t border-gray-800">
+      <footer className="w-full py-6 mt-auto border-t border-gray-800 relative z-10">
         <div className="container mx-auto px-4">
           <div className="flex flex-col items-center justify-center space-y-2 text-sm text-gray-400">
             <div>© 2025 洪流二语习得. 保留所有权利.</div>

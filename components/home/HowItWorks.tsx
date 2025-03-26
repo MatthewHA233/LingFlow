@@ -1,7 +1,7 @@
 'use client';
 
 import { FileText, Headphones, PlayCircle, UserPlus, BookOpen, Brain, Clock } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
@@ -41,11 +41,32 @@ const steps = [
 ];
 
 export function HowItWorks() {
+  const sectionRef = useRef<HTMLDivElement>(null);
   const stepsRef = useRef<(HTMLDivElement | null)[]>([]);
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
     const stepsElements = stepsRef.current;
+    const section = sectionRef.current;
+    
+    // 检测当前节是否可见的函数
+    const checkVisibility = () => {
+      if (!section) return;
+      
+      const rect = section.getBoundingClientRect();
+      // 如果元素顶部在视口内或刚好在视口下方
+      const isInView = rect.top < window.innerHeight && rect.bottom >= 0;
+      setIsVisible(isInView);
+    };
+    
+    // 在滚动容器上添加监听
+    const scrollContainer = document.querySelector('.overflow-auto');
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', checkVisibility);
+      // 初始检查
+      checkVisibility();
+    }
     
     // 标题动画
     if (titleRef.current) {
@@ -61,6 +82,7 @@ export function HowItWorks() {
           scrollTrigger: {
             trigger: titleRef.current,
             start: 'top bottom-=100',
+            scroller: '.overflow-auto', // 指定滚动容器
             toggleActions: 'play none none reverse'
           }
         }
@@ -100,6 +122,7 @@ export function HowItWorks() {
           scrollTrigger: {
             trigger: step,
             start: 'top bottom-=100',
+            scroller: '.overflow-auto', // 指定滚动容器
             toggleActions: 'play none none reverse'
           }
         }
@@ -128,10 +151,20 @@ export function HowItWorks() {
         });
       });
     });
+    
+    return () => {
+      if (scrollContainer) {
+        scrollContainer.removeEventListener('scroll', checkVisibility);
+      }
+      ScrollTrigger.getAll().forEach(trigger => trigger.kill());
+    };
   }, []);
 
   return (
-    <section className="py-20 px-4 sm:px-6 lg:px-8 bg-card/50 backdrop-blur-sm overflow-hidden w-full">
+    <section 
+      ref={sectionRef} 
+      className={`py-20 px-4 sm:px-6 lg:px-8 bg-card/50 backdrop-blur-sm w-full ${isVisible ? 'opacity-100' : 'opacity-80'} transition-opacity duration-500`}
+    >
       <div className="max-w-7xl mx-auto w-full">
         <h2 ref={titleRef} className="text-3xl font-bold text-center mb-12 bg-gradient-to-r from-white to-primary bg-clip-text text-transparent">
           使用步骤

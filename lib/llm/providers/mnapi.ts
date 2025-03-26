@@ -15,6 +15,11 @@ const MODEL_CONFIGS: Record<string, ModelAPIConfig> = {
     baseURL: process.env.DEEPSEEK_API_BASE || 'https://api.mnapi.com/v1',
     modelId: process.env.DEEPSEEK_MODEL || 'deepseek-v3'
   },
+  'deepseek-v3-0324': {
+    key: process.env.DEEPSEEK_API_KEY || 'sk-MZIjyym9OIvdrKOIXfH0dr9CVWafmgbZ6R8yCvMGnPkvtMO2',
+    baseURL: process.env.DEEPSEEK_API_BASE || 'https://api.mnapi.com/v1',
+    modelId: 'deepseek-v3-0324'
+  },
   'deepseek-r1': {
     key: process.env.DEEPSEEK_API_KEY || 'sk-MZIjyym9OIvdrKOIXfH0dr9CVWafmgbZ6R8yCvMGnPkvtMO2',
     baseURL: process.env.DEEPSEEK_API_BASE || 'https://api.mnapi.com/v1',
@@ -59,6 +64,11 @@ const MODEL_CONFIGS: Record<string, ModelAPIConfig> = {
     key: 'sk-rJBYjRrDbySViSs8MbXF0raV4HeqHq4adVUZaEth4ggHctVY',
     baseURL: 'https://api.mnapi.com/v1',
     modelId: 'gemini-2.0-pro-exp-02-05'
+  },
+  'gemini-2.5-pro-exp-03-25': {
+    key: 'sk-rJBYjRrDbySViSs8MbXF0raV4HeqHq4adVUZaEth4ggHctVY',
+    baseURL: 'https://api.mnapi.com/v1',
+    modelId: 'gemini-2.5-pro-exp-03-25'
   },
   'command-r': {
     key: 'sk-JLQZx7fOViLpdwoWE2wdTf69waiOq5kmmIqFGDBYs4SuPBf7',
