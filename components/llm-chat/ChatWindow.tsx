@@ -77,9 +77,9 @@ interface ChatSettings {
 // 更新默认模型列表
 const DEFAULT_MODELS: LLMModel[] = [
   {
-    id: 'deepseek-v3',
+    id: process.env.DEEPSEEK_MODEL || 'deepseek-v3',
     provider: 'mnapi',
-    name: 'deepseek-v3',
+    name: process.env.DEEPSEEK_MODEL || 'deepseek-v3',
     displayName: 'DeepSeek V3',
     description: '性能强大的多语言模型，支持中英文对话',
     iconSrc: '/icons/deepseek-logo.svg',
@@ -87,9 +87,9 @@ const DEFAULT_MODELS: LLMModel[] = [
     temperature: 0.7
   },
   {
-    id: 'deepseek-v3-0324',
+    id: process.env.DEEPSEEK_MODEL || 'deepseek-v3-0324',
     provider: 'mnapi',
-    name: 'deepseek-v3-0324',
+    name: process.env.DEEPSEEK_MODELE || 'deepseek-v3-0324',
     displayName: 'DeepSeek V3 (3月更新)',
     description: 'DeepSeek最新版本，2024年3月更新，性能更优',
     iconSrc: '/icons/deepseek-logo.svg',
@@ -97,9 +97,9 @@ const DEFAULT_MODELS: LLMModel[] = [
     temperature: 0.7
   },
   {
-    id: 'deepseek-r1',
+    id: process.env.DEEPSEEK_MODEL2 || 'deepseek-r1',
     provider: 'mnapi',
-    name: 'deepseek-r1',
+    name: process.env.DEEPSEEK_MODEL2 || 'deepseek-r1',
     displayName: 'DeepSeek R1',
     description: '极佳的开源推理模型，支持中英文对话',
     iconSrc: '/icons/deepseek-logo.svg',
@@ -423,6 +423,9 @@ export default function ChatWindow() {
           }
         }
       }
+      
+      // 切换对话后重置手动选择标志
+      setTimeout(() => setJustManuallySelected(false), 100);
     }
   };
   
@@ -1289,6 +1292,9 @@ export default function ChatWindow() {
                   setJustManuallySelected(true);
                   setShowModelSelector(false);
                   localStorage.setItem('selectedModel', JSON.stringify(model));
+                  
+                  // 添加计时器，5秒后重置手动选择标志
+                  setTimeout(() => setJustManuallySelected(false), 5000);
                 }}
                 onClose={() => setShowModelSelector(false)}
               />
