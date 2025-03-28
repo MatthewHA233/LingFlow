@@ -6,7 +6,7 @@ import { DraggableAudioPlayer } from './DraggableAudioPlayer';
 import { Book } from '@/types/book';
 import { supabase } from '@/lib/supabase-client';
 import { X, Mic, Menu, ChevronLeft, ChevronRight, Info, Undo, Pause, Play } from 'lucide-react';
-import { ContentBlock } from './ContentBlock';
+import { ContextBlocks } from './ContextBlocks';
 import { toast } from 'sonner';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { TerminalPopover } from '@/components/ui/TerminalPopover';
@@ -958,7 +958,7 @@ export function ReaderContent({ book }: ReaderContentProps) {
         >
           {/* 主语境块 */}
           <div className={hasSplitView ? 'col-span-1' : ''}>
-            <ContentBlock
+            <ContextBlocks
               block={block}
               resources={resources}
               onBlockUpdate={handleBlockUpdate}

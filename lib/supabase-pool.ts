@@ -10,7 +10,7 @@ let sql: postgres.Sql | null = null;
 let initializationError: Error | null = null;
 
 // 在文件顶部添加接口定义
-interface ContentBlock {
+interface ContextBlocks {
   parent_id: string;
   block_type: string;
   content: string;
@@ -239,7 +239,7 @@ async function batchProcessChapters(
     log('INFO', requestId, `✅ 批量创建章节记录完成，数量: ${chapterInsertResult.length}`);
     
     // 3. 创建所有内容块 - 批量处理
-    const allBlocks: ContentBlock[] = [];
+    const allBlocks: ContextBlocks[] = [];
     
     // 预处理所有块
     for (let i = 0; i < chapters.length; i++) {
@@ -284,8 +284,8 @@ async function batchProcessChapters(
   });
 }
 
-// insertBatch 函数现在可以使用 ContentBlock 接口
-async function insertBatch(transaction: postgres.Sql, batch: ContentBlock[]): Promise<void> {
+// insertBatch 函数现在可以使用 ContextBlocks 接口
+async function insertBatch(transaction: postgres.Sql, batch: ContextBlocks[]): Promise<void> {
   if (batch.length === 0) return;
   
   const columns = ['parent_id', 'block_type', 'content', 'order_index', 'metadata'] as const;

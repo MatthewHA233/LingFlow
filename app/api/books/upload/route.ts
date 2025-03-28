@@ -60,17 +60,17 @@ class Timer {
 }
 
 // 语境块类型定义
-interface ContentBlock {
+interface ContextBlocks {
   type: 'text' | 'heading_1' | 'heading_2' | 'heading_3' | 'heading_4' | 'heading_5' | 'heading_6' | 'image';
   content: string;
   metadata?: Record<string, any>;
 }
 
 // 解析章节内容为语境块
-function parseChapterContent(content: string): ContentBlock[] {
-  const blocks: ContentBlock[] = [];
+function parseChapterContent(content: string): ContextBlocks[] {
+  const blocks: ContextBlocks[] = [];
   const lines = content.split('\n');
-  let currentBlock: ContentBlock | null = null;
+  let currentBlock: ContextBlocks | null = null;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -95,7 +95,7 @@ function parseChapterContent(content: string): ContentBlock[] {
         const level = headingMatch[0].length;
         if (level <= 6) {
           blocks.push({
-            type: `heading_${level}` as ContentBlock['type'],
+            type: `heading_${level}` as ContextBlocks['type'],
             content: line.replace(/^#+\s*/, '').trim()
           });
         }

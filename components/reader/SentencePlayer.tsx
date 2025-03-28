@@ -621,10 +621,10 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
           // 设置成对齐进行中，防止页面刷新
           setIsAligningInProgress(true);
           
-          // 如果带有isProcessing标志，表示ContentBlock正在处理单词级对齐
-          // 不需要开始轮询，等待ContentBlock发送完成事件
+          // 如果带有isProcessing标志，表示ContextBlocks正在处理单词级对齐
+          // 不需要开始轮询，等待ContextBlocks发送完成事件
           if (isProcessing) {
-            console.log('ContentBlock正在处理单词级对齐，等待完成事件...');
+            console.log('ContextBlocks正在处理单词级对齐，等待完成事件...');
             return;
           }
         }
@@ -706,8 +706,8 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
                     // 清除完成状态
                     updateAlignmentCompleted(new Set());
                     
-                    // 发送单词更新事件，通知ContentBlock重新加载单词数据
-                    console.log('SentencePlayer: 发送单词更新事件，通知ContentBlock重新加载单词数据');
+                    // 发送单词更新事件，通知ContextBlocks重新加载单词数据
+                    console.log('SentencePlayer: 发送单词更新事件，通知ContextBlocks重新加载单词数据');
                     window.dispatchEvent(new CustomEvent('words-alignment-complete', {
                       detail: {
                         sentenceIds: Array.from(newCompletedIds),  // 所有被对齐的句子ID
@@ -830,8 +830,8 @@ export function SentencePlayer({ speechId, onTimeChange, currentTime = 0, isAlig
                 // 清除完成状态
                 updateAlignmentCompleted(new Set());
                 
-                // 发送单词更新事件，通知ContentBlock重新加载单词数据
-                console.log('SentencePlayer: 发送单词更新事件，通知ContentBlock重新加载单词数据');
+                // 发送单词更新事件，通知ContextBlocks重新加载单词数据
+                console.log('SentencePlayer: 发送单词更新事件，通知ContextBlocks重新加载单词数据');
                 window.dispatchEvent(new CustomEvent('words-alignment-complete', {
                   detail: {
                     sentenceIds: Array.from(newCompletedIds),  // 所有被对齐的句子ID

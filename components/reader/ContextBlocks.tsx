@@ -9,7 +9,7 @@ import Image from 'next/image';
 import { AudioController, AUDIO_EVENTS } from '@/lib/audio-controller';
 import { AnimatePresence, motion } from "framer-motion";
 
-interface ContentBlockProps {
+interface ContextBlocksProps {
   block: {
     id: string;
     block_type: string;
@@ -40,7 +40,7 @@ const ACTIVE_BLOCK_CHANGED_EVENT = 'active-block-changed';
 // 添加这行代码，定义 CLEAR_ACTIVE_SENTENCE_EVENT
 const CLEAR_ACTIVE_SENTENCE_EVENT = 'clear-active-sentences';
 
-export function ContentBlock({ 
+export function ContextBlocks({ 
   block, 
   resources, 
   onBlockUpdate,
@@ -56,7 +56,7 @@ export function ContentBlock({
   onPlayModeChange,
   onShowSplitView,
   activeBlockId,
-}: ContentBlockProps) {
+}: ContextBlocksProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropPosition, setDropPosition] = useState<'before' | 'after' | null>(null);
@@ -150,7 +150,7 @@ export function ContentBlock({
 
   // 完全重写的playSentence函数
   const playSentence = useCallback((sentence: any, index: number) => {
-    console.log('[ContentBlock] 播放句子', {
+    console.log('[ContextBlocks] 播放句子', {
       index,
       sentence,
       playMode,
@@ -160,7 +160,7 @@ export function ContentBlock({
     
     // 如果点击当前播放的句子，则停止播放
     if (activeIndex === index && isPlaying) {
-      console.log('[ContentBlock] 停止当前句子播放');
+      console.log('[ContextBlocks] 停止当前句子播放');
       AudioController.stop();
       setIsPlaying(false);
       setActiveIndex(null);
@@ -169,7 +169,7 @@ export function ContentBlock({
     }
     
     // 广播当前活跃块ID
-    console.log('[ContentBlock] 广播活跃块ID', { blockId: block.id });
+    console.log('[ContextBlocks] 广播活跃块ID', { blockId: block.id });
     window.dispatchEvent(new CustomEvent(ACTIVE_BLOCK_CHANGED_EVENT, {
       detail: { activeBlockId: block.id }
     }));
@@ -179,7 +179,7 @@ export function ContentBlock({
     
     // 检查句子数据
     if (!sentence || !audioUrl) {
-      console.error('[ContentBlock] 无法播放：句子数据或音频URL缺失', { sentence, audioUrl });
+      console.error('[ContextBlocks] 无法播放：句子数据或音频URL缺失', { sentence, audioUrl });
       return;
     }
     
@@ -188,11 +188,11 @@ export function ContentBlock({
     const endTime = sentence.end_time;
     
     if (beginTime === undefined || endTime === undefined) {
-      console.error('[ContentBlock] 句子缺少时间信息', sentence);
+      console.error('[ContextBlocks] 句子缺少时间信息', sentence);
       return;
     }
     
-    console.log(`[ContentBlock] 准备播放句子`, {
+    console.log(`[ContextBlocks] 准备播放句子`, {
       index,
       beginTime,
       endTime,
@@ -215,7 +215,7 @@ export function ContentBlock({
       loop: shouldLoop,
       onEnd: () => {
         if (!shouldLoop) {
-          console.log('[ContentBlock] 非循环模式播放结束，清除状态');
+          console.log('[ContextBlocks] 非循环模式播放结束，清除状态');
           setActiveIndex(null);
           setIsPlaying(false);
           setActiveWordId(null);
@@ -272,7 +272,7 @@ export function ContentBlock({
           inAnySentenceRange = true;
 
           if (activeIndex !== i) {
-            console.log(`[ContentBlock] 进入新句子范围`, {
+            console.log(`[ContextBlocks] 进入新句子范围`, {
               index: i,
               currentTime: adjustedTime,
               beginTime: sentence.begin_time,
@@ -316,7 +316,7 @@ export function ContentBlock({
 
       if (!inAnySentenceRange) {
         if (activeIndex !== null || isPlaying) {
-          console.log('[ContentBlock] 超出句子范围，清除高亮');
+          console.log('[ContextBlocks] 超出句子范围，清除高亮');
           setActiveIndex(null);
           setIsPlaying(false);
           setActiveWordId(null);
@@ -554,7 +554,7 @@ export function ContentBlock({
           toast("正在进行文本对齐", { description: "请稍候，正在处理对齐..." });
           
           // 发送对齐开始事件（仅记录日志，不实际执行操作）
-          console.log('ContentBlock: 发送对齐开始事件');
+          console.log('ContextBlocks: 发送对齐开始事件');
           
           // 实际执行对齐操作
           let result;
@@ -585,11 +585,11 @@ export function ContentBlock({
           
           if (result.success) {
             // 对齐成功处理
-            console.log('ContentBlock: 对齐成功, 发送更新事件:', result);
+            console.log('ContextBlocks: 对齐成功, 发送更新事件:', result);
             
             // 获取所有被对齐的句子ID
             const alignedSentenceIds = result.alignedSentences.map(s => s.sentenceId);
-            console.log('ContentBlock: 被对齐的句子IDs:', alignedSentenceIds);
+            console.log('ContextBlocks: 被对齐的句子IDs:', alignedSentenceIds);
             
             // 发送对齐更新事件，传递所有被对齐的句子ID
             window.dispatchEvent(new CustomEvent('sentence-alignment-update', {
@@ -609,10 +609,10 @@ export function ContentBlock({
             // 1. 保存基础数据
             // 2. 执行单词级对齐
             // 3. 创建元数据关联
-            console.log('ContentBlock: TextAlignmentService处理已完成，等待数据库更新...');
+            console.log('ContextBlocks: TextAlignmentService处理已完成，等待数据库更新...');
             
             // 直接发送成功事件，不再使用轮询检查
-            console.log('ContentBlock: 发送对齐完成事件');
+            console.log('ContextBlocks: 发送对齐完成事件');
             window.dispatchEvent(new CustomEvent('sentence-alignment-complete', {
               detail: {
                 sentenceId: data.sentenceId,
@@ -634,7 +634,7 @@ export function ContentBlock({
             toast.success("文本对齐完成");
           } else {
             // 对齐失败处理
-            console.error('ContentBlock: 对齐失败:', result.message);
+            console.error('ContextBlocks: 对齐失败:', result.message);
             
             // 发送失败事件，让SentencePlayer知道可以取消对齐状态
             window.dispatchEvent(new CustomEvent('sentence-alignment-update', {
@@ -1080,7 +1080,7 @@ export function ContentBlock({
     );
   };
 
-  // 在ContentBlock中添加对全局循环模式的响应
+  // 在ContextBlocks中添加对全局循环模式的响应
   useEffect(() => {
     // 监听全局循环模式变更
     const handleLoopModeChange = (e: CustomEvent) => {
@@ -1195,7 +1195,7 @@ export function ContentBlock({
   useEffect(() => {
     if (!audioUrl || activeIndex === null) return;
     
-    console.log('[ContentBlock] 播放模式变化', {
+    console.log('[ContextBlocks] 播放模式变化', {
       playMode,
       activeIndex,
       audioUrl
@@ -1208,7 +1208,7 @@ export function ContentBlock({
       const sentence = embeddedSentences.get(sentenceId);
       
       if (sentence) {
-        console.log('[ContentBlock] 当前活动句子', {
+        console.log('[ContextBlocks] 当前活动句子', {
           sentenceId,
           beginTime: sentence.begin_time,
           endTime: sentence.end_time
@@ -1217,7 +1217,7 @@ export function ContentBlock({
         // 根据播放模式设置循环
         switch (playMode) {
           case 'sentence':
-            console.log('[ContentBlock] 切换到句子循环模式');
+            console.log('[ContextBlocks] 切换到句子循环模式');
             AudioController.setPlayMode('sentence', sentence.begin_time, sentence.end_time);
             break;
           
@@ -1227,7 +1227,7 @@ export function ContentBlock({
             const lastSentence = embeddedSentences.get(sentenceIds[sentenceIds.length - 1]);
             
             if (firstSentence && lastSentence) {
-              console.log('[ContentBlock] 切换到块循环模式', {
+              console.log('[ContextBlocks] 切换到块循环模式', {
                 blockStart: firstSentence.begin_time,
                 blockEnd: lastSentence.end_time
               });
@@ -1244,7 +1244,7 @@ export function ContentBlock({
     const handleAudioLoop = (e: CustomEvent) => {
       const { startTime, endTime, mode } = e.detail;
       
-      console.log('[ContentBlock] 收到循环事件', {
+      console.log('[ContextBlocks] 收到循环事件', {
         startTime,
         endTime,
         mode,
@@ -1260,7 +1260,7 @@ export function ContentBlock({
         const blockStart = firstSentence.begin_time;
         const blockEnd = lastSentence.end_time;
         
-        console.log('[ContentBlock] 检查循环范围', {
+        console.log('[ContextBlocks] 检查循环范围', {
           blockStart,
           blockEnd,
           loopStart: startTime,
@@ -1273,7 +1273,7 @@ export function ContentBlock({
           for (let i = 0; i < sentenceIds.length; i++) {
             const sentence = embeddedSentences.get(sentenceIds[i]);
             if (sentence && sentence.begin_time === startTime) {
-              console.log('[ContentBlock] 找到循环句子', {
+              console.log('[ContextBlocks] 找到循环句子', {
                 index: i,
                 sentenceId: sentenceIds[i]
               });
@@ -1331,7 +1331,7 @@ export function ContentBlock({
     };
   }, [getSentenceIdsFromContent, embeddedSentences]);
 
-  // 添加ContentBlock组件的useEffect来处理单词对齐完成事件
+  // 添加ContextBlocks组件的useEffect来处理单词对齐完成事件
   useEffect(() => {
     // 监听words-alignment-complete事件，刷新单词数据
     const handleWordsAlignmentComplete = (e: CustomEvent) => {
@@ -1343,7 +1343,7 @@ export function ContentBlock({
       
       // 检查是否是针对当前块的事件
       if (detail.blockId === block.id) {
-        console.log('ContentBlock: 收到单词对齐完成事件，刷新单词数据', detail);
+        console.log('ContextBlocks: 收到单词对齐完成事件，刷新单词数据', detail);
         
         // 重新加载涉及到的句子数据
         if (detail.sentenceIds && detail.sentenceIds.length > 0) {
