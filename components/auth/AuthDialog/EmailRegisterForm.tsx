@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -27,9 +27,10 @@ const emailRegisterSchema = z.object({
 
 interface EmailRegisterFormProps {
   onSuccess: () => void;
+  prefillEmail?: string;
 }
 
-export function EmailRegisterForm({ onSuccess }: EmailRegisterFormProps) {
+export const EmailRegisterForm = forwardRef(({ onSuccess, prefillEmail = '' }: EmailRegisterFormProps, ref) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showVerificationTip, setShowVerificationTip] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
@@ -40,11 +41,23 @@ export function EmailRegisterForm({ onSuccess }: EmailRegisterFormProps) {
   const form = useForm<z.infer<typeof emailRegisterSchema>>({
     resolver: zodResolver(emailRegisterSchema),
     defaultValues: {
-      email: '',
+      email: prefillEmail || '',
       password: '',
       confirmPassword: '',
     },
   });
+
+  useEffect(() => {
+    if (prefillEmail) {
+      form.setValue('email', prefillEmail);
+    }
+  }, [prefillEmail, form]);
+
+  useImperativeHandle(ref, () => ({
+    setEmail: (email: string) => {
+      form.setValue('email', email);
+    }
+  }));
 
   useEffect(() => {
     const handleMouseUp = () => {
@@ -229,4 +242,6 @@ export function EmailRegisterForm({ onSuccess }: EmailRegisterFormProps) {
       </Form>
     </div>
   );
-} 
+});
+
+EmailRegisterForm.displayName = 'EmailRegisterForm'; 

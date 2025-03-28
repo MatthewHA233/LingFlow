@@ -8,10 +8,6 @@ import { NextRequest } from 'next/server'
 import fs from 'fs'
 import os from 'os'
 import { join } from 'path'
-import { getPool } from '@/lib/supabase-pool'
-import { batchProcessChapters } from '@/lib/supabase-pool'
-import { uploadToOSS } from '@/lib/oss-client'
-import OSS from 'ali-oss'
 
 // 日志记录功能
 const colors = {
@@ -309,10 +305,7 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
     log('INFO', requestId, `📋 表单数据解析完成，处理阶段: ${stage}, 用户ID: ${userId}, 书籍ID: ${bookId}`);
     log('DEBUG', requestId, `⏱️ 表单解析耗时: ${timer.getElapsed() - timer.getElapsed('formStart')}ms`);
     
-    const sql = getPool(requestId);  // 获取连接池实例
-    
-    // 使用事务包装所有数据库操作
-    return await sql.begin(async (transaction) => {
+    // 第一阶段：验证用户和初始化 (0-30%)
     if (stage === 1) {
       log('INFO', requestId, '🔑 阶段1: 开始验证用户身份');
       timer.mark('stage1Start');
@@ -379,6 +372,7 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
       }
     }
 
+    // 第二阶段：上传EPUB文件和基本信息 (30-50%)
     if (stage === 2) {
       log('INFO', requestId, '📚 阶段2: 开始上传EPUB文件');
       timer.mark('stage2Start');
@@ -405,7 +399,7 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
               id: bookId,
               title: parsedData.title,
               author: parsedData.author,
-              epub_path: `https://${process.env.OSS_BUCKET}.${process.env.OSS_REGION}.aliyuncs.com/books/${userId}/${bookId}/${file.name}`,
+              epub_path: `https://chango-url.oss-cn-beijing.aliyuncs.com/books/${userId}/${bookId}/${file.name}`,
               user_id: userId,
               metadata: parsedData.metadata,
               created_at: new Date().toISOString(),
@@ -426,60 +420,73 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
       
       log('DEBUG', requestId, `📦 文件大小: ${(file.size / 1024 / 1024).toFixed(2)}MB, 书名: ${bookData.title}`);
       
-        // 1. 先创建书籍记录
-        log('DEBUG', requestId, '📝 创建书籍记录');
-        timer.mark('bookCreateStart');
-        
-        await transaction.unsafe(
-          `INSERT INTO books (
-            id, user_id, title, author, epub_path, metadata, 
-            created_at, updated_at, cover_url, description
-          ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $7, $8, $9
-          )`,
-          [
-            bookId,
-            userId,
-            bookData.title,
-            bookData.author || '未知作者',
-            `https://${process.env.OSS_BUCKET}.${process.env.OSS_REGION}.aliyuncs.com/books/${userId}/${bookId}/${file.name}`,
-            bookData.metadata || {},
-            new Date().toISOString(),
-            bookData.coverUrl || '',
-            bookData.metadata?.description || ''
-          ]
-        );
+      const { default: OSS } = await import('ali-oss');
+      log('DEBUG', requestId, '🔄 初始化OSS客户端');
+      
+    const client = new OSS({
+      region: 'oss-cn-beijing',
+        accessKeyId: process.env.ALIYUN_AK_ID || '',
+        accessKeySecret: process.env.ALIYUN_AK_SECRET || '',
+      bucket: 'chango-url',
+      secure: true
+      });
 
-        timer.mark('bookCreateEnd');
-        log('INFO', requestId, `✅ 书籍记录创建成功: ${bookId}, 耗时: ${timer.getElapsed('bookCreateEnd') - timer.getElapsed('bookCreateStart')}ms`);
-
-        // 2. 然后上传EPUB文件
       const baseDir = `books/${userId}/${bookId}`;
       const epubPath = `${baseDir}/${path.basename(file.name)}`;
+      log('DEBUG', requestId, `⏱️ 开始转换文件为ArrayBuffer`);
+      
+      const arrayBuffer = await file.arrayBuffer();
+      const epubBuffer = Buffer.from(arrayBuffer);
+      
       log('DEBUG', requestId, `⏱️ 开始上传EPUB到OSS: ${epubPath}`);
       timer.mark('epubUploadStart');
       
-        const epubBuffer = Buffer.from(await file.arrayBuffer());
-        const epubResult = await uploadToOSS(epubBuffer, epubPath);
+    const epubResult = await client.put(epubPath, epubBuffer, {
+      mime: 'application/epub+zip',
+        headers: { 'Cache-Control': 'max-age=31536000' }
+      });
       
       timer.mark('epubUploadEnd');
       log('INFO', requestId, `✅ EPUB上传成功: ${epubResult.url}，耗时: ${timer.getElapsed('epubUploadEnd') - timer.getElapsed('epubUploadStart')}ms`);
 
-        return NextResponse.json({
-          progress: 50,
-          book: {
+      log('DEBUG', requestId, `⏱️ 开始计时: 创建书籍记录`);
+      timer.mark('bookCreateStart');
+
+      const { data: savedBook, error: bookError } = await supabase
+        .from('books')
+        .insert([{
           id: bookId,
           title: bookData.title,
-            author: bookData.author || '未知作者',
-            epub_path: `https://${process.env.OSS_BUCKET}.${process.env.OSS_REGION}.aliyuncs.com/books/${userId}/${bookId}/${file.name}`,
+          author: bookData.author,
+          epub_path: epubResult.url.replace('http://', 'https://'),
           user_id: userId,
           metadata: bookData.metadata || {},
           created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        });
-      }
+          updated_at: new Date().toISOString(),
+          cover_url: bookData.coverUrl || '',
+          audio_path: '',
+          description: bookData.metadata?.description || ''
+        }])
+        .select()
+        .single();
 
+      timer.mark('bookCreateEnd');
+      
+      if (bookError) {
+        log('ERROR', requestId, `❌ 创建书籍记录失败`, bookError);
+        throw bookError;
+      }
+      
+      log('INFO', requestId, `✅ 书籍记录创建成功: ${savedBook.id}, 耗时: ${timer.getElapsed('bookCreateEnd') - timer.getElapsed('bookCreateStart')}ms`);
+      log('INFO', requestId, `✅ 阶段2完成，总耗时: ${timer.getElapsed() - timer.getElapsed('stage2Start')}ms`);
+
+      return NextResponse.json({
+        progress: 50,
+        book: savedBook
+      });
+    }
+
+    // 第三阶段：处理资源文件 (50-70%)
     if (stage === 3) {
       log('INFO', requestId, '🖼️ 阶段3: 开始处理资源文件');
       timer.mark('stage3Start');
@@ -508,11 +515,12 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
       
       const arrayBuffer = await file.arrayBuffer();
       
+      const { default: OSS } = await import('ali-oss');
       const client = new OSS({
-        region: process.env.OSS_REGION!,
-        accessKeyId: process.env.ALIYUN_AK_ID!,
-        accessKeySecret: process.env.ALIYUN_AK_SECRET!,
-        bucket: process.env.OSS_BUCKET!,
+        region: 'oss-cn-beijing',
+        accessKeyId: process.env.ALIYUN_AK_ID || '',
+        accessKeySecret: process.env.ALIYUN_AK_SECRET || '',
+        bucket: 'chango-url',
         secure: true
       });
 
@@ -549,7 +557,10 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
             log('DEBUG', requestId, `⏱️ 上传资源: ${resourcePath}`);
             timer.mark(`resourceUpload-${normalizedPath}`);
             
-              const uploadResult = await uploadToOSS(imageBuffer, resourcePath);
+            await client.put(resourcePath, imageBuffer, {
+              mime: resource['media-type'] || getMimeType(normalizedPath),
+              headers: { 'Cache-Control': 'max-age=31536000' }
+            });
             
             timer.mark(`resourceUploadEnd-${normalizedPath}`);
             log('DEBUG', requestId, `✅ 资源上传成功: ${resourcePath}, 耗时: ${timer.getElapsed(`resourceUploadEnd-${normalizedPath}`) - timer.getElapsed(`resourceUpload-${normalizedPath}`)}ms`);
@@ -557,7 +568,7 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
             resourceUploads.push({
               book_id: bookId,
               original_path: normalizedPath,
-                oss_path: uploadResult.url,
+              oss_path: `https://chango-url.oss-cn-beijing.aliyuncs.com/${resourcePath}`,
               resource_type: 'image',
               mime_type: resource['media-type'] || getMimeType(normalizedPath)
             });
@@ -580,31 +591,9 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
         log('DEBUG', requestId, `⏱️ 开始保存资源记录到数据库，数量: ${resourceUploads.length}`);
         timer.mark('resourceSaveStart');
         
-          // 修改为批量插入语法
-          const query = `
-            INSERT INTO book_resources 
-              (book_id, original_path, oss_path, resource_type, mime_type)
-            SELECT 
-              $1::uuid,
-              unnest($2::text[]),
-              unnest($3::text[]),
-              unnest($4::text[]),
-              unnest($5::text[])
-          `;
-
-          const result = await transaction.unsafe<Array<{id: string}>>(
-            query,
-            [
-              bookId,
-              resourceUploads.map(r => r.original_path),
-              resourceUploads.map(r => r.oss_path),
-              resourceUploads.map(r => r.resource_type),
-              resourceUploads.map(r => r.mime_type)
-            ]
-          );
+        const { error: resourceError } = await supabase.from('book_resources').insert(resourceUploads);
         
         timer.mark('resourceSaveEnd');
-          const resourceError = result.length === 0 ? new Error('Failed to insert resources') : null;
         if (resourceError) {
           log('ERROR', requestId, `❌ 保存资源记录失败`, resourceError);
         } else {
@@ -620,6 +609,7 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
       });
     }
 
+    // 第四阶段：处理章节内容 (70-100%)
     if (stage === 4) {
       log('INFO', requestId, '📝 阶段4: 开始处理章节内容');
       timer.mark('stage4Start');
@@ -636,42 +626,111 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
       
       log('DEBUG', requestId, `📚 处理 ${bookData.chapters.length} 个章节`);
       
-        // 预处理章节和块
-        const chaptersWithBlocks = bookData.chapters.map((chapter: UploadChapter) => ({
+      const chapterPromises = bookData.chapters.map(async (chapter: UploadChapter, i: number) => {
+        try {
+          log('DEBUG', requestId, `⏱️ 开始处理第 ${i + 1} 章: ${chapter.title}`);
+          timer.mark(`chapter-${i}-start`);
+          
+          const { data: contentParent, error: parentError } = await supabase
+            .from('content_parents')
+            .insert({
+              content_type: 'chapter',
               title: chapter.title,
-          content: chapter.content,
-          blocks: parseChapterContent(chapter.content)
-        }));
-        
-        // 使用优化后的批量处理函数
-        timer.mark('batchStart');
-        const { chapterIds, blockCount } = await batchProcessChapters(
-          requestId,
-          bookId,
-          userId,
-          chaptersWithBlocks
-        );
-        timer.mark('batchEnd');
-        
-        log('INFO', requestId, `✅ 章节批处理完成，章节数: ${chapterIds.length}，内容块数: ${blockCount}，耗时: ${timer.getElapsed('batchEnd') - timer.getElapsed('batchStart')}ms`);
+              user_id: userId,
+              metadata: {
+                book_id: bookId,
+                chapter_index: i
+              }
+            })
+            .select('id')
+            .single();
+
+          if (parentError || !contentParent) {
+            log('ERROR', requestId, `❌ 创建 content_parent 失败，章节: ${i + 1}`, parentError);
+            throw new Error('创建 content_parent 失败');
+          }
+
+          log('DEBUG', requestId, `✓ 创建章节父记录成功: ${contentParent.id}`);
+
+          const { data: savedChapter, error: chapterError } = await supabase
+            .from('chapters')
+            .insert({
+              book_id: bookId,
+              title: chapter.title,
+              order_index: i,
+              parent_id: contentParent.id
+            })
+            .select()
+            .single();
+
+          if (chapterError || !savedChapter) {
+            log('ERROR', requestId, `❌ 创建 chapter 失败，章节: ${i + 1}`, chapterError);
+            throw new Error('创建 chapter 失败');
+          }
+          
+          log('DEBUG', requestId, `✓ 创建章节记录成功: ${savedChapter.id}`);
+          log('DEBUG', requestId, `⏱️ 开始解析章节内容块，章节: ${i + 1}`);
+          timer.mark(`chapter-${i}-parse`);
+
+          const blocks = parseChapterContent(chapter.content);
+          
+          timer.mark(`chapter-${i}-parsed`);
+          log('DEBUG', requestId, `✓ 章节内容解析完成，共 ${blocks.length} 个块，耗时: ${timer.getElapsed(`chapter-${i}-parsed`) - timer.getElapsed(`chapter-${i}-parse`)}ms`);
+          
+          const batchSize = 50;
+          const blockPromises = [];
+          
+          log('DEBUG', requestId, `⏱️ 开始保存章节内容块，分 ${Math.ceil(blocks.length / batchSize)} 批`);
+          timer.mark(`chapter-${i}-save-blocks`);
+          
+          for (let j = 0; j < blocks.length; j += batchSize) {
+            const batch = blocks.slice(j, j + batchSize).map((block, index) => ({
+              parent_id: contentParent.id,
+              block_type: block.type,
+              content: block.content,
+              order_index: j + index,
+              metadata: block.metadata || {}
+            }));
+
+            blockPromises.push(
+              supabase.from('context_blocks').insert(batch)
+            );
+          }
+
+          await Promise.all(blockPromises);
+          
+          timer.mark(`chapter-${i}-end`);
+          log('INFO', requestId, `✅ 章节 ${i + 1} 处理完成，耗时: ${timer.getElapsed(`chapter-${i}-end`) - timer.getElapsed(`chapter-${i}-start`)}ms`);
+          
+          return savedChapter;
+        } catch (error) {
+          log('ERROR', requestId, `❌ 处理第 ${i + 1} 章时出错:`, error);
+          throw error;
+        }
+      });
+
+      log('DEBUG', requestId, `⏱️ 等待所有章节处理完成`);
+      timer.mark('allChaptersStart');
+
+      const savedChapters = await Promise.all(chapterPromises);
+      
+      timer.mark('allChaptersEnd');
+      log('INFO', requestId, `✅ 所有章节处理完成，总章节数: ${savedChapters.length}，耗时: ${timer.getElapsed('allChaptersEnd') - timer.getElapsed('allChaptersStart')}ms`);
+      log('INFO', requestId, `✅ 阶段4完成，总耗时: ${timer.getElapsed() - timer.getElapsed('stage4Start')}ms`);
 
       const totalTime = timer.getElapsed();
       log('INFO', requestId, `✅ 书籍上传流程全部完成，总耗时: ${totalTime}ms`);
       log('INFO', requestId, `⏱️ 整体请求完成, 耗时: ${totalTime}ms`);
+      log('DEBUG', requestId, `📊 内存使用 (正常结束): ${process.memoryUsage().heapUsed / 1024 / 1024}MB`);
 
       return NextResponse.json({
         progress: 100,
-          chapters: chapterIds.map((id: string, index: number): ChapterResult => ({
-            id,
-            title: bookData.chapters[index].title,
-            order_index: index
-          }))
+        chapters: savedChapters
       });
     }
 
     log('ERROR', requestId, `❌ 无效的处理阶段: ${stage}`);
     return NextResponse.json({ error: '无效的处理阶段' }, { status: 400 });
-    });
   } catch (error: any) {
     const totalTime = timer.getElapsed();
     log('ERROR', requestId, `❌ 上传处理失败，总耗时: ${totalTime}ms`, error);
@@ -898,25 +957,4 @@ interface FormDataResponse {
     arrayBuffer: () => Promise<ArrayBuffer>;
   } | null;
   error?: string;
-}
-
-// 1. 修复数据库查询返回类型
-interface BookInsertResult extends Array<{id: string}> {
-  error?: any;
-}
-
-// 2. 修复资源插入的类型
-interface ResourceInsertResult extends Array<{id: string}> {
-  count: number;
-  error?: any;
-}
-
-// 3. 导出 batchProcessChapters
-export { batchProcessChapters } from '@/lib/supabase-pool';
-
-// 4. 添加类型定义
-interface ChapterResult {
-  id: string;
-  title: string;
-  order_index: number;
 } 

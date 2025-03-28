@@ -22,6 +22,8 @@ interface AuthState {
   updatePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   deleteAccount: () => Promise<void>;
   checkRole: () => Promise<string | null>;
+  checkEmailInOldAuth: (email: string) => Promise<boolean>;
+  deleteFromAuthOld: (email: string) => Promise<void>;
 }
 
 // 缓存用户角色
@@ -92,6 +94,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
         console.log('用户 profile 创建成功');
         set({ role: 'user' });
+        
+        // 注册成功后，尝试从旧表中删除对应邮箱
+        try {
+          await get().deleteFromAuthOld(email);
+        } catch (deleteError) {
+          console.error('删除旧表邮箱记录失败:', deleteError);
+          // 不影响主流程，所以只记录错误不抛出
+        }
+        
         return { data };
       } else {
         console.error('注册失败：未能创建用户');
@@ -347,6 +358,65 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ user: null, session: null, role: null });
     } catch (error) {
       console.error('账号注销失败:', error);
+      throw error;
+    }
+  },
+
+  checkEmailInOldAuth: async (email: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('auth_old')
+        .select('email')
+        .eq('email', email)
+        .single();
+      
+      if (error) {
+        if (error.code === 'PGSQL_ERROR') {
+          console.error('数据表不存在或查询错误:', error);
+        } else if (error.code !== 'PGSQL_ERROR') {
+          console.error('检查旧用户表出错:', error);
+        }
+        return false;
+      }
+      
+      return !!data;
+    } catch (error) {
+      console.error('检查旧用户表出错:', error);
+      return false;
+    }
+  },
+
+  deleteFromAuthOld: async (email: string) => {
+    try {
+      console.log('检查并删除旧表中的邮箱:', email);
+      // 先检查邮箱是否存在于旧表
+      const { data: existingData, error: checkError } = await supabase
+        .from('auth_old')
+        .select('email')
+        .eq('email', email)
+        .single();
+      
+      if (checkError) {
+        // 如果是因为找不到记录导致的错误，就不需要删除
+        if (checkError.code === 'PGSQL_ERROR' || checkError.message?.includes('No rows found')) {
+          console.log('旧表中不存在该邮箱，无需删除');
+          return;
+        }
+        throw checkError;
+      }
+      
+      // 如果找到了记录，就删除它
+      if (existingData) {
+        const { error: deleteError } = await supabase
+          .from('auth_old')
+          .delete()
+          .eq('email', email);
+        
+        if (deleteError) throw deleteError;
+        console.log('成功从旧表中删除邮箱:', email);
+      }
+    } catch (error) {
+      console.error('从旧表中删除邮箱失败:', error);
       throw error;
     }
   },

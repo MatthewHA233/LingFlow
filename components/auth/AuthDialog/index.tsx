@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EmailLoginForm } from './EmailLoginForm';
 import { EmailRegisterForm } from './EmailRegisterForm';
 import { WechatLogin } from './WechatLogin';
+import { useState, useRef } from 'react';
 
 interface AuthDialogProps {
   open: boolean;
@@ -13,6 +14,15 @@ interface AuthDialogProps {
 }
 
 export function AuthDialog({ open, onOpenChange, defaultTab = 'login' }: AuthDialogProps) {
+  const [activeTab, setActiveTab] = useState<'login' | 'register'>(defaultTab);
+  const [prefillEmail, setPrefillEmail] = useState<string>('');
+  const registerFormRef = useRef<any>(null);
+
+  const handleSwitchToRegister = (email: string) => {
+    setPrefillEmail(email);
+    setActiveTab('register');
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-gray-900 border-gray-800 text-white sm:max-w-[425px]">
@@ -22,7 +32,7 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'login' }: AuthDia
         <DialogDescription className="text-center text-sm text-gray-400">
           登录后即可访问您的专属语境库和锚点域
         </DialogDescription>
-        <Tabs defaultValue={defaultTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'login' | 'register')} className="w-full">
           <TabsList className="grid w-full grid-cols-2 bg-gray-800/50 p-1">
             <TabsTrigger 
               value="register" 
@@ -39,7 +49,10 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'login' }: AuthDia
           </TabsList>
           <div className="mt-6 space-y-4">
             <TabsContent value="login" className="space-y-4 m-0">
-              <EmailLoginForm onSuccess={() => onOpenChange(false)} />
+              <EmailLoginForm 
+                onSuccess={() => onOpenChange(false)} 
+                onSwitchToRegister={handleSwitchToRegister}
+              />
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t border-gray-700" />
@@ -51,7 +64,11 @@ export function AuthDialog({ open, onOpenChange, defaultTab = 'login' }: AuthDia
               <WechatLogin onSuccess={() => onOpenChange(false)} />
             </TabsContent>
             <TabsContent value="register" className="space-y-4 m-0">
-              <EmailRegisterForm onSuccess={() => onOpenChange(false)} />
+              <EmailRegisterForm 
+                onSuccess={() => onOpenChange(false)} 
+                prefillEmail={prefillEmail}
+                ref={registerFormRef}
+              />
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t border-gray-700" />
