@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +17,8 @@ export const Tabs = ({
   tabClassName,
   contentClassName,
   disable3D = false,
+  activeTab,
+  onTabChange,
 }: {
   tabs: Tab[];
   containerClassName?: string;
@@ -24,21 +26,87 @@ export const Tabs = ({
   tabClassName?: string;
   contentClassName?: string;
   disable3D?: boolean;
+  activeTab?: string;
+  onTabChange?: (tabValue: string) => void;
 }) => {
-  const [active, setActive] = useState<Tab>(propTabs[0]);
-  const [tabs, setTabs] = useState<Tab[]>(propTabs);
+  // 初始化内部状态
+  const getInitialActiveTab = () => {
+    if (activeTab) {
+      return propTabs.find(tab => tab.value === activeTab) || propTabs[0];
+    }
+    return propTabs[0];
+  };
+
+  const getInitialTabsOrder = () => {
+    if (activeTab && !disable3D) {
+      const targetIndex = propTabs.findIndex(tab => tab.value === activeTab);
+      if (targetIndex > 0) {
+        const newTabs = [...propTabs];
+        const selectedTab = newTabs.splice(targetIndex, 1);
+        newTabs.unshift(selectedTab[0]);
+        return newTabs;
+      }
+    }
+    return propTabs;
+  };
+
+  const [internalActive, setInternalActive] = useState<Tab>(getInitialActiveTab);
+  const [tabs, setTabs] = useState<Tab[]>(getInitialTabsOrder);
+
+  // 计算当前活跃的tab
+  const active = activeTab 
+    ? propTabs.find(tab => tab.value === activeTab) || propTabs[0]
+    : internalActive;
+
+  // 当外部activeTab变化时，同步内部状态（避免初始化时的重复处理）
+  useEffect(() => {
+    if (activeTab) {
+      console.log('3D-tabs收到activeTab变化:', activeTab); // 调试信息
+      const targetTab = propTabs.find(tab => tab.value === activeTab);
+      if (targetTab && targetTab.value !== internalActive.value) {
+        console.log('需要切换到:', targetTab.title); // 调试信息
+        if (!disable3D) {
+          // 3D模式：调整tabs顺序，将目标tab移到最前面
+          const targetIndex = propTabs.findIndex(tab => tab.value === activeTab);
+          if (targetIndex >= 0 && tabs[0].value !== activeTab) {
+            const newTabs = [...propTabs];
+            const selectedTab = newTabs.splice(targetIndex, 1);
+            newTabs.unshift(selectedTab[0]);
+            setTabs(newTabs);
+            console.log('3D模式：调整tabs顺序完成'); // 调试信息
+          }
+        }
+        // 更新内部状态
+        setInternalActive(targetTab);
+        console.log('更新内部状态完成'); // 调试信息
+      }
+    }
+  }, [activeTab, disable3D, propTabs, internalActive.value, tabs]);
 
   const moveSelectedTabToTop = (idx: number) => {
     const newTabs = [...propTabs];
     const selectedTab = newTabs.splice(idx, 1);
     newTabs.unshift(selectedTab[0]);
     setTabs(newTabs);
-    setActive(newTabs[0]);
+    
+    if (activeTab !== undefined && onTabChange) {
+      // 外部控制模式
+      onTabChange(selectedTab[0].value);
+    } else {
+      // 内部状态模式
+      setInternalActive(newTabs[0]);
+    }
   };
 
   const handleTabClick = (tab: Tab, idx: number) => {
     if (disable3D) {
-      setActive(tab);
+      if (activeTab !== undefined && onTabChange) {
+        // 外部控制模式
+        onTabChange(tab.value);
+      } else {
+        // 内部状态模式
+        setInternalActive(tab);
+      }
     } else {
       moveSelectedTabToTop(idx);
     }

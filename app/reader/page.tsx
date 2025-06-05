@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth';
 import { Card } from '@/components/ui/card';
-import { BookUploader } from '@/components/reader/BookUploader';
-import { ReaderContent } from '@/components/reader/ReaderContent';
+import { BookUploader } from '@/components/content/BookUploader';
+import { ReaderContent } from '@/components/content/ReaderContent';
 import { Book } from '@/types/book';
 
 // 创建一个安全的序列化函数

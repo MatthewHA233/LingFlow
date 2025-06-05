@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ReaderContent } from '@/components/reader/ReaderContent';
+import { ReaderContent } from '@/components/content/ReaderContent';
 import { Book } from '@/types/book';
 import { supabase } from '@/lib/supabase-client';
 import { useAuthStore } from '@/stores/auth';

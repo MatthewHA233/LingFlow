@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { Notebook } from '@/types/notebook';
+import { Notebook, CustomPage } from '@/types/notebook';
 import { useAuthStore } from '@/stores/auth';
 import { supabase } from '@/lib/supabase-client';
 import Image from 'next/image';
@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
-import { Plus, BookOpen, MoreHorizontal, Trash, Share, Edit, Calendar, Tag, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Plus, BookOpen, MoreHorizontal, Trash, Share, Edit, Calendar, Tag, ChevronRight, ArrowLeft, FileText, Clock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { UnauthorizedTip } from '@/components/auth/UnauthorizedTip';
 import { confirmAlert } from 'react-confirm-alert';
@@ -33,18 +33,53 @@ export default function NotebookPage() {
       if (!user) return;
 
       try {
-        const { data, error } = await supabase
+        // 获取用户的笔记本列表
+        const { data: notebooksData, error: notebooksError } = await supabase
           .from('notebooks')
           .select('*')
           .eq('user_id', user.id)
           .eq('status', 'active')
           .order('updated_at', { ascending: false });
 
-        if (error) throw error;
+        if (notebooksError) throw notebooksError;
 
-        setNotebooks(data || []);
+        // 为每个笔记本获取其页面列表
+        const notebooksWithPages = await Promise.all(
+          (notebooksData || []).map(async (notebook) => {
+            try {
+              const { data: pagesData, error: pagesError } = await supabase
+                .from('custom_pages')
+                .select(`
+                  *,
+                  content_parents!custom_pages_parent_id_fkey (
+                    id,
+                    title,
+                    content_type
+                  )
+                `)
+                .eq('notebook_id', notebook.id)
+                .order('order_index', { ascending: true });
+
+              if (pagesError) {
+                console.error(`获取笔记本 ${notebook.id} 的页面失败:`, pagesError);
+                return { ...notebook, custom_pages: [] };
+              }
+
+              return {
+                ...notebook,
+                custom_pages: pagesData || []
+              };
+            } catch (error) {
+              console.error(`处理笔记本 ${notebook.id} 时出错:`, error);
+              return { ...notebook, custom_pages: [] };
+            }
+          })
+        );
+
+        setNotebooks(notebooksWithPages);
       } catch (error) {
         console.error('加载笔记本失败:', error);
+        toast.error('加载笔记本失败');
       } finally {
         setLoading(false);
       }
@@ -60,9 +95,12 @@ export default function NotebookPage() {
     // 关闭菜单
     setExpandedMenus(prev => ({...prev, [notebookId]: false}));
 
+    const notebook = notebooks.find(n => n.id === notebookId);
+    const pageCount = notebook?.note_count || 0;
+
     confirmAlert({
       title: '确认删除',
-      message: `确定要删除笔记本《${title}》吗？其中的所有笔记也会被删除，此操作不可恢复。`,
+      message: `确定要删除笔记本《${title}》吗？其中的 ${pageCount} 个页面也会被删除，此操作不可恢复。`,
       buttons: [
         {
           label: '取消',
@@ -190,6 +228,152 @@ export default function NotebookPage() {
     </CardItem>
   );
 
+  // 渲染单个笔记本卡片
+  const renderNotebookCard = (notebook: Notebook) => {
+    // 获取最近更新的3个页面，按更新时间排序
+    const recentPages = notebook.custom_pages
+      ?.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      ?.slice(0, 3) || [];
+    
+    return (
+      <div key={notebook.id} className={`relative transition-all duration-500 ${
+        notebook.isDeleting ? 'opacity-50 blur-sm scale-95' : ''
+      }`}>
+        <CardContainer className="!p-0 !m-0 h-auto" containerClassName="!p-0 !m-0 h-auto !perspective-[1000px]">
+          <CardBody className={`relative bg-black border border-white/[0.2] w-full h-auto rounded-lg p-3 group/card hover:shadow-lg hover:shadow-emerald-500/[0.1] ${
+            notebook.isDeleting ? 'pointer-events-none' : ''
+          }`}>
+            <div className="flex flex-col h-full">
+              <CardItem
+                translateZ="35"
+                rotateX="-2"
+                className="text-sm lg:text-base font-bold text-white mb-1 truncate text-shadow-sm"
+              >
+                {notebook.title}
+              </CardItem>
+              
+              {notebook.description && (
+                <CardItem
+                  as="p"
+                  translateZ="40"
+                  rotateX="-1"
+                  rotateY="0.5"
+                  className="text-neutral-300 text-[10px] lg:text-xs mb-3 line-clamp-2"
+                >
+                  {notebook.description}
+                </CardItem>
+              )}
+              
+              <CardItem 
+                translateZ="45" 
+                rotateY="1.5"
+                className="w-full mb-3"
+              >
+                <div className="relative aspect-[4/3] bg-gradient-to-br from-purple-900/20 via-purple-800/10 to-black rounded-lg overflow-hidden border border-purple-500/20 flex items-center justify-center">
+                  {notebook.cover_url ? (
+                    <Image
+                      src={notebook.cover_url}
+                      alt={notebook.title}
+                      fill
+                      className="object-cover group-hover/card:shadow-xl"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-purple-400">
+                      <BookOpen className="w-8 h-8 mb-2" />
+                      <span className="text-xs opacity-70">笔记本</span>
+                    </div>
+                  )}
+                </div>
+              </CardItem>
+              
+              {/* 最近页面预览 - 只在有页面时显示 */}
+              {notebook.note_count > 0 && recentPages.length > 0 && (
+                <CardItem translateZ="30" className="mb-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs text-gray-400 font-medium">最近页面</div>
+                      <div className="text-xs text-purple-400">{notebook.note_count}页</div>
+                    </div>
+                    <div className="space-y-1.5">
+                      {recentPages.map((page, index) => (
+                        <div 
+                          key={page.id}
+                          className="group/page bg-gray-900/30 border border-gray-700/50 rounded-md p-2 hover:bg-gray-800/40 hover:border-purple-500/30 transition-all duration-200"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2 flex-1 min-w-0">
+                              <div className="flex-shrink-0 mt-0.5">
+                                <div className="w-1.5 h-1.5 rounded-full bg-purple-400 group-hover/page:bg-purple-300 transition-colors"></div>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs text-gray-200 truncate font-medium">
+                                  {page.title}
+                                </div>
+                                <div className="text-[10px] text-gray-500 mt-0.5">
+                                  {formatDate(page.updated_at)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      
+                      {notebook.note_count > 3 && (
+                        <div className="text-center">
+                          <div className="text-xs text-gray-500 bg-gray-900/40 border border-gray-700/30 rounded-md py-1.5 px-2">
+                            还有 {notebook.note_count - 3} 个页面...
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardItem>
+              )}
+              
+              <div className="flex flex-col mt-auto space-y-2">
+                {/* 统计信息 */}
+                <div className="flex justify-between items-center text-xs text-gray-400">
+                  <div className="flex items-center">
+                    <Tag className="w-3 h-3 mr-1" />
+                    <span>{notebook.note_count} 页面</span>
+                  </div>
+                  <div className="flex items-center">
+                    <Calendar className="w-3 h-3 mr-1" />
+                    <span>{formatDate(notebook.updated_at)}</span>
+                  </div>
+                </div>
+                
+                {/* 打开按钮 */}
+                <CardItem
+                  translateZ={35}
+                  rotateY="0.8"
+                  as={Link}
+                  href={`/notebook/${notebook.id}`}
+                  className="w-full px-3 py-2 rounded-md bg-gradient-to-tr from-purple-600 to-purple-500 text-white text-xs font-bold flex items-center justify-center hover:shadow-sm hover:shadow-purple-500/20 transition-all"
+                >
+                  打开笔记本 <ChevronRight className="w-3 h-3 ml-1" />
+                </CardItem>
+              </div>
+            </div>
+            
+            <CardItem
+              as="button"
+              translateZ="50"
+              rotateZ="1"
+              onClick={(e: React.MouseEvent) => toggleMenu(notebook.id, e)}
+              className="absolute right-1.5 top-1.5 lg:right-2 lg:top-2 z-20 p-1.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 text-white transition-all hover:bg-black/60"
+              ref={(el: HTMLButtonElement | null) => activeMenuButtonRef.current[notebook.id] = el}
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </CardItem>
+            
+            {expandedMenus[notebook.id] && renderNotebookMenu(notebook)}
+          </CardBody>
+        </CardContainer>
+      </div>
+    );
+  };
+
   if (!user) {
     return <UnauthorizedTip />;
   }
@@ -211,9 +395,9 @@ export default function NotebookPage() {
             </Button>
             <h1 className="relative text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-white to-gray-300 pb-0.5">
               我的笔记
-              <div className="absolute -bottom-1 left-0 w-full h-0.5 bg-gradient-to-r from-emerald-500/70 via-emerald-400 to-transparent"></div>
+              <div className="absolute -bottom-1 left-0 w-full h-0.5 bg-gradient-to-r from-purple-500/70 via-purple-400 to-transparent"></div>
             </h1>
-            <div className="ml-3 px-2 py-0.5 rounded-full text-[10px] border border-emerald-500/30 text-emerald-400 bg-emerald-950/30">
+            <div className="ml-3 px-2 py-0.5 rounded-full text-[10px] border border-purple-500/30 text-purple-400 bg-purple-950/30">
               {notebooks.length} 个笔记本
             </div>
           </div>
@@ -237,6 +421,11 @@ export default function NotebookPage() {
                   <Skeleton className="h-4 w-4/5 mb-2 bg-gray-800" />
                   <Skeleton className="h-3 w-full mb-3 bg-gray-800" />
                   <Skeleton className="w-full aspect-[4/3] rounded-lg mb-3 bg-gray-800" />
+                  <div className="space-y-1 mb-3">
+                    <Skeleton className="h-2 w-16 bg-gray-800" />
+                    <Skeleton className="h-3 w-full bg-gray-800" />
+                    <Skeleton className="h-3 w-3/4 bg-gray-800" />
+                  </div>
                   <div className="flex justify-between items-center mb-2">
                     <Skeleton className="h-3 w-16 bg-gray-800" />
                     <Skeleton className="h-3 w-20 bg-gray-800" />
@@ -250,7 +439,7 @@ export default function NotebookPage() {
         ) : notebooks.length === 0 ? (
           <div className="text-center py-12 px-2 sm:px-4">
             <h2 className="text-xl font-semibold mb-2">还没有笔记本</h2>
-            <p className="text-muted-foreground mb-4">创建您的第一个笔记本开始记录想法</p>
+            <p className="text-muted-foreground mb-4">创建您的第一个笔记本开始自定义语境</p>
             <HoverBorderGradient
               containerClassName="rounded-full mx-auto"
               className="flex items-center gap-2"
@@ -263,99 +452,7 @@ export default function NotebookPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 px-2 sm:px-4">
-            {notebooks.map((notebook) => (
-              <div key={notebook.id} className={`relative transition-all duration-500 ${
-                notebook.isDeleting ? 'opacity-50 blur-sm scale-95' : ''
-              }`}>
-                <CardContainer className="!p-0 !m-0 h-auto" containerClassName="!p-0 !m-0 h-auto !perspective-[1000px]">
-                  <CardBody className={`relative bg-black border border-white/[0.2] w-full h-auto rounded-lg p-3 group/card hover:shadow-lg hover:shadow-emerald-500/[0.1] ${
-                    notebook.isDeleting ? 'pointer-events-none' : ''
-                  }`}>
-                    <div className="flex flex-col h-full">
-                      <CardItem
-                        translateZ="35"
-                        rotateX="-2"
-                        className="text-sm lg:text-base font-bold text-white mb-1 truncate text-shadow-sm"
-                      >
-                        {notebook.title}
-                      </CardItem>
-                      
-                      {notebook.description && (
-                        <CardItem
-                          as="p"
-                          translateZ="40"
-                          rotateX="-1"
-                          rotateY="0.5"
-                          className="text-neutral-300 text-[10px] lg:text-xs mb-3 line-clamp-2"
-                        >
-                          {notebook.description}
-                        </CardItem>
-                      )}
-                      
-                      <CardItem 
-                        translateZ="45" 
-                        rotateY="1.5"
-                        className="w-full mb-3"
-                      >
-                        <div className="relative aspect-[4/3] bg-gradient-to-br from-emerald-900/20 via-emerald-800/10 to-black rounded-lg overflow-hidden border border-emerald-500/20 flex items-center justify-center">
-                          {notebook.cover_url ? (
-                            <Image
-                              src={notebook.cover_url}
-                              alt={notebook.title}
-                              fill
-                              className="object-cover group-hover/card:shadow-xl"
-                            />
-                          ) : (
-                            <div className="flex flex-col items-center justify-center text-emerald-400">
-                              <BookOpen className="w-8 h-8 mb-2" />
-                              <span className="text-xs opacity-70">笔记本</span>
-                            </div>
-                          )}
-                        </div>
-                      </CardItem>
-                      
-                      <div className="flex flex-col mt-auto space-y-2">
-                        {/* 统计信息 */}
-                        <div className="flex justify-between items-center text-xs text-gray-400">
-                          <div className="flex items-center">
-                            <Tag className="w-3 h-3 mr-1" />
-                            <span>{notebook.note_count} 笔记</span>
-                          </div>
-                          <div className="flex items-center">
-                            <Calendar className="w-3 h-3 mr-1" />
-                            <span>{formatDate(notebook.updated_at)}</span>
-                          </div>
-                        </div>
-                        
-                        {/* 打开按钮 */}
-                        <CardItem
-                          translateZ={35}
-                          rotateY="0.8"
-                          as={Link}
-                          href={`/notebook/${notebook.id}`}
-                          className="w-full px-3 py-2 rounded-md bg-gradient-to-tr from-emerald-600 to-emerald-500 text-white text-xs font-bold flex items-center justify-center hover:shadow-sm hover:shadow-emerald-500/20 transition-all"
-                        >
-                          打开笔记本 <ChevronRight className="w-3 h-3 ml-1" />
-                        </CardItem>
-                      </div>
-                    </div>
-                    
-                    <CardItem
-                      as="button"
-                      translateZ="50"
-                      rotateZ="1"
-                      onClick={(e: React.MouseEvent) => toggleMenu(notebook.id, e)}
-                      className="absolute right-1.5 top-1.5 lg:right-2 lg:top-2 z-20 p-1.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 text-white transition-all hover:bg-black/60"
-                      ref={(el: HTMLButtonElement | null) => activeMenuButtonRef.current[notebook.id] = el}
-                    >
-                      <MoreHorizontal className="w-4 h-4" />
-                    </CardItem>
-                    
-                    {expandedMenus[notebook.id] && renderNotebookMenu(notebook)}
-                  </CardBody>
-                </CardContainer>
-              </div>
-            ))}
+            {notebooks.map(renderNotebookCard)}
           </div>
         )}
       </div>

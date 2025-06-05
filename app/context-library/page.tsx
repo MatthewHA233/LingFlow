@@ -12,6 +12,7 @@ import { UnauthorizedTip } from '@/components/auth/UnauthorizedTip';
 export default function ContextLibrary() {
   const { user, loading } = useAuthStore();
   const [disable3D, setDisable3D] = useState(false);
+  const [activeTab, setActiveTab] = useState('bookshelf'); // 默认显示书架
 
   // 从localStorage读取设置
   useEffect(() => {
@@ -19,13 +20,28 @@ export default function ContextLibrary() {
     if (saved3DSetting !== null) {
       setDisable3D(saved3DSetting === 'true');
     }
+
+    // 读取上次选择的tab
+    const savedActiveTab = localStorage.getItem('context-library-active-tab');
+    console.log('读取保存的tab:', savedActiveTab); // 调试信息
+    if (savedActiveTab && (savedActiveTab === 'bookshelf' || savedActiveTab === 'notebook')) {
+      console.log('设置activeTab为:', savedActiveTab); // 调试信息
+      setActiveTab(savedActiveTab);
+    }
   }, []);
 
-  // 保存设置到localStorage
+  // 保存3D设置到localStorage
   const toggle3D = () => {
     const newSetting = !disable3D;
     setDisable3D(newSetting);
     localStorage.setItem('context-library-disable-3d', newSetting.toString());
+  };
+
+  // 处理tab切换
+  const handleTabChange = (tabValue: string) => {
+    console.log('Tab切换到:', tabValue); // 调试信息
+    setActiveTab(tabValue);
+    localStorage.setItem('context-library-active-tab', tabValue);
   };
 
   // 如果正在加载，显示加载状态
@@ -74,6 +90,8 @@ export default function ContextLibrary() {
 
       <Tabs 
         tabs={tabs}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
         containerClassName="justify-center mb-8"
         contentClassName="!mt-0"
         disable3D={disable3D}

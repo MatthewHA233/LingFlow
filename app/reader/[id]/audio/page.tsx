@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase-client';
-import { AudioRecognizer } from '@/components/reader/AudioRecognizer';
+import { AudioRecognizer } from '@/components/content/AudioRecognizer';
 import { Book } from '@/types/book';
 
 interface AudioReaderPageProps {
