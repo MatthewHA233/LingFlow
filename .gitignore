@@ -41,6 +41,7 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 .env*.local
+.env.local_备份
 
 # vercel
 .vercel
