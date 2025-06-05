@@ -1,0 +1,364 @@
+'use client';
+
+import { useEffect, useState, useRef } from 'react';
+import { Notebook } from '@/types/notebook';
+import { useAuthStore } from '@/stores/auth';
+import { supabase } from '@/lib/supabase-client';
+import Image from 'next/image';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
+import { Plus, BookOpen, MoreHorizontal, Trash, Share, Edit, Calendar, Tag, ChevronRight, ArrowLeft } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { UnauthorizedTip } from '@/components/auth/UnauthorizedTip';
+import { confirmAlert } from 'react-confirm-alert';
+import 'react-confirm-alert/src/react-confirm-alert.css';
+import { toast } from 'sonner';
+import { CardContainer, CardBody, CardItem } from '@/components/ui/3d-card';
+
+export default function NotebookPage() {
+  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
+  const { user } = useAuthStore();
+  const router = useRouter();
+
+  // 添加引用以跟踪当前活动的菜单
+  const activeMenuButtonRef = useRef<Record<string, HTMLButtonElement | null>>({});
+  const activeMenuRef = useRef<Record<string, HTMLDivElement | null>>({});
+
+  useEffect(() => {
+    async function loadNotebooks() {
+      if (!user) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('notebooks')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .order('updated_at', { ascending: false });
+
+        if (error) throw error;
+
+        setNotebooks(data || []);
+      } catch (error) {
+        console.error('加载笔记本失败:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadNotebooks();
+  }, [user]);
+
+  const handleDeleteNotebook = async (notebookId: string, title: string, e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // 关闭菜单
+    setExpandedMenus(prev => ({...prev, [notebookId]: false}));
+
+    confirmAlert({
+      title: '确认删除',
+      message: `确定要删除笔记本《${title}》吗？其中的所有笔记也会被删除，此操作不可恢复。`,
+      buttons: [
+        {
+          label: '取消',
+          onClick: () => {}
+        },
+        {
+          label: '删除',
+          onClick: async () => {
+            const toastId = toast.loading(`正在删除《${title}》...`, {
+              duration: Infinity,
+            });
+            
+            try {
+              // 先将笔记本标记为正在删除状态
+              setNotebooks(notebooks.map(notebook => 
+                notebook.id === notebookId 
+                  ? { ...notebook, isDeleting: true } 
+                  : notebook
+              ));
+
+              const { error } = await supabase
+                .from('notebooks')
+                .update({ status: 'deleted' })
+                .eq('id', notebookId);
+
+              if (error) throw error;
+
+              toast.success(`《${title}》已删除`, {
+                id: toastId,
+                duration: 3000,
+              });
+
+              // 从列表中移除
+              setNotebooks(notebooks.filter(notebook => notebook.id !== notebookId));
+
+            } catch (error) {
+              console.error('删除笔记本失败:', error);
+              toast.error(`删除《${title}》失败，请重试`, {
+                id: toastId,
+                duration: 3000,
+              });
+              
+              // 恢复笔记本状态
+              setNotebooks(notebooks.map(notebook => 
+                notebook.id === notebookId 
+                  ? { ...notebook, isDeleting: false }
+                  : notebook
+              ));
+            }
+          },
+          className: 'react-confirm-alert-button-red'
+        }
+      ]
+    });
+  };
+
+  const toggleMenu = (notebookId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setExpandedMenus(prev => {
+      const newState = { ...prev };
+      
+      // 清除所有其他打开的菜单
+      Object.keys(newState).forEach(id => {
+        if (id !== notebookId) newState[id] = false;
+      });
+      
+      // 切换当前菜单状态
+      newState[notebookId] = !prev[notebookId];
+      
+      return newState;
+    });
+  };
+
+  const handleMenuItemClick = (notebookId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setExpandedMenus(prev => ({...prev, [notebookId]: false}));
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('zh-CN', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  const handleCreateNotebook = () => {
+    router.push('/notebook/create');
+  };
+
+  // 渲染笔记本菜单
+  const renderNotebookMenu = (notebook: Notebook) => (
+    <CardItem
+      translateZ="70"
+      rotateZ="-0.5"
+      className="absolute right-1.5 top-7 lg:right-2 lg:top-9 z-30 bg-black border border-white/10 rounded-lg shadow-lg overflow-hidden [transform-style:preserve-3d] w-28 lg:w-36"
+      ref={(el: HTMLDivElement | null) => activeMenuRef.current[notebook.id] = el}
+    >
+      <button 
+        onClick={(e) => handleDeleteNotebook(notebook.id, notebook.title, e)}
+        className="flex items-center px-3 py-2 lg:px-4 lg:py-2.5 text-xs lg:text-sm text-white w-full hover:bg-red-900/40 transition-colors border-b border-white/10"
+      >
+        <Trash className="w-3 h-3 lg:w-4 lg:h-4 mr-2" />
+        <span>删除</span>
+      </button>
+      
+      <button 
+        onClick={(e) => handleMenuItemClick(notebook.id, e)}
+        className="flex items-center px-3 py-2 lg:px-4 lg:py-2.5 text-xs lg:text-sm text-white w-full hover:bg-white/10 transition-colors border-b border-white/10"
+      >
+        <Edit className="w-3 h-3 lg:w-4 lg:h-4 mr-2" />
+        <span>编辑信息</span>
+      </button>
+      
+      <button 
+        onClick={(e) => handleMenuItemClick(notebook.id, e)}
+        className="flex items-center px-3 py-2 lg:px-4 lg:py-2.5 text-xs lg:text-sm text-white w-full hover:bg-white/10 transition-colors"
+      >
+        <Share className="w-3 h-3 lg:w-4 lg:h-4 mr-2" />
+        <span>分享</span>
+      </button>
+    </CardItem>
+  );
+
+  if (!user) {
+    return <UnauthorizedTip />;
+  }
+
+  return (
+    <div className="h-full p-2 sm:p-4">
+      <div className="container mx-auto px-4 sm:px-6">
+        {/* 页面标题和新建按钮 */}
+        <div className="flex items-center justify-between gap-4 mb-6 px-2 sm:px-4">
+          <div className="flex items-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push('/context-library')}
+              className="mr-3 text-gray-400 hover:text-white"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              语境库
+            </Button>
+            <h1 className="relative text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-white to-gray-300 pb-0.5">
+              我的笔记
+              <div className="absolute -bottom-1 left-0 w-full h-0.5 bg-gradient-to-r from-emerald-500/70 via-emerald-400 to-transparent"></div>
+            </h1>
+            <div className="ml-3 px-2 py-0.5 rounded-full text-[10px] border border-emerald-500/30 text-emerald-400 bg-emerald-950/30">
+              {notebooks.length} 个笔记本
+            </div>
+          </div>
+          
+          <HoverBorderGradient
+            containerClassName="rounded-full flex-shrink-0"
+            className="flex items-center gap-2 text-sm"
+            as="button"
+            onClick={handleCreateNotebook}
+          >
+            <Plus className="w-4 h-4" />
+            <span>新建笔记本</span>
+          </HoverBorderGradient>
+        </div>
+
+        {loading ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 px-2 sm:px-4">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="relative">
+                <div className="bg-black border border-white/[0.2] rounded-lg p-3 h-auto overflow-hidden">
+                  <Skeleton className="h-4 w-4/5 mb-2 bg-gray-800" />
+                  <Skeleton className="h-3 w-full mb-3 bg-gray-800" />
+                  <Skeleton className="w-full aspect-[4/3] rounded-lg mb-3 bg-gray-800" />
+                  <div className="flex justify-between items-center mb-2">
+                    <Skeleton className="h-3 w-16 bg-gray-800" />
+                    <Skeleton className="h-3 w-20 bg-gray-800" />
+                  </div>
+                  <Skeleton className="h-8 w-full rounded-md bg-gray-800" />
+                </div>
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent skeleton-shine rounded-lg" />
+              </div>
+            ))}
+          </div>
+        ) : notebooks.length === 0 ? (
+          <div className="text-center py-12 px-2 sm:px-4">
+            <h2 className="text-xl font-semibold mb-2">还没有笔记本</h2>
+            <p className="text-muted-foreground mb-4">创建您的第一个笔记本开始记录想法</p>
+            <HoverBorderGradient
+              containerClassName="rounded-full mx-auto"
+              className="flex items-center gap-2"
+              as="button"
+              onClick={handleCreateNotebook}
+            >
+              <Plus className="w-4 h-4" />
+              <span>创建笔记本</span>
+            </HoverBorderGradient>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 px-2 sm:px-4">
+            {notebooks.map((notebook) => (
+              <div key={notebook.id} className={`relative transition-all duration-500 ${
+                notebook.isDeleting ? 'opacity-50 blur-sm scale-95' : ''
+              }`}>
+                <CardContainer className="!p-0 !m-0 h-auto" containerClassName="!p-0 !m-0 h-auto !perspective-[1000px]">
+                  <CardBody className={`relative bg-black border border-white/[0.2] w-full h-auto rounded-lg p-3 group/card hover:shadow-lg hover:shadow-emerald-500/[0.1] ${
+                    notebook.isDeleting ? 'pointer-events-none' : ''
+                  }`}>
+                    <div className="flex flex-col h-full">
+                      <CardItem
+                        translateZ="35"
+                        rotateX="-2"
+                        className="text-sm lg:text-base font-bold text-white mb-1 truncate text-shadow-sm"
+                      >
+                        {notebook.title}
+                      </CardItem>
+                      
+                      {notebook.description && (
+                        <CardItem
+                          as="p"
+                          translateZ="40"
+                          rotateX="-1"
+                          rotateY="0.5"
+                          className="text-neutral-300 text-[10px] lg:text-xs mb-3 line-clamp-2"
+                        >
+                          {notebook.description}
+                        </CardItem>
+                      )}
+                      
+                      <CardItem 
+                        translateZ="45" 
+                        rotateY="1.5"
+                        className="w-full mb-3"
+                      >
+                        <div className="relative aspect-[4/3] bg-gradient-to-br from-emerald-900/20 via-emerald-800/10 to-black rounded-lg overflow-hidden border border-emerald-500/20 flex items-center justify-center">
+                          {notebook.cover_url ? (
+                            <Image
+                              src={notebook.cover_url}
+                              alt={notebook.title}
+                              fill
+                              className="object-cover group-hover/card:shadow-xl"
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center text-emerald-400">
+                              <BookOpen className="w-8 h-8 mb-2" />
+                              <span className="text-xs opacity-70">笔记本</span>
+                            </div>
+                          )}
+                        </div>
+                      </CardItem>
+                      
+                      <div className="flex flex-col mt-auto space-y-2">
+                        {/* 统计信息 */}
+                        <div className="flex justify-between items-center text-xs text-gray-400">
+                          <div className="flex items-center">
+                            <Tag className="w-3 h-3 mr-1" />
+                            <span>{notebook.note_count} 笔记</span>
+                          </div>
+                          <div className="flex items-center">
+                            <Calendar className="w-3 h-3 mr-1" />
+                            <span>{formatDate(notebook.updated_at)}</span>
+                          </div>
+                        </div>
+                        
+                        {/* 打开按钮 */}
+                        <CardItem
+                          translateZ={35}
+                          rotateY="0.8"
+                          as={Link}
+                          href={`/notebook/${notebook.id}`}
+                          className="w-full px-3 py-2 rounded-md bg-gradient-to-tr from-emerald-600 to-emerald-500 text-white text-xs font-bold flex items-center justify-center hover:shadow-sm hover:shadow-emerald-500/20 transition-all"
+                        >
+                          打开笔记本 <ChevronRight className="w-3 h-3 ml-1" />
+                        </CardItem>
+                      </div>
+                    </div>
+                    
+                    <CardItem
+                      as="button"
+                      translateZ="50"
+                      rotateZ="1"
+                      onClick={(e: React.MouseEvent) => toggleMenu(notebook.id, e)}
+                      className="absolute right-1.5 top-1.5 lg:right-2 lg:top-2 z-20 p-1.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 text-white transition-all hover:bg-black/60"
+                      ref={(el: HTMLButtonElement | null) => activeMenuButtonRef.current[notebook.id] = el}
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </CardItem>
+                    
+                    {expandedMenus[notebook.id] && renderNotebookMenu(notebook)}
+                  </CardBody>
+                </CardContainer>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+} 

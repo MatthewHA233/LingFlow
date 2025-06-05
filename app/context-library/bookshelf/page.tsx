@@ -53,6 +53,19 @@ const bookFormSchema = z.object({
   cover_url: z.string().optional(),
 });
 
+// 页面级别的内存缓存
+let pageCache: {
+  userId: string | null;
+  books: Book[];
+  timestamp: number;
+} = {
+  userId: null,
+  books: [],
+  timestamp: 0
+};
+
+const CACHE_DURATION = 5 * 60 * 1000; // 5分钟缓存
+
 export default function BookshelfPage() {
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +83,7 @@ export default function BookshelfPage() {
   const [resourcesLoading, setResourcesLoading] = useState(false);
   const [savingBook, setSavingBook] = useState(false);
   const [editingBookIds, setEditingBookIds] = useState<Record<string, boolean>>({});
-
+  
   // 添加引用以跟踪当前活动的菜单
   const activeMenuButtonRef = useRef<Record<string, HTMLButtonElement | null>>({});
   const activeMenuRef = useRef<Record<string, HTMLDivElement | null>>({});
@@ -78,6 +91,21 @@ export default function BookshelfPage() {
   useEffect(() => {
     async function loadBooks() {
       if (!user) return;
+
+      // 检查缓存
+      const now = Date.now();
+      const isCacheValid = pageCache.userId === user.id && 
+                          pageCache.books.length > 0 && 
+                          (now - pageCache.timestamp) < CACHE_DURATION;
+
+      if (isCacheValid) {
+        console.log('使用缓存的书架数据');
+        setBooks(pageCache.books);
+        setLoading(false);
+        return;
+      }
+
+      console.log('重新加载书架数据');
 
       try {
         // 首先尝试不带统计信息的基本查询
@@ -147,6 +175,14 @@ export default function BookshelfPage() {
         );
         
         setBooks(updatedBooks);
+        
+        // 更新缓存
+        pageCache = {
+          userId: user.id,
+          books: updatedBooks,
+          timestamp: Date.now()
+        };
+        
       } catch (error) {
         console.error('加载书架失败:', error);
       } finally {
