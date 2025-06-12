@@ -40,6 +40,10 @@ export function TableOfContents({
   setContextBlocks,
   setCurrentChapter
 }: TableOfContentsProps) {
+  // 根据书籍类型确定内容类型名称
+  const contentTypeName = book.type === 'notebook' ? '页面' : '章节';
+  const contentTypeNameNew = book.type === 'notebook' ? '新页面' : '新章节';
+
   // 目录相关状态
   const [draggedChapter, setDraggedChapter] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -66,7 +70,7 @@ export function TableOfContents({
     e.dataTransfer.setData('text/plain', index.toString());
     
     // 添加拖拽开始的视觉反馈
-    console.log(`开始拖拽章节 ${index}: ${book.chapters[index]?.title}`);
+    console.log(`开始拖拽章节 ${index}: ${book.chapters?.[index]?.title}`);
   };
 
   const handleChapterDragOver = (e: React.DragEvent, index: number) => {
@@ -103,7 +107,7 @@ export function TableOfContents({
     }
 
     // 在重新排序前保存被拖拽章节的标题
-    const draggedChapterTitle = book.chapters[draggedChapter]?.title || '未知章节';
+    const draggedChapterTitle = book.chapters?.[draggedChapter]?.title || '未知章节';
 
     try {
       console.log(`执行章节重排序: ${draggedChapter} -> ${dropIndex}`);
@@ -197,6 +201,11 @@ export function TableOfContents({
       
       // 更新本地章节数组
       const chapters = book.chapters;
+      if (!chapters) {
+        console.error('book.chapters 为空，无法重排序');
+        return;
+      }
+      
       const [movedChapter] = chapters.splice(fromIndex, 1);
       chapters.splice(toIndex, 0, movedChapter);
       
@@ -297,12 +306,12 @@ export function TableOfContents({
       // 检查RPC调用结果
       if (error) {
         console.error('RPC调用失败:', error);
-        throw new Error(`创建章节失败: ${error.message}`);
+        throw new Error(`创建${contentTypeName}失败: ${error.message}`);
       }
 
       if (!result || !result.success) {
         console.error('RPC函数返回错误:', result);
-        throw new Error(`创建章节失败: ${result?.error || '未知错误'}`);
+        throw new Error(`创建${contentTypeName}失败: ${result?.error || '未知错误'}`);
       }
 
       console.log('✓ RPC调用成功:', result);
@@ -312,7 +321,7 @@ export function TableOfContents({
       const defaultBlock = result.default_block;
 
       // 在指定位置插入新章节
-      const chapters = [...book.chapters];
+      const chapters = [...(book.chapters || [])];
       chapters.splice(position, 0, chapterData);
       
       // 更新后续章节的索引
@@ -329,7 +338,7 @@ export function TableOfContents({
       });
       setParentIds(newParentIds);
       
-      console.log('✓ 创建章节后重新构建parentIds映射:', newParentIds);
+      console.log(`✓ 创建${contentTypeName}后重新构建parentIds映射:`, newParentIds);
 
       // 重新映射现有的语境块缓存
       if (Object.keys(contextBlocks).length > 0) {
@@ -346,7 +355,7 @@ export function TableOfContents({
         });
         
         setContextBlocks(newContextBlocks);
-        console.log('✓ 创建章节后重新映射语境块缓存');
+        console.log(`✓ 创建${contentTypeName}后重新映射语境块缓存`);
       } else {
         // 如果没有现有缓存，只为新章节添加默认语境块
         setContextBlocks((prev: Record<string, any[]>) => ({
@@ -359,11 +368,11 @@ export function TableOfContents({
       if (position <= currentChapter) {
         setCurrentChapter(currentChapter + 1);
       }
-      toast.success(`新章节 "${title}" 已创建`);
+      toast.success(`${contentTypeNameNew} "${title}" 已创建`);
       
     } catch (error) {
-      console.error('创建章节失败:', error);
-      toast.error(`创建章节失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      console.error(`创建${contentTypeName}失败:`, error);
+      toast.error(`创建${contentTypeName}失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       setIsCreatingChapter(false);
       setNewChapterTitle('');
@@ -423,9 +432,9 @@ export function TableOfContents({
     try {
       setIsDeletingChapter(true);
       
-      const chapterTitle = book.chapters[chapterIndex]?.title || '未知章节';
+      const chapterTitle = book.chapters?.[chapterIndex]?.title || `未知${contentTypeName}`;
       
-      console.log(`开始删除章节 ${chapterIndex}: "${chapterTitle}"`);
+      console.log(`开始删除${contentTypeName} ${chapterIndex}: "${chapterTitle}"`);
 
       const { data: result, error } = await supabase
         .rpc('delete_chapter_at_position', {
@@ -433,7 +442,7 @@ export function TableOfContents({
           p_position: chapterIndex
         });
 
-      console.log('删除章节RPC调用结果:', { result, error });
+      console.log(`删除${contentTypeName}RPC调用结果:`, { result, error });
 
       if (error) {
         console.error('RPC调用失败:', error);
@@ -445,9 +454,9 @@ export function TableOfContents({
         throw new Error(`删除失败: ${result?.error || '未知错误'}`);
       }
 
-      console.log(`✓ 删除章节成功，删除了 ${result.deleted_blocks_count} 个语境块`);
+      console.log(`✓ 删除${contentTypeName}成功，删除了 ${result.deleted_blocks_count} 个语境块`);
       // 更新本地状态
-      const chapters = [...book.chapters];
+      const chapters = [...(book.chapters || [])];
       chapters.splice(chapterIndex, 1);
       
       // 更新后续章节的order_index
@@ -491,11 +500,11 @@ export function TableOfContents({
         setCurrentChapter((prev: number) => prev - 1);
       }
 
-      toast.success(`章节 "${chapterTitle}" 已删除`);
+      toast.success(`${contentTypeName} "${chapterTitle}" 已删除`);
       
     } catch (error) {
-      console.error('删除章节失败:', error);
-      toast.error(`删除章节失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      console.error(`删除${contentTypeName}失败:`, error);
+      toast.error(`删除${contentTypeName}失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       setIsDeletingChapter(false);
       setShowContextMenu(false);
@@ -547,20 +556,20 @@ export function TableOfContents({
   // 重命名章节函数
   const renameChapter = async (chapterIndex: number, newTitle: string) => {
     if (!newTitle.trim()) {
-      toast.error('章节标题不能为空');
+      toast.error(`${contentTypeName}标题不能为空`);
       return false;
     }
 
     try {
       setIsRenamingChapter(true);
       
-      const chapter = book.chapters[chapterIndex];
+      const chapter = book.chapters?.[chapterIndex];
       if (!chapter) {
-        toast.error('章节不存在');
+        toast.error(`${contentTypeName}不存在`);
         return false;
       }
 
-      console.log(`开始重命名章节 ${chapterIndex}: "${chapter.title}" -> "${newTitle.trim()}"`);
+      console.log(`开始重命名${contentTypeName} ${chapterIndex}: "${chapter.title}" -> "${newTitle.trim()}"`);
 
       const { error: chapterError } = await supabase
         .from('chapters')
@@ -568,8 +577,8 @@ export function TableOfContents({
         .eq('id', chapter.id);
 
       if (chapterError) {
-        console.error('更新章节标题失败:', chapterError);
-        throw new Error(`更新章节标题失败: ${chapterError.message}`);
+        console.error(`更新${contentTypeName}标题失败:`, chapterError);
+        throw new Error(`更新${contentTypeName}标题失败: ${chapterError.message}`);
       }
 
       const { error: parentError } = await supabase
@@ -582,14 +591,16 @@ export function TableOfContents({
         throw new Error(`更新父级标题失败: ${parentError.message}`);
       }
 
+      if (book.chapters && book.chapters[chapterIndex]) {
       book.chapters[chapterIndex].title = newTitle.trim();
+      }
 
-      toast.success(`章节已重命名为 "${newTitle.trim()}"`);
-      console.log('✓ 章节重命名成功');
+      toast.success(`${contentTypeName}已重命名为 "${newTitle.trim()}"`);
+      console.log(`✓ ${contentTypeName}重命名成功`);
       
       return true;
     } catch (error) {
-      console.error('重命名章节失败:', error);
+      console.error(`重命名${contentTypeName}失败:`, error);
       toast.error(`重命名失败: ${error instanceof Error ? error.message : '未知错误'}`);
       return false;
     } finally {
@@ -599,7 +610,7 @@ export function TableOfContents({
 
   // 开始编辑章节标题
   const startEditChapter = (chapterIndex: number) => {
-    const chapter = book.chapters[chapterIndex];
+    const chapter = book.chapters?.[chapterIndex];
     if (chapter) {
       setEditingChapterIndex(chapterIndex);
       setEditingChapterTitle(chapter.title);
@@ -657,6 +668,9 @@ export function TableOfContents({
 
   if (!showToc) return null;
 
+  // 确保章节数组存在
+  const chapters = book.chapters || [];
+
   return (
     <>
       {/* 目录侧边栏 */}
@@ -664,13 +678,13 @@ export function TableOfContents({
         fixed left-0 top-[calc(3rem+var(--reader-nav-height,3rem))] h-[calc(100vh-6rem)]
         transform transition-all duration-300 ease-in-out border-r shadow-lg z-30
         bg-card/95 backdrop-blur
-        translate-x-0
+        translate-x-0 w-80 max-w-sm
       `}>
         <div className="h-full flex flex-col">
-          <div className="p-3 border-b bg-card/95 backdrop-blur sticky top-0">
-            <h3 className="text-sm font-medium">目录</h3>
+          <div className="p-4 border-b bg-card/95 backdrop-blur sticky top-0">
+            <h3 className="text-base font-medium">目录</h3>
           </div>
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="flex-1 overflow-y-auto p-3">
             <div 
               className="space-y-1"
               onDragOver={handleChapterListDragOver}
@@ -688,7 +702,7 @@ export function TableOfContents({
                   <button
                     onClick={() => {
                       setInsertPosition(0);
-                      setNewChapterTitle('新章节');
+                      setNewChapterTitle(contentTypeNameNew);
                     }}
                     className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 
                                w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center
@@ -707,7 +721,7 @@ export function TableOfContents({
                 )}
               </div>
 
-              {book.chapters.map((chapter, index) => (
+              {chapters.map((chapter, index) => (
                 <div key={chapter.id || index}>
                   {/* 章节项 */}
                   <div
@@ -726,7 +740,7 @@ export function TableOfContents({
                     <div className="flex items-center gap-2">
                       {/* 拖拽手柄 */}
                       <div className={cn(
-                        "transition-opacity cursor-grab active:cursor-grabbing",
+                        "transition-opacity cursor-grab active:cursor-grabbing flex-shrink-0",
                         draggedChapter !== null ? "opacity-100" : "opacity-0 group-hover:opacity-60"
                       )}>
                         <GripVertical className="w-3 h-3 text-muted-foreground" />
@@ -772,8 +786,8 @@ export function TableOfContents({
                           disabled={isRenamingChapter}
                           data-editing-chapter="true"
                           className={cn(
-                            "flex-1 px-3 py-2 rounded-md text-sm bg-background border-2 border-primary",
-                            "focus:outline-none focus:ring-0 focus:border-primary",
+                            "flex-1 px-3 py-2.5 rounded-md text-sm bg-background border-2 border-primary",
+                            "focus:outline-none focus:ring-0 focus:border-primary min-w-0",
                             isRenamingChapter && "opacity-50 cursor-not-allowed",
                             currentChapter === index && 'bg-primary/5'
                           )}
@@ -786,14 +800,15 @@ export function TableOfContents({
                           }}
                           onContextMenu={(e) => handleChapterContextMenu(e, index)}
                           className={cn(
-                            "flex-1 text-left px-3 py-2 rounded-md text-sm transition-all duration-200",
+                            "flex-1 text-left px-3 py-2.5 rounded-md text-sm transition-all duration-200 min-w-0",
                             currentChapter === index 
-                              ? 'bg-primary/10 text-primary' 
+                              ? 'bg-primary/10 text-primary font-medium' 
                               : 'hover:bg-accent',
                             draggedChapter === index && "bg-primary/5"
                           )}
+                          title={chapter.title}
                         >
-                          {chapter.title}
+                          <span className="block truncate">{chapter.title}</span>
                         </button>
                       )}
                     </div>
@@ -812,7 +827,7 @@ export function TableOfContents({
                       <button
                         onClick={() => {
                           setInsertPosition(index + 1);
-                          setNewChapterTitle('新章节');
+                          setNewChapterTitle(contentTypeNameNew);
                         }}
                         className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 
                                    w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center
@@ -840,12 +855,12 @@ export function TableOfContents({
         {insertPosition !== null && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-card p-6 rounded-lg shadow-xl max-w-sm w-full mx-4">
-              <h3 className="text-lg font-semibold mb-4">创建新章节</h3>
+              <h3 className="text-lg font-semibold mb-4">创建{contentTypeNameNew}</h3>
               <input
                 type="text"
                 value={newChapterTitle}
                 onChange={(e) => setNewChapterTitle(e.target.value)}
-                placeholder="输入章节标题"
+                placeholder={`输入${contentTypeName}标题`}
                 className="w-full px-3 py-2 border rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-primary"
                 autoFocus
                 onKeyPress={(e) => {
@@ -905,7 +920,7 @@ export function TableOfContents({
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
-            {isRenamingChapter ? '重命名中...' : '重命名章节'}
+            {isRenamingChapter ? '重命名中...' : `重命名${contentTypeName}`}
           </button>
           
           <div className="border-t mx-2 my-0.5"></div>
@@ -913,20 +928,20 @@ export function TableOfContents({
           <button
             onClick={() => {
               if (contextMenuChapterIndex !== null) {
-                if (book.chapters.length <= 1) {
-                  toast.error('无法删除最后一个章节');
+                if (chapters.length <= 1) {
+                  toast.error(`无法删除最后一个${contentTypeName}`);
                   closeContextMenu();
                   return;
                 }
                 
-                const chapterTitle = book.chapters[contextMenuChapterIndex]?.title || '未知章节';
+                const chapterTitle = chapters[contextMenuChapterIndex]?.title || `未知${contentTypeName}`;
                 const chapterIndex = contextMenuChapterIndex;
                 
                 closeContextMenu();
                 
                 confirmAlert({
-                  title: '确认删除章节',
-                  message: `确定要删除章节《${chapterTitle}》吗？\n\n此操作将删除该章节及其所有内容，且无法撤销。`,
+                  title: `确认删除${contentTypeName}`,
+                  message: `确定要删除${contentTypeName}《${chapterTitle}》吗？\n\n此操作将删除该${contentTypeName}及其所有内容，且无法撤销。`,
                   buttons: [
                     {
                       label: '取消',
@@ -947,7 +962,7 @@ export function TableOfContents({
                             duration: 3000,
                           });
                         } catch (error) {
-                          console.error('删除章节失败:', error);
+                          console.error(`删除${contentTypeName}失败:`, error);
                           toast.error(`删除《${chapterTitle}》失败，请重试`, {
                             id: toastId,
                             duration: 3000,
@@ -964,7 +979,7 @@ export function TableOfContents({
             className="w-full px-3 py-1.5 text-left text-sm flex items-center gap-2 text-red-500 focus:text-red-500 disabled:opacity-50 cursor-pointer dropdown-menu-item"
           >
             <X className="w-4 h-4" />
-            {isDeletingChapter ? '删除中...' : '删除章节'}
+            {isDeletingChapter ? '删除中...' : `删除${contentTypeName}`}
           </button>
           
           <div className="border-t mx-2 my-0.5"></div>

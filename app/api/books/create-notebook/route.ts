@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     
     if (authError || !user) {
+      console.error('认证失败:', authError);
       return NextResponse.json(
         { error: '认证失败' },
         { status: 401 }
@@ -79,13 +80,22 @@ export async function POST(req: NextRequest) {
     }
 
     // 检查用户是否已有同名笔记本
-    const { data: existingNotebook } = await supabase
-      .from('notebooks')
+    const { data: existingNotebook, error: checkError } = await supabase
+      .from('books')
       .select('id')
       .eq('user_id', user.id)
+      .eq('type', 'notebook')
       .eq('title', title.trim())
-      .eq('status', 'active')
+      .eq('status', 'ready')
       .single();
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('检查重复笔记本失败:', checkError);
+      return NextResponse.json(
+        { error: '检查笔记本失败，请重试' },
+        { status: 500 }
+      );
+    }
 
     if (existingNotebook) {
       return NextResponse.json(
@@ -94,32 +104,64 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 创建笔记本数据
+    // 创建笔记本数据 - 只包含必需的字段
     const notebookData = {
       title: title.trim(),
-      description: description?.trim() || null,
-      cover_url: cover_url?.trim() || null,
+      author: 'System', // 笔记本默认作者
       user_id: user.id,
-      status: 'active',
+      type: 'notebook',
+      status: 'ready',
       note_count: 0,
       metadata: {},
-      last_accessed_at: new Date().toISOString()
+      last_accessed_at: new Date().toISOString(),
+      // 只在有值时才包含可选字段
+      ...(description?.trim() && { description: description.trim() }),
+      ...(cover_url?.trim() && { cover_url: cover_url.trim() }),
     };
+
+    console.log('准备插入的笔记本数据:', notebookData);
 
     // 插入笔记本到数据库
     const { data: notebook, error: insertError } = await supabase
-      .from('notebooks')
+      .from('books')
       .insert(notebookData)
       .select()
       .single();
 
     if (insertError) {
-      console.error('创建笔记本失败:', insertError);
+      console.error('创建笔记本失败 - 详细错误:', {
+        error: insertError,
+        code: insertError.code,
+        details: insertError.details,
+        hint: insertError.hint,
+        message: insertError.message
+      });
+      
+      // 根据错误类型返回更具体的错误信息
+      if (insertError.code === '23505') {
+        return NextResponse.json(
+          { error: '笔记本标题已存在' },
+          { status: 409 }
+        );
+      } else if (insertError.code === '23514') {
+        return NextResponse.json(
+          { error: '数据格式错误' },
+          { status: 400 }
+        );
+      } else if (insertError.code === '42703') {
+        return NextResponse.json(
+          { error: '数据库字段不存在，请检查迁移是否正确执行' },
+          { status: 500 }
+        );
+      }
+      
       return NextResponse.json(
         { error: '创建笔记本失败，请重试' },
         { status: 500 }
       );
     }
+
+    console.log('笔记本创建成功:', notebook);
 
     // 返回创建的笔记本信息
     return NextResponse.json({
@@ -132,11 +174,12 @@ export async function POST(req: NextRequest) {
         created_at: notebook.created_at,
         updated_at: notebook.updated_at,
         note_count: notebook.note_count,
-        status: notebook.status
+        status: notebook.status,
+        type: notebook.type
       }
     }, { status: 201 });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('创建笔记本API错误:', error);
     return NextResponse.json(
       { error: '服务器内部错误' },
@@ -174,17 +217,18 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const page = parseInt(url.searchParams.get('page') || '1');
     const limit = parseInt(url.searchParams.get('limit') || '20');
-    const status = url.searchParams.get('status') || 'active';
+    const status = url.searchParams.get('status') || 'ready';
 
     // 计算分页
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
-    // 获取笔记本列表
+    // 获取笔记本列表（只查询notebook类型）
     const { data: notebooks, error: fetchError, count } = await supabase
-      .from('notebooks')
+      .from('books')
       .select('*', { count: 'exact' })
       .eq('user_id', user.id)
+      .eq('type', 'notebook')
       .eq('status', status)
       .order('updated_at', { ascending: false })
       .range(from, to);

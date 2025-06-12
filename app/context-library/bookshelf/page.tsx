@@ -108,7 +108,7 @@ export default function BookshelfPage() {
       console.log('重新加载书架数据');
 
       try {
-        // 首先尝试不带统计信息的基本查询
+        // 首先尝试不带统计信息的基本查询，只查询书籍类型
         const { data: basicData, error: basicError } = await supabase
           .from('books')
           .select(`
@@ -116,6 +116,7 @@ export default function BookshelfPage() {
             chapters (*, order_index)
           `)
           .eq('user_id', user.id)
+          .eq('type', 'book') // 只加载书籍类型
           .order('updated_at', { ascending: false });
 
         if (basicError) throw basicError;

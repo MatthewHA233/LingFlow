@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { Notebook, CustomPage } from '@/types/notebook';
+import { Book, Chapter } from '@/types/book'; // 使用统一的Book和Chapter类型
 import { useAuthStore } from '@/stores/auth';
 import { supabase } from '@/lib/supabase-client';
 import Image from 'next/image';
@@ -15,11 +15,13 @@ import { confirmAlert } from 'react-confirm-alert';
 import 'react-confirm-alert/src/react-confirm-alert.css';
 import { toast } from 'sonner';
 import { CardContainer, CardBody, CardItem } from '@/components/ui/3d-card';
+import NotebookCreateDialog from '@/components/content/NotebookCreateDialog';
 
 export default function NotebookContent() {
-  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [notebooks, setNotebooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const { user } = useAuthStore();
   const router = useRouter();
 
@@ -28,64 +30,65 @@ export default function NotebookContent() {
   const activeMenuRef = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
-    async function loadNotebooks() {
-      if (!user) return;
-
-      try {
-        // 获取用户的笔记本列表
-        const { data: notebooksData, error: notebooksError } = await supabase
-          .from('notebooks')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('status', 'active')
-          .order('updated_at', { ascending: false });
-
-        if (notebooksError) throw notebooksError;
-
-        // 为每个笔记本获取其页面列表
-        const notebooksWithPages = await Promise.all(
-          (notebooksData || []).map(async (notebook) => {
-            try {
-              const { data: pagesData, error: pagesError } = await supabase
-                .from('custom_pages')
-                .select(`
-                  *,
-                  content_parents!custom_pages_parent_id_fkey (
-                    id,
-                    title,
-                    content_type
-                  )
-                `)
-                .eq('notebook_id', notebook.id)
-                .order('order_index', { ascending: true });
-
-              if (pagesError) {
-                console.error(`获取笔记本 ${notebook.id} 的页面失败:`, pagesError);
-                return { ...notebook, custom_pages: [] };
-              }
-
-              return {
-                ...notebook,
-                custom_pages: pagesData || []
-              };
-            } catch (error) {
-              console.error(`处理笔记本 ${notebook.id} 时出错:`, error);
-              return { ...notebook, custom_pages: [] };
-            }
-          })
-        );
-
-        setNotebooks(notebooksWithPages);
-      } catch (error) {
-        console.error('加载笔记本失败:', error);
-        toast.error('加载笔记本失败');
-      } finally {
-        setLoading(false);
-      }
-    }
-
     loadNotebooks();
   }, [user]);
+
+  async function loadNotebooks() {
+    if (!user) return;
+
+    try {
+      // 从 books 表获取类型为 'notebook' 的记录
+      const { data: notebooksData, error: notebooksError } = await supabase
+        .from('books')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('type', 'notebook')
+        .eq('status', 'ready')
+        .order('updated_at', { ascending: false });
+
+      if (notebooksError) throw notebooksError;
+
+      // 为每个笔记本获取其章节列表（原来的页面）
+      const notebooksWithPages = await Promise.all(
+        (notebooksData || []).map(async (notebook) => {
+          try {
+            const { data: chaptersData, error: chaptersError } = await supabase
+              .from('chapters')
+              .select(`
+                *,
+                content_parents!chapters_parent_id_fkey (
+                  id,
+                  title,
+                  content_type
+                )
+              `)
+              .eq('book_id', notebook.id)
+              .order('order_index', { ascending: true });
+
+            if (chaptersError) {
+              console.error(`获取笔记本 ${notebook.id} 的章节失败:`, chaptersError);
+              return { ...notebook, chapters: [] };
+            }
+
+            return {
+              ...notebook,
+              chapters: chaptersData || []
+            };
+          } catch (error) {
+            console.error(`处理笔记本 ${notebook.id} 时出错:`, error);
+            return { ...notebook, chapters: [] };
+          }
+        })
+      );
+
+      setNotebooks(notebooksWithPages);
+    } catch (error) {
+      console.error('加载笔记本失败:', error);
+      toast.error('加载笔记本失败');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const handleDeleteNotebook = async (notebookId: string, title: string, e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -120,12 +123,20 @@ export default function NotebookContent() {
                   : notebook
               ));
 
-              const { error } = await supabase
-                .from('notebooks')
-                .update({ status: 'deleted' })
-                .eq('id', notebookId);
+              const response = await fetch(`/api/books/delete`, {
+                method: 'DELETE',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+                },
+                body: JSON.stringify({ bookId: notebookId })
+              });
 
-              if (error) throw error;
+              if (!response.ok) {
+                throw new Error('删除失败');
+              }
+
+              const data = await response.json();
 
               toast.success(`《${title}》已删除`, {
                 id: toastId,
@@ -190,11 +201,16 @@ export default function NotebookContent() {
   };
 
   const handleCreateNotebook = () => {
-    router.push('/notebook/create');
+    setShowCreateDialog(true);
+  };
+
+  const handleCreateSuccess = () => {
+    // 重新加载笔记本列表
+    loadNotebooks();
   };
 
   // 渲染笔记本菜单
-  const renderNotebookMenu = (notebook: Notebook) => (
+  const renderNotebookMenu = (notebook: Book) => (
     <CardItem
       translateZ="70"
       rotateZ="-0.5"
@@ -228,9 +244,9 @@ export default function NotebookContent() {
   );
 
   // 渲染单个笔记本卡片
-  const renderNotebookCard = (notebook: Notebook) => {
-    // 获取最近更新的3个页面，按更新时间排序
-    const recentPages = notebook.custom_pages
+  const renderNotebookCard = (notebook: Book) => {
+    // 获取最近更新的3个章节，按更新时间排序
+    const recentChapters = notebook.chapters
       ?.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
       ?.slice(0, 3) || [];
     
@@ -285,8 +301,8 @@ export default function NotebookContent() {
                 </div>
               </CardItem>
               
-              {/* 最近页面预览 - 只在有页面时显示 */}
-              {notebook.note_count > 0 && recentPages.length > 0 && (
+              {/* 最近章节预览 - 只在有章节时显示 */}
+              {notebook.note_count > 0 && recentChapters.length > 0 && (
                 <CardItem translateZ="30" className="mb-3">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
@@ -294,9 +310,9 @@ export default function NotebookContent() {
                       <div className="text-xs text-purple-400">{notebook.note_count}页</div>
                     </div>
                     <div className="space-y-1.5">
-                      {recentPages.map((page, index) => (
+                      {recentChapters.map((chapter, index) => (
                         <div 
-                          key={page.id}
+                          key={chapter.id}
                           className="group/page bg-gray-900/30 border border-gray-700/50 rounded-md p-2 hover:bg-gray-800/40 hover:border-purple-500/30 transition-all duration-200"
                         >
                           <div className="flex items-start justify-between gap-2">
@@ -306,10 +322,10 @@ export default function NotebookContent() {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="text-xs text-gray-200 truncate font-medium">
-                                  {page.title}
+                                  {chapter.title}
                                 </div>
                                 <div className="text-[10px] text-gray-500 mt-0.5">
-                                  {formatDate(page.updated_at)}
+                                  {formatDate(chapter.updated_at)}
                                 </div>
                               </div>
                             </div>
@@ -347,7 +363,7 @@ export default function NotebookContent() {
                   translateZ={35}
                   rotateY="0.8"
                   as={Link}
-                  href={`/notebook/${notebook.id}`}
+                  href={`/reader/${notebook.id}`}
                   className="w-full px-3 py-2 rounded-md bg-gradient-to-tr from-purple-600 to-purple-500 text-white text-xs font-bold flex items-center justify-center hover:shadow-sm hover:shadow-purple-500/20 transition-all"
                 >
                   打开笔记本 <ChevronRight className="w-3 h-3 ml-1" />
@@ -447,6 +463,13 @@ export default function NotebookContent() {
           </div>
         </div>
       </div>
+
+      {/* 创建笔记本对话框 */}
+      <NotebookCreateDialog
+        isOpen={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        onSuccess={handleCreateSuccess}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
--- 创建章节插入函数 V3 - 修复唯一约束冲突
+-- 创建章节插入函数 V4 - 根据书籍类型设置正确的content_type
 CREATE OR REPLACE FUNCTION insert_chapter_at_position(
   p_book_id UUID,
   p_position INTEGER,
@@ -16,20 +16,35 @@ DECLARE
   v_result JSON;
   v_affected_rows INTEGER;
   v_chapters_to_update RECORD;
+  v_book_type TEXT;
 BEGIN
   -- 记录调试信息
   RAISE NOTICE '开始创建章节，参数: book_id=%, position=%, title=%, user_id=%', p_book_id, p_position, p_title, p_user_id;
   
   -- 开始事务
   BEGIN
-    -- 1. 先检查是否存在冲突的order_index
+    -- 1. 获取书籍类型以确定正确的content_type
+    SELECT type INTO v_book_type
+    FROM books
+    WHERE id = p_book_id;
+    
+    IF v_book_type IS NULL THEN
+      RETURN jsonb_build_object(
+        'success', false,
+        'error', '未找到指定的书籍'
+      );
+    END IF;
+    
+    RAISE NOTICE '书籍类型: %', v_book_type;
+    
+    -- 2. 先检查是否存在冲突的order_index
     SELECT COUNT(*) INTO v_affected_rows
     FROM chapters 
     WHERE book_id = p_book_id AND order_index = p_position;
     
     RAISE NOTICE '位置%处现有章节数量: %', p_position, v_affected_rows;
     
-    -- 2. 使用临时负索引避免唯一约束冲突
+    -- 3. 使用临时负索引避免唯一约束冲突
     -- 首先将所有需要移动的章节设置为临时负索引
     UPDATE chapters 
     SET order_index = -(order_index + 1000)  -- 使用负数避免冲突
@@ -39,14 +54,17 @@ BEGIN
     GET DIAGNOSTICS v_affected_rows = ROW_COUNT;
     RAISE NOTICE '将%个章节设置为临时负索引', v_affected_rows;
     
-    -- 3. 创建content_parent记录
+    -- 4. 创建content_parent记录，根据书籍类型设置正确的content_type
     INSERT INTO content_parents (
       content_type, 
       title, 
       user_id, 
       metadata
     ) VALUES (
-      'chapter', 
+      CASE 
+        WHEN v_book_type = 'notebook' THEN 'custom_page'::content_type
+        ELSE 'chapter'::content_type
+      END, 
       p_title, 
       p_user_id, 
       jsonb_build_object('book_id', p_book_id, 'chapter_index', p_position)
@@ -55,7 +73,7 @@ BEGIN
     
     RAISE NOTICE '创建content_parent成功，ID: %', v_content_parent_id;
     
-    -- 4. 创建章节记录
+    -- 5. 创建章节记录
     INSERT INTO chapters (
       book_id, 
       title, 
@@ -71,7 +89,7 @@ BEGIN
     
     RAISE NOTICE '创建章节成功，ID: %', v_chapter_id;
     
-    -- 5. 将临时负索引的章节恢复为正确的正索引
+    -- 6. 将临时负索引的章节恢复为正确的正索引
     UPDATE chapters 
     SET order_index = (-order_index - 1000) + 1  -- 恢复并+1
     WHERE book_id = p_book_id 
@@ -80,7 +98,7 @@ BEGIN
     GET DIAGNOSTICS v_affected_rows = ROW_COUNT;
     RAISE NOTICE '恢复了%个章节的正确索引', v_affected_rows;
     
-    -- 6. 创建默认语境块
+    -- 7. 创建默认语境块，根据书籍类型设置不同的默认文本
     INSERT INTO context_blocks (
       parent_id, 
       block_type, 
@@ -90,7 +108,10 @@ BEGIN
     ) VALUES (
       v_content_parent_id, 
       'text', 
-      '这是新章节的默认文本内容，点击编辑开始创作。', 
+      CASE 
+        WHEN v_book_type = 'notebook' THEN '这是新页面的默认文本内容，点击编辑开始创作。'
+        ELSE '这是新章节的默认文本内容，点击编辑开始创作。'
+      END, 
       0, 
       '{}'::jsonb
     )
@@ -98,7 +119,7 @@ BEGIN
     
     RAISE NOTICE '创建默认语境块成功，ID: %', v_block_id;
     
-    -- 7. 构建返回结果
+    -- 8. 构建返回结果
     SELECT jsonb_build_object(
       'success', true,
       'chapter', jsonb_build_object(
@@ -113,7 +134,10 @@ BEGIN
         'id', v_block_id,
         'parent_id', v_content_parent_id,
         'block_type', 'text',
-        'content', '这是新章节的默认文本内容，点击编辑开始创作。',
+        'content', CASE 
+          WHEN v_book_type = 'notebook' THEN '这是新页面的默认文本内容，点击编辑开始创作。'
+          ELSE '这是新章节的默认文本内容，点击编辑开始创作。'
+        END,
         'order_index', 0,
         'metadata', '{}'::jsonb
       )

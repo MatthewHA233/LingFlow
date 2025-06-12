@@ -6,7 +6,7 @@ import { DraggableAudioPlayer } from './DraggableAudioPlayer';
 import { TableOfContents } from './TableOfContents';
 import { Book } from '@/types/book';
 import { supabase } from '@/lib/supabase-client';
-import { X, Mic, Menu, ChevronLeft, ChevronRight, Info, Undo, Pause, Play } from 'lucide-react';
+import { X, Mic, Menu, ChevronLeft, ChevronRight, Info, Undo, Pause, Play, Plus } from 'lucide-react';
 import { ContextBlocks } from './ContextBlocks';
 import { toast } from 'sonner';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -77,6 +77,11 @@ export function ReaderContent({ book }: ReaderContentProps) {
   // 添加初始化状态跟踪
   const [initializationStep, setInitializationStep] = useState('starting');
   const [initializationError, setInitializationError] = useState<string | null>(null);
+
+  // 添加创建页面的状态
+  const [isCreatingPage, setIsCreatingPage] = useState(false);
+  const [newPageTitle, setNewPageTitle] = useState('');
+  const [showCreatePageDialog, setShowCreatePageDialog] = useState(false);
 
   // 添加块更新处理函数
   const handleBlockUpdate = async (blockId: string, newType: string, content: string) => {
@@ -331,8 +336,19 @@ export function ReaderContent({ book }: ReaderContentProps) {
           throw new Error('无效的书籍ID');
         }
         
+        // 根据书籍类型处理没有章节的情况
         if (!book.chapters || book.chapters.length === 0) {
+          if (book.type === 'notebook') {
+            // 对于笔记本，没有页面是正常的，可以引导用户创建
+            console.log('笔记本暂无页面，显示创建引导');
+            setParentIds({});
+            setContextBlocks({ 0: [] });
+            setInitializationStep('empty_notebook');
+            return;
+          } else {
+            // 对于书籍，没有章节是异常情况
           throw new Error('书籍没有章节');
+          }
         }
         
         console.log('书籍章节数量:', book.chapters.length);
@@ -520,7 +536,7 @@ export function ReaderContent({ book }: ReaderContentProps) {
     const chaptersToPreload = [
       currentIndex + 1, // 下一章
       currentIndex - 1  // 上一章
-    ].filter(index => index >= 0 && index < book.chapters.length);
+    ].filter(index => index >= 0 && index < (book.chapters?.length || 0));
 
     for (const chapterIndex of chaptersToPreload) {
       if (!contextBlocks[chapterIndex]) {
@@ -720,7 +736,7 @@ export function ReaderContent({ book }: ReaderContentProps) {
       }
       // 如果当前章节没有更多音频对齐块且处于连续播放模式，则尝试下一章
       else if (playMode === 'continuous') {
-        if (currentChapter < book.chapters.length - 1) {
+        if (currentChapter < (book.chapters?.length || 0) - 1) {
           // 切换到下一章
           handleChapterChange(currentChapter + 1);
           
@@ -1129,8 +1145,93 @@ export function ReaderContent({ book }: ReaderContentProps) {
       );
     }
 
+    // 处理空笔记本的情况
+    if (initializationStep === 'empty_notebook' && book.type === 'notebook') {
+      return (
+        <>
+          <div className="flex flex-col items-center justify-center py-12 space-y-6 max-w-md mx-auto">
+            <div className="text-center space-y-3">
+              <div className="w-16 h-16 mx-auto bg-purple-100 dark:bg-purple-900/20 rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold">开始创建你的第一个页面</h3>
+              <p className="text-muted-foreground">
+                这个笔记本还没有任何页面。创建第一个页面来开始记录你的想法和内容。
+              </p>
+            </div>
+            
+            <div className="w-full space-y-3 flex flex-col items-center">
+              <HoverBorderGradient
+                containerClassName="rounded-md"
+                className="flex items-center gap-2 text-sm"
+                onClick={() => setShowCreatePageDialog(true)}
+              >
+                <Plus className="w-4 h-4" />
+                <span>创建新页面</span>
+              </HoverBorderGradient>
+              
+              <button
+                onClick={() => window.history.back()}
+                className="px-6 py-2 border border-border hover:bg-accent text-muted-foreground hover:text-foreground rounded-md text-sm transition-colors"
+              >
+                返回笔记本列表
+              </button>
+            </div>
+          </div>
+
+          {/* 创建页面对话框 */}
+          {showCreatePageDialog && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-card p-6 rounded-lg shadow-xl max-w-sm w-full mx-4">
+                <h3 className="text-lg font-semibold mb-4">创建新页面</h3>
+                <input
+                  type="text"
+                  value={newPageTitle}
+                  onChange={(e) => setNewPageTitle(e.target.value)}
+                  placeholder="输入页面标题"
+                  className="w-full px-3 py-2 border rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-primary"
+                  autoFocus
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && newPageTitle.trim()) {
+                      createNewPage(newPageTitle.trim());
+                    }
+                  }}
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => {
+                      setShowCreatePageDialog(false);
+                      setNewPageTitle('');
+                    }}
+                    className="px-4 py-2 text-sm border rounded-md hover:bg-accent"
+                    disabled={isCreatingPage}
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (newPageTitle.trim()) {
+                        createNewPage(newPageTitle.trim());
+                      }
+                    }}
+                    className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+                    disabled={isCreatingPage || !newPageTitle.trim()}
+                  >
+                    {isCreatingPage ? '创建中...' : '创建'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      );
+    }
+
     if (!contextBlocks[currentChapter]) {
-      return <div className="p-4 text-muted-foreground">该章节暂无内容</div>;
+      const contentType = book.type === 'notebook' ? '页面' : '章节';
+      return <div className="p-4 text-muted-foreground">该{contentType}暂无内容</div>;
     }
 
     const blocks = contextBlocks[currentChapter];
@@ -1418,6 +1519,90 @@ export function ReaderContent({ book }: ReaderContentProps) {
     }
   }, [isPlaying, audioUrl]);
 
+  // 添加创建新页面的函数
+  const createNewPage = async (title: string) => {
+    try {
+      setIsCreatingPage(true);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) {
+        toast.error('请先登录');
+        return;
+      }
+      
+      const userId = session.user.id;
+      
+      console.log('创建新页面，参数:', {
+        p_book_id: book.id,
+        p_position: 0,
+        p_title: title,
+        p_user_id: userId
+      });
+
+      const { data: result, error } = await supabase
+        .rpc('insert_chapter_at_position', {
+          p_book_id: book.id,
+          p_position: 0,
+          p_title: title,
+          p_user_id: userId
+        });
+
+      console.log('RPC调用结果:', { result, error });
+
+      if (error) {
+        console.error('RPC调用失败:', error);
+        throw new Error(`创建页面失败: ${error.message}`);
+      }
+
+      if (!result || !result.success) {
+        console.error('RPC函数返回错误:', result);
+        throw new Error(`创建页面失败: ${result?.error || '未知错误'}`);
+      }
+
+      // 更新本地状态
+      const chapterData = result.chapter;
+      const defaultBlock = result.default_block;
+
+      // 插入新页面
+      const chapters = book.chapters || [];
+      chapters.unshift(chapterData); // 插入到开头
+      
+      // 更新后续章节的索引
+      chapters.forEach((chapter, index) => {
+        chapter.order_index = index;
+      });
+      
+      book.chapters = chapters;
+
+      // 重新构建parentIds映射
+      const newParentIds: Record<number, string> = {};
+      chapters.forEach((chapter, index) => {
+        newParentIds[index] = chapter.parent_id;
+      });
+      setParentIds(newParentIds);
+
+      // 设置新页面的语境块
+      setContextBlocks({
+        0: [defaultBlock]
+      });
+
+      // 切换到新创建的页面
+      setCurrentChapter(0);
+      setInitializationStep('completed');
+      setInitialLoading(false);
+
+      toast.success(`新页面 "${title}" 已创建`);
+      
+    } catch (error) {
+      console.error('创建页面失败:', error);
+      toast.error(`创建页面失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      setIsCreatingPage(false);
+      setNewPageTitle('');
+      setShowCreatePageDialog(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* 阅读器导航栏 */}
@@ -1459,10 +1644,10 @@ export function ReaderContent({ book }: ReaderContentProps) {
                 
                 <button
                   onClick={() => handleChapterChange(currentChapter + 1)}
-                  disabled={currentChapter >= book.chapters.length - 1}
+                  disabled={currentChapter >= (book.chapters?.length || 0) - 1}
                   className={cn(
                     "p-1.5 rounded-md transition-colors",
-                    currentChapter >= book.chapters.length - 1 
+                    currentChapter >= (book.chapters?.length || 0) - 1 
                       ? "opacity-50 cursor-not-allowed" 
                       : "hover:bg-accent"
                   )}
@@ -1487,13 +1672,13 @@ export function ReaderContent({ book }: ReaderContentProps) {
               <div className="flex flex-col items-center flex-1">
                 <h1 className="text-base font-semibold truncate text-center">{book.title}</h1>
                 <h2 className="text-sm text-muted-foreground truncate text-center">
-                  {book.chapters[currentChapter]?.title}
+                  {book.chapters?.[currentChapter]?.title}
                 </h2>
               </div>
 
               <button
-                onClick={() => handleChapterChange(Math.min(book.chapters.length - 1, currentChapter + 1))}
-                disabled={currentChapter === book.chapters.length - 1}
+                onClick={() => handleChapterChange(Math.min((book.chapters?.length || 1) - 1, currentChapter + 1))}
+                disabled={currentChapter === (book.chapters?.length || 1) - 1}
                 className="p-1.5 hover:bg-accent rounded-md disabled:opacity-50"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -1505,7 +1690,7 @@ export function ReaderContent({ book }: ReaderContentProps) {
               <div className="text-center">
                 <h1 className="text-base font-semibold truncate">{book.title}</h1>
                 <h2 className="text-sm text-muted-foreground truncate">
-                  {book.chapters[currentChapter]?.title}
+                  {book.chapters?.[currentChapter]?.title}
                 </h2>
               </div>
             </div>
@@ -1531,7 +1716,10 @@ export function ReaderContent({ book }: ReaderContentProps) {
 
       {/* 主要内容区域 - 根据设备类型调整顶部内边距 */}
       <div 
-        className="flex-1 pb-16"
+        className={cn(
+          "flex-1 pb-16 transition-all duration-300",
+          showToc ? "ml-80" : "ml-0"
+        )}
         style={{ 
           paddingTop: isMobile ? '3.75rem' : '4rem' // 移动设备上更小的顶部内边距
         }}
@@ -1622,7 +1810,7 @@ export function ReaderContent({ book }: ReaderContentProps) {
         {/* 为移动设备调整内容区域的样式 */}
         <div className={`${isMobile ? 'h-[calc(100%-40px)]' : 'flex-1'} overflow-y-auto p-2`}>
           <AudioRecognizer
-            bookContent={book.chapters[currentChapter]?.content || ''}
+            bookContent={book.chapters?.[currentChapter]?.content || ''}
             bookId={book.id}
             onAudioUrlChange={setAudioUrl}
             onTimeChange={setCurrentTime}

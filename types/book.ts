@@ -1,5 +1,11 @@
 import { Book as EpubBook } from 'epubjs';
 
+// 书籍类型枚举
+export type BookType = 'book' | 'notebook';
+
+// 书籍状态枚举
+export type BookStatus = 'processing' | 'ready' | 'error';
+
 export interface Navigation {
   toc: Array<{
     href: string;
@@ -14,6 +20,8 @@ export interface Chapter {
   book_id: string;
   parent_id: string;
   content?: string; // 向后兼容，新版使用context_blocks
+  created_at: string;
+  updated_at: string;
   contentParent?: {
     id: string;
     content_type: string;
@@ -73,19 +81,27 @@ export interface Book {
   title: string;
   author: string;
   cover_url?: string;
-  epub_path: string;
-  audio_path: string;
+  description?: string;
+  epub_path?: string; // 对于笔记本类型，这个字段可能为空
+  audio_path?: string; // 对于笔记本类型，这个字段可能为空
   user_id: string;
   created_at: string;
   updated_at: string;
+  last_read_at?: string;
+  last_position?: Record<string, any>;
+  type: BookType; // 新增：书籍类型
+  status: BookStatus; // 扩展状态选项
+  note_count: number; // 新增：章节/页面计数
+  last_accessed_at?: string; // 新增：最后访问时间
   metadata: {
     language?: string;
     publisher?: string;
     published_date?: string;
     [key: string]: any;
   };
-  chapters: Chapter[];
-  // 临时属性，仅用于上传过程
+  chapters?: Chapter[]; // 可选，用于包含章节数据
+  
+  // 临时属性，仅用于上传过程或UI状态
   coverUrl?: string;
   resources?: {
     manifest: ResourceManifest;
@@ -100,6 +116,12 @@ export interface Book {
   isDeleting?: boolean;
   stats?: BookStatistics;
 }
+
+// 为了向后兼容，保留 Notebook 类型别名
+export type Notebook = Book;
+
+// 为了向后兼容，保留 CustomPage 类型别名
+export type CustomPage = Chapter;
 
 export interface BookProgress {
   book_id: string;
@@ -146,6 +168,45 @@ export interface PackagingManifestItem {
   type?: string;
   id?: string;
   exists?: boolean;
+}
+
+// 创建书籍/笔记本的请求类型
+export interface CreateBookRequest {
+  title: string;
+  author?: string;
+  description?: string;
+  cover_url?: string;
+  type: BookType;
+  metadata?: Record<string, any>;
+  epub_path?: string;
+  audio_path?: string;
+}
+
+// 更新书籍/笔记本的请求类型
+export interface UpdateBookRequest {
+  title?: string;
+  author?: string;
+  description?: string;
+  cover_url?: string;
+  status?: BookStatus;
+  metadata?: Record<string, any>;
+  epub_path?: string;
+  audio_path?: string;
+}
+
+// 创建章节/页面的请求类型
+export interface CreateChapterRequest {
+  book_id: string;
+  title: string;
+  content?: string;
+  order_index?: number;
+}
+
+// 更新章节/页面的请求类型
+export interface UpdateChapterRequest {
+  title?: string;
+  content?: string;
+  order_index?: number;
 }
 
 export type { EpubBook };
