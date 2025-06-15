@@ -69,11 +69,11 @@ export function UserMenu({ user }: UserMenuProps) {
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
             <Link 
-              href="/context-library/bookshelf"
+              href="/context-library"
               className="w-full flex items-center cursor-pointer dropdown-menu-item"
             >
               <BookOpen className="w-4 h-4 mr-2" />
-              <span>我的书架</span>
+              <span>我的语境库</span>
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>

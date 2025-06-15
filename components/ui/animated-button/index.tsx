@@ -9,7 +9,7 @@ export function AnimatedButton() {
   const router = useRouter();
 
   const handleClick = () => {
-    router.push('/context-library/bookshelf');
+    router.push('/context-library');
   };
 
   return (
