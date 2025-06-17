@@ -419,7 +419,7 @@ export default function AdminLibraryPage() {
                 book.isDeleting ? 'opacity-50 blur-sm scale-95' : ''
               }`}
             >
-              <Link href={`/reader/${book.id}`} className="block p-4">
+              <Link href={`/content/${book.id}`} className="block p-4">
                 <div className="flex gap-4">
                   <div className="relative w-24 h-32 bg-muted rounded">
                     {book.cover_url && (
@@ -758,7 +758,7 @@ export default function AdminLibraryPage() {
               <div className="flex justify-end space-x-2 mt-4">
                 <Button variant="outline" onClick={() => setShowDetails(false)}>关闭</Button>
                 <Button variant="default" asChild>
-                  <Link href={`/reader/${selectedBook.id}`}>查看阅读器</Link>
+                  <Link href={`/content/${selectedBook.id}`}>查看阅读器</Link>
                 </Button>
               </div>
             </>

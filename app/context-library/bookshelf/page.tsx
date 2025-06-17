@@ -486,7 +486,7 @@ export default function BookshelfPage() {
             </div>
           </div>
           
-          <Link href="/reader" className="flex-shrink-0">
+          <Link href="/content" className="flex-shrink-0">
             <HoverBorderGradient
               containerClassName="rounded-full flex-shrink-0"
               className="flex items-center gap-2 text-sm"
@@ -539,7 +539,7 @@ export default function BookshelfPage() {
           <div className="text-center py-12 px-2 sm:px-4">
             <h2 className="text-xl font-semibold mb-2">您的书架还是空的</h2>
             <p className="text-muted-foreground mb-4">导入您的第一本有声书开始阅读之旅吧</p>
-            <Link href="/reader">
+            <Link href="/content">
               <HoverBorderGradient
                 containerClassName="rounded-full mx-auto"
                 className="flex items-center gap-2"
@@ -706,7 +706,7 @@ export default function BookshelfPage() {
                           translateZ={35}
                           rotateY="0.8"
                           as={Link}
-                          href={`/reader/${book.id}`}
+                          href={`/content/${book.id}`}
                           className="w-full px-2 py-1 lg:px-3 lg:py-1.5 rounded-md bg-gradient-to-tr from-emerald-600 to-emerald-500 text-white text-[10px] lg:text-xs font-bold flex items-center justify-center hover:shadow-sm hover:shadow-emerald-500/20 transition-all"
                         >
                           阅读 <ChevronRight className="w-2 h-2 lg:w-3 lg:h-3 ml-0.5 lg:ml-1" />

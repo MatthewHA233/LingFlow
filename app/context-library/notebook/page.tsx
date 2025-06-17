@@ -357,7 +357,7 @@ export default function NotebookPage() {
                   translateZ={35}
                   rotateY="0.8"
                   as={Link}
-                  href={`/reader/${notebook.id}`}
+                  href={`/content/${notebook.id}`}
                   className="w-full px-3 py-2 rounded-md bg-gradient-to-tr from-purple-600 to-purple-500 text-white text-xs font-bold flex items-center justify-center hover:shadow-sm hover:shadow-purple-500/20 transition-all"
                 >
                   打开笔记本 <ChevronRight className="w-3 h-3 ml-1" />

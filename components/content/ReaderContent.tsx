@@ -8,6 +8,8 @@ import { Book } from '@/types/book';
 import { supabase } from '@/lib/supabase-client';
 import { X, Mic, Menu, ChevronLeft, ChevronRight, Info, Undo, Pause, Play, Plus } from 'lucide-react';
 import { ContextBlocks } from './ContextBlocks';
+import { WordCloudSidebar } from './WordCloudSidebar';
+import { SelectedWord } from './AnchorWordBlock';
 import { toast } from 'sonner';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { TerminalPopover } from '@/components/ui/TerminalPopover';
@@ -83,6 +85,12 @@ export function ReaderContent({ book }: ReaderContentProps) {
   const [newPageTitle, setNewPageTitle] = useState('');
   const [showCreatePageDialog, setShowCreatePageDialog] = useState(false);
 
+  // 词云侧边栏状态
+  const [showWordCloud, setShowWordCloud] = useState(false);
+  const [allSelectedWords, setAllSelectedWords] = useState<SelectedWord[]>([]);
+  const [isCollectingWords, setIsCollectingWords] = useState(false);
+  const [isInAnchorMode, setIsInAnchorMode] = useState(false);
+
   // 添加块更新处理函数
   const handleBlockUpdate = async (blockId: string, newType: string, content: string) => {
     try {
@@ -134,6 +142,44 @@ export function ReaderContent({ book }: ReaderContentProps) {
       return newSelected;
     });
   }, []); // 移除多余的依赖
+
+  // 处理锚定词汇变化
+  const handleAnchorWordsChange = useCallback((blockId: string, words: SelectedWord[]) => {
+    // 更新全局选中词汇列表，移除该块的旧词汇，添加新词汇
+    setAllSelectedWords(prev => {
+      const filteredWords = prev.filter(w => !w.id.startsWith(blockId));
+      return [...filteredWords, ...words];
+    });
+  }, []);
+
+  // 处理进入锚定模式
+  const handleEnterAnchorMode = useCallback(() => {
+    setIsInAnchorMode(true);
+    setShowWordCloud(true);
+  }, []);
+
+  // 处理退出锚定模式
+  const handleExitAnchorMode = useCallback(() => {
+    setIsInAnchorMode(false);
+    setShowWordCloud(false);
+    // 清空当前块的选中词汇
+    setAllSelectedWords(prev => prev.filter(w => !w.id.includes('-')));
+  }, []);
+
+  // 处理收集词汇（发送给LLM）
+  const handleCollectWords = useCallback(async (words: SelectedWord[]) => {
+    setIsCollectingWords(true);
+    try {
+      // 这里暂时只显示toast，具体的LLM处理逻辑后续实现
+      toast.success(`已收集 ${words.length} 个词汇`, {
+        description: '词锚点处理功能开发中'
+      });
+    } catch (error) {
+      toast.error('收集词汇失败');
+    } finally {
+      setIsCollectingWords(false);
+    }
+  }, []);
 
   // 更新块排序处理函数
   const handleBlockOrderChange = async (draggedId: string, droppedId: string, position: 'before' | 'after') => {
@@ -1238,6 +1284,11 @@ export function ReaderContent({ book }: ReaderContentProps) {
     return blocks.map((block) => {
       const hasSplitView = activeSplitViewBlockId === block.id;
       
+      // 过滤出属于当前块的选中词汇
+      const blockSelectedWords = allSelectedWords.filter(word => 
+        word.id.startsWith(block.id)
+      );
+      
       return (
         <div key={block.id} 
           ref={(el) => { blockRefs.current[block.id] = el; }}
@@ -1261,6 +1312,10 @@ export function ReaderContent({ book }: ReaderContentProps) {
               onPlayModeChange={handlePlayModeChange}
               onShowSplitView={handleShowSplitView}
               activeBlockId={activeBlockId}
+              onAnchorWordsChange={handleAnchorWordsChange}
+              onEnterAnchorMode={handleEnterAnchorMode}
+              onExitAnchorMode={handleExitAnchorMode}
+              anchorSelectedWords={blockSelectedWords}
             />
           </div>
           
@@ -1977,6 +2032,22 @@ export function ReaderContent({ book }: ReaderContentProps) {
           </button>
         </div>
       )}
+
+      {/* 词云侧边栏 */}
+      <WordCloudSidebar
+        selectedWords={allSelectedWords}
+        isOpen={isInAnchorMode}
+        onClose={() => {
+          // 只有在非锚定模式下才允许关闭
+          if (!isInAnchorMode) {
+            setShowWordCloud(false);
+          }
+        }}
+        onWordsChange={setAllSelectedWords}
+        onCollectWords={handleCollectWords}
+        isCollecting={isCollectingWords}
+        isAnchorMode={isInAnchorMode}
+      />
     </div>
   );
 }

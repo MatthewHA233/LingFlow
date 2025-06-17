@@ -8,12 +8,14 @@ import { toast } from 'sonner';
 import Image from 'next/image';
 import { AudioController, AUDIO_EVENTS } from '@/lib/audio-controller';
 import { AnimatePresence, motion } from "framer-motion";
+import { AnchorWordBlock, SelectedWord } from './AnchorWordBlock';
 
 interface ContextBlocksProps {
   block: {
     id: string;
     block_type: string;
     content: string;
+    original_content?: string;
     metadata?: Record<string, any>;
     order_index: number;
     speech_id?: string;
@@ -32,6 +34,10 @@ interface ContextBlocksProps {
   onPlayModeChange?: (newMode: 'sentence' | 'block' | 'continuous') => void;
   onShowSplitView?: (blockId: string, type: 'source' | 'translation') => void;
   activeBlockId: string | null;
+  onAnchorWordsChange?: (blockId: string, words: SelectedWord[]) => void;
+  onEnterAnchorMode?: () => void;
+  onExitAnchorMode?: () => void;
+  anchorSelectedWords?: SelectedWord[];
 }
 
 // 添加一个全局活跃块ID事件
@@ -56,6 +62,10 @@ export function ContextBlocks({
   onPlayModeChange,
   onShowSplitView,
   activeBlockId,
+  onAnchorWordsChange,
+  onEnterAnchorMode,
+  onExitAnchorMode,
+  anchorSelectedWords = [],
 }: ContextBlocksProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -73,6 +83,9 @@ export function ContextBlocks({
   const [showSplitView, setShowSplitView] = useState(false);
   const [sentences, setSentences] = useState<any[]>([]);
   const [blockSpeechId, setBlockSpeechId] = useState<string | undefined>(block.speech_id);
+  
+  // 新增锚定词块相关状态
+  const [isAnchorMode, setIsAnchorMode] = useState(false);
   
   const blockRef = useRef<HTMLDivElement>(null);
   const contentEditableRef = useRef<HTMLDivElement>(null);
@@ -972,8 +985,46 @@ export function ContextBlocks({
     return <span>{segments}</span>;
   };
 
-  // 修改现有的renderContent函数
+  // 获取用于锚定词块的内容
+  const getAnchorContent = useCallback(() => {
+    // 如果是音频对齐块，使用 original_content；否则使用 content
+    return block.block_type === 'audio_aligned' 
+      ? (block.original_content || block.content)
+      : block.content;
+  }, [block.block_type, block.content, block.original_content]);
+
+  // 处理锚定词块选词变化
+  const handleAnchorWordsChange = useCallback((words: SelectedWord[]) => {
+    onAnchorWordsChange?.(block.id, words);
+  }, [block.id, onAnchorWordsChange]);
+
+  // 进入锚定模式
+  const handleEnterAnchorMode = useCallback(() => {
+    setIsAnchorMode(true);
+    onEnterAnchorMode?.();
+  }, [onEnterAnchorMode]);
+
+  // 退出锚定模式
+  const handleExitAnchorMode = useCallback(() => {
+    setIsAnchorMode(false);
+    onExitAnchorMode?.();
+  }, [onExitAnchorMode]);
+
+  // 修改renderContent函数，支持锚定词块模式
   const renderContent = () => {
+    // 如果处于锚定模式，渲染锚定词块
+    if (isAnchorMode) {
+      return (
+        <AnchorWordBlock
+          content={getAnchorContent()}
+          blockId={block.id}
+          onSelectedWordsChange={handleAnchorWordsChange}
+          onExit={handleExitAnchorMode}
+          initialSelectedWords={anchorSelectedWords}
+        />
+      );
+    }
+
     // 图片语境块
     if (block.block_type === 'image' && resources) {
       const imgPath = block.content.replace('![', '').replace(/\]\(.+\)/, '');
@@ -1031,10 +1082,10 @@ export function ContextBlocks({
               <Globe className="h-3 w-3" />
             </button>
             
-            {/* 词锚点图标 */}
+            {/* 词锚点图标 - 新增 */}
             <button
-              onClick={() => toast("词锚点功能开发中", { description: "敬请期待" })}
-              className="p-0.5 rounded-full bg-background/80 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
+              onClick={handleEnterAnchorMode}
+              className="p-0.5 rounded-full bg-background/80 hover:bg-blue-500/10 text-muted-foreground hover:text-blue-500 transition-all"
               title="词锚点"
             >
               <Network className="h-3 w-3" />
@@ -1047,7 +1098,7 @@ export function ContextBlocks({
     // 包含嵌入式句子的文本块 - 使用相同的渲染方式
     if (block.block_type === 'text' && block.content && block.content.includes('[[')) {
       return (
-        <div className="embedded-sentences-block py-2 px-3 text-sm leading-relaxed">
+        <div className="embedded-sentences-block relative py-2 px-3 text-sm leading-relaxed">
           <div className="prose prose-sm max-w-none">
             {isLoadingSentences ? (
               <span className="text-muted-foreground">加载句子内容中...</span>
@@ -1055,12 +1106,24 @@ export function ContextBlocks({
               renderEmbeddedContent()
             )}
           </div>
+          
+          {/* 为包含嵌入式句子的文本块也添加词锚点按钮 */}
+          <div className="absolute right-1 bottom-1 flex gap-1">
+            <button
+              onClick={handleEnterAnchorMode}
+              className="p-0.5 rounded-full bg-background/80 hover:bg-blue-500/10 text-muted-foreground hover:text-blue-500 transition-all"
+              title="词锚点"
+            >
+              <Network className="h-3 w-3" />
+            </button>
+          </div>
         </div>
       );
     }
     
     // 普通文本块 - 直接可编辑
     return (
+      <div className="relative">
       <div
         ref={contentEditableRef}
         contentEditable={block.block_type === 'text'}
@@ -1076,6 +1139,20 @@ export function ContextBlocks({
         }}
       >
         {renderEmbeddedContent()}
+        </div>
+        
+        {/* 为普通文本块也添加词锚点按钮 */}
+        {block.block_type === 'text' && block.content && (
+          <div className="absolute right-1 bottom-1 flex gap-1">
+            <button
+              onClick={handleEnterAnchorMode}
+              className="p-0.5 rounded-full bg-background/80 hover:bg-blue-500/10 text-muted-foreground hover:text-blue-500 transition-all opacity-0 group-hover:opacity-100 transition-opacity"
+              title="词锚点"
+            >
+              <Network className="h-3 w-3" />
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -1369,17 +1446,19 @@ export function ContextBlocks({
         dropPosition === 'before' ? 'border-t-2 border-t-primary' : '',
         dropPosition === 'after' ? 'border-b-2 border-b-primary' : '',
         localAligning ? 'bg-primary/5 border border-primary/30 shadow-md' : '',
-        showCompleteAnimation ? 'alignment-complete' : ''
+        showCompleteAnimation ? 'alignment-complete' : '',
+        isAnchorMode ? 'bg-gradient-to-r from-blue-50/50 to-purple-50/50 dark:from-blue-950/20 dark:to-purple-950/20 border-blue-200 dark:border-blue-800' : ''
       )}
       onClick={handleClick}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      draggable
+      draggable={!isAnchorMode} // 锚定模式下禁用拖拽
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      {/* 拖拽手柄 - 对不同块类型使用不同位置 */}
+      {/* 拖拽手柄 - 对不同块类型使用不同位置，锚定模式下隐藏 */}
+      {!isAnchorMode && (
       <div className={cn(
         "absolute flex items-center justify-center opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity",
         block.block_type === 'audio_aligned' 
@@ -1388,10 +1467,12 @@ export function ContextBlocks({
       )}>
         <DragHandleDots2Icon className="h-6 w-6 text-muted-foreground cursor-grab" />
       </div>
-      
+      )}
       
       {/* 块内容 */}
-      <div className="pl-6">
+      <div className={cn(
+        isAnchorMode ? 'pl-0' : 'pl-6' // 锚定模式下不需要左内边距
+      )}>
         {renderContent()}
       </div>
       
