@@ -18,7 +18,7 @@ export interface SelectedWord {
   type: 'word' | 'phrase';
   startIndex: number;
   endIndex: number;
-  content: string; // 保留content信息，移除context
+  content: string; // 选中的文本内容（单词或短语的实际文本）
 }
 
 // 新增短语选择接口
@@ -142,13 +142,6 @@ export function AnchorWordBlock({
   // 当前模式下的segments
   const currentSegments = wordSegments;
 
-  // 获取上下文
-  const getContext = useCallback((startIndex: number, endIndex: number, contextLength = 20) => {
-    const contextStart = Math.max(0, startIndex - contextLength);
-    const contextEnd = Math.min(content.length, endIndex + contextLength);
-    return content.slice(contextStart, contextEnd);
-  }, [content]);
-
   // 监听外部传入的 selectedWords 变化，同步更新内部状态
   useEffect(() => {
     // 从 initialSelectedWords 中分离单词和短语
@@ -198,7 +191,7 @@ export function AnchorWordBlock({
           type: 'word',
           startIndex: segment.start,
           endIndex: segment.end,
-          content: getContext(segment.start, segment.end)
+          content: segment.text
         };
         newWords = [...prevWords, newWord];
       }
@@ -217,7 +210,7 @@ export function AnchorWordBlock({
       onSelectedWordsChange(allSelected);
       return newWords;
     });
-  }, [blockId, getContext, onSelectedWordsChange, selectedPhrases]);
+  }, [blockId, onSelectedWordsChange, selectedPhrases]);
 
   // 短语模式：切换单个词的选择状态
   const togglePhraseSelection = useCallback((segment: {text: string, start: number, end: number}) => {
@@ -255,7 +248,7 @@ export function AnchorWordBlock({
             startIndex: minStart,
             endIndex: maxEnd,
             segmentIds: newSegmentIds,
-            content: getContext(minStart, maxEnd)
+            content: newText
           };
           
           newPhrases = prevPhrases.map((phrase, index) => 
@@ -297,7 +290,7 @@ export function AnchorWordBlock({
             startIndex: minStart,
             endIndex: maxEnd,
             segmentIds: newSegmentIds,
-            content: getContext(minStart, maxEnd)
+            content: newText
           };
           
           newPhrases = prevPhrases.map(phrase => 
@@ -312,7 +305,7 @@ export function AnchorWordBlock({
             startIndex: segment.start,
             endIndex: segment.end,
             segmentIds: [segmentId],
-            content: getContext(segment.start, segment.end)
+            content: segment.text
           };
           newPhrases = [...prevPhrases, newPhrase];
         }
@@ -332,7 +325,7 @@ export function AnchorWordBlock({
       onSelectedWordsChange(allSelected);
       return newPhrases;
     });
-  }, [blockId, getContext, onSelectedWordsChange, wordSegments, content, selectedWords]);
+  }, [blockId, onSelectedWordsChange, wordSegments, content, selectedWords]);
 
   // 处理单击选择
   const handleSegmentClick = useCallback((segment: {text: string, start: number, end: number}) => {

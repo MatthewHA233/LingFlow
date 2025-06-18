@@ -88,8 +88,8 @@ export function ReaderContent({ book }: ReaderContentProps) {
   // 词云侧边栏状态
   const [showWordCloud, setShowWordCloud] = useState(false);
   const [allSelectedWords, setAllSelectedWords] = useState<SelectedWord[]>([]);
-  const [isCollectingWords, setIsCollectingWords] = useState(false);
   const [isInAnchorMode, setIsInAnchorMode] = useState(false);
+  const [anchorModeBlocks, setAnchorModeBlocks] = useState<Set<string>>(new Set()); // 跟踪所有锚定模式的块
 
   // 添加块更新处理函数
   const handleBlockUpdate = async (blockId: string, newType: string, content: string) => {
@@ -153,32 +153,48 @@ export function ReaderContent({ book }: ReaderContentProps) {
   }, []);
 
   // 处理进入锚定模式
-  const handleEnterAnchorMode = useCallback(() => {
+  const handleEnterAnchorMode = useCallback((blockId?: string) => {
+    if (blockId) {
+      setAnchorModeBlocks(prev => {
+        const newSet = new Set(prev);
+        newSet.add(blockId);
+        return newSet;
+      });
+    }
     setIsInAnchorMode(true);
     setShowWordCloud(true);
   }, []);
 
   // 处理退出锚定模式
-  const handleExitAnchorMode = useCallback(() => {
-    setIsInAnchorMode(false);
-    setShowWordCloud(false);
-    // 清空当前块的选中词汇
-    setAllSelectedWords(prev => prev.filter(w => !w.id.includes('-')));
+  const handleExitAnchorMode = useCallback((blockId?: string) => {
+    if (blockId) {
+      setAnchorModeBlocks(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(blockId);
+        
+        // 如果没有其他块处于锚定模式，则完全退出锚定模式
+        if (newSet.size === 0) {
+          setIsInAnchorMode(false);
+          setShowWordCloud(false);
+          // 清空该块的选中词汇
+          setAllSelectedWords(prev => prev.filter(w => !w.id.startsWith(blockId)));
+        }
+        
+        return newSet;
+      });
+    } else {
+      // 如果没有指定块ID，则退出所有锚定模式
+      setIsInAnchorMode(false);
+      setShowWordCloud(false);
+      setAnchorModeBlocks(new Set());
+      setAllSelectedWords([]);
+    }
   }, []);
 
   // 处理收集词汇（发送给LLM）
   const handleCollectWords = useCallback(async (words: SelectedWord[]) => {
-    setIsCollectingWords(true);
-    try {
-      // 这里暂时只显示toast，具体的LLM处理逻辑后续实现
-      toast.success(`已收集 ${words.length} 个词汇`, {
-        description: '词锚点处理功能开发中'
-      });
-    } catch (error) {
-      toast.error('收集词汇失败');
-    } finally {
-      setIsCollectingWords(false);
-    }
+    // 这个函数现在由 WordCloudSidebar 内部处理，这里保留接口兼容性
+    console.log('词汇收集请求:', words);
   }, []);
 
   // 更新块排序处理函数
@@ -1313,8 +1329,8 @@ export function ReaderContent({ book }: ReaderContentProps) {
               onShowSplitView={handleShowSplitView}
               activeBlockId={activeBlockId}
               onAnchorWordsChange={handleAnchorWordsChange}
-              onEnterAnchorMode={handleEnterAnchorMode}
-              onExitAnchorMode={handleExitAnchorMode}
+              onEnterAnchorMode={() => handleEnterAnchorMode(block.id)}
+              onExitAnchorMode={() => handleExitAnchorMode(block.id)}
               anchorSelectedWords={blockSelectedWords}
             />
           </div>
@@ -2044,9 +2060,10 @@ export function ReaderContent({ book }: ReaderContentProps) {
           }
         }}
         onWordsChange={setAllSelectedWords}
-        onCollectWords={handleCollectWords}
-        isCollecting={isCollectingWords}
         isAnchorMode={isInAnchorMode}
+        currentBlocks={Array.from(anchorModeBlocks).map(blockId => 
+          contextBlocks[currentChapter]?.find(block => block.id === blockId)
+        ).filter(Boolean)}
       />
     </div>
   );
