@@ -779,6 +779,25 @@ export function ContextBlocks({
     }
   }, [block.id, block.block_type, block.content]);
 
+  // 添加同步contentEditableRef与block.content的useEffect
+  useEffect(() => {
+    // 确保contentEditableRef的内容与block.content保持同步
+    // 特别是在退出锚定模式后，避免文本消失的问题
+    if (contentEditableRef.current && !isInAnchorMode) {
+      const currentContent = contentEditableRef.current.textContent || '';
+      const blockContent = block.content || '';
+      
+      // 只有当内容不一致时才更新，避免不必要的DOM操作
+      if (currentContent !== blockContent) {
+        console.log(`🔄 同步contentEditableRef内容: ${block.id}`, {
+          currentContent: currentContent.substring(0, 50) + '...',
+          blockContent: blockContent.substring(0, 50) + '...'
+        });
+        contentEditableRef.current.textContent = blockContent;
+      }
+    }
+  }, [block.content, isInAnchorMode, block.id]);
+
   useEffect(() => {
     setLocalAligning(isAligning);
   }, [isAligning]);
