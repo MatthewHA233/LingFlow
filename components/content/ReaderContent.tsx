@@ -109,15 +109,23 @@ export function ReaderContent({ book }: ReaderContentProps) {
 
       if (error) throw error;
 
-      // 更新本地状态
-      setContextBlocks(prev => ({
-        ...prev,
-        [currentChapter]: prev[currentChapter].map(block =>
-          block.id === blockId
-            ? { ...block, block_type: newType, content }
-            : block
-        )
-      }));
+      // 更新本地状态 - 添加安全检查
+      setContextBlocks(prev => {
+        const currentBlocks = prev[currentChapter];
+        if (!currentBlocks || !Array.isArray(currentBlocks)) {
+          console.warn(`当前章节 ${currentChapter} 的块数据不存在或无效`);
+          return prev;
+        }
+        
+        return {
+          ...prev,
+          [currentChapter]: currentBlocks.map(block =>
+            block.id === blockId
+              ? { ...block, block_type: newType, content }
+              : block
+          )
+        };
+      });
     } catch (error) {
       console.error('更新块失败:', error);
       toast.error('更新失败');
@@ -241,11 +249,172 @@ export function ReaderContent({ book }: ReaderContentProps) {
     }
   }, []);
 
-  // 处理收集词汇（发送给LLM）
-  const handleCollectWords = useCallback(async (words: SelectedWord[]) => {
-    // 这个函数现在由 WordCloudSidebar 内部处理，这里保留接口兼容性
-    console.log('词汇收集请求:', words);
-  }, []);
+
+
+  // 添加处理临时块相关事件的监听器
+  useEffect(() => {
+    // 处理创建临时块（乐观更新）
+    const handleCreateTempBlock = (e: CustomEvent) => {
+      const { tempId, content, orderIndex, parentId, afterBlockId } = e.detail;
+      console.log(`🚀 创建临时块: ${tempId}，在块 ${afterBlockId} 后面`);
+      
+      setContextBlocks(prev => {
+        const currentBlocks = prev[currentChapter];
+        if (!currentBlocks) return prev;
+        
+        // 创建临时块数据
+        const tempBlock = {
+          id: tempId,
+          block_type: 'text',
+          content: content,
+          order_index: orderIndex,
+          parent_id: parentId,
+          metadata: { isTemporary: true },
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        
+        // 找到目标块的位置
+        const afterBlockIndex = currentBlocks.findIndex(block => block.id === afterBlockId);
+        
+        if (afterBlockIndex === -1) {
+          // 如果没找到目标块，插入到末尾
+          return {
+            ...prev,
+            [currentChapter]: [...currentBlocks, tempBlock]
+          };
+        }
+        
+        // 在目标块后面插入临时块
+        const updatedBlocks = [
+          ...currentBlocks.slice(0, afterBlockIndex + 1), // 包含目标块及其之前的所有块
+          tempBlock, // 插入临时块
+          ...currentBlocks.slice(afterBlockIndex + 1) // 目标块之后的所有块
+        ];
+        
+        console.log(`✅ 临时块已插入到位置 ${afterBlockIndex + 1}，总块数: ${updatedBlocks.length}`);
+        
+        return {
+          ...prev,
+          [currentChapter]: updatedBlocks
+        };
+      });
+    };
+    
+    // 处理替换临时块为真实块
+    const handleReplaceTempBlock = (e: CustomEvent) => {
+      const { tempId, realId, afterContent } = e.detail;
+      console.log(`🔄 替换临时块: ${tempId} -> ${realId}`);
+      
+      setContextBlocks(prev => {
+        const currentBlocks = prev[currentChapter];
+        if (!currentBlocks) return prev;
+        
+        const updatedBlocks = currentBlocks.map(block => {
+          if (block.id === tempId) {
+            return {
+              ...block,
+              id: realId,
+              content: afterContent || block.content,
+              metadata: { ...block.metadata, isTemporary: false }
+            };
+          }
+          return block;
+        });
+        
+        return {
+          ...prev,
+          [currentChapter]: updatedBlocks
+        };
+      });
+    };
+    
+    // 处理移除临时块（用于合并操作）
+    const handleRemoveTempBlock = (e: CustomEvent) => {
+      const { tempId } = e.detail;
+      console.log(`🗑️ 移除临时块: ${tempId}`);
+      
+      setContextBlocks(prev => {
+        const currentBlocks = prev[currentChapter];
+        if (!currentBlocks) return prev;
+        
+        // 过滤掉指定的临时块
+        const updatedBlocks = currentBlocks.filter(block => block.id !== tempId);
+        
+        return {
+          ...prev,
+          [currentChapter]: updatedBlocks
+        };
+      });
+    };
+    
+    // 处理块合并完成事件
+    const handleBlocksMerged = (e: CustomEvent) => {
+      const { deletedBlockId, targetBlockId, mergedContent } = e.detail;
+      console.log(`🔄 块合并完成: 删除=${deletedBlockId}, 目标=${targetBlockId}`);
+      
+      setContextBlocks(prev => {
+        const currentBlocks = prev[currentChapter];
+        if (!currentBlocks) return prev;
+        
+        // 更新目标块内容并移除被删除的块
+        const updatedBlocks = currentBlocks
+          .map(block => 
+            block.id === targetBlockId 
+              ? { ...block, content: mergedContent, updated_at: new Date().toISOString() }
+              : block
+          )
+          .filter(block => block.id !== deletedBlockId);
+        
+        return {
+          ...prev,
+          [currentChapter]: updatedBlocks
+        };
+      });
+    };
+    
+    // 处理聚焦到指定块
+    const handleFocusBlock = (e: CustomEvent) => {
+      const { blockId } = e.detail;
+      console.log(`🎯 聚焦到块: ${blockId}`);
+      
+      // 设置活跃块ID
+      setActiveBlockId(blockId);
+      
+      // 滚动到目标块
+      setTimeout(() => {
+        const blockElement = document.querySelector(`[data-block-id="${blockId}"]`);
+        if (blockElement) {
+          blockElement.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center' 
+          });
+          
+          // 如果是可编辑的文本块，尝试聚焦
+          const editableElement = blockElement.querySelector('[contenteditable="true"]');
+          if (editableElement) {
+            (editableElement as HTMLElement).focus();
+          }
+        }
+      }, 200);
+    };
+    
+    // 添加事件监听器
+    window.addEventListener('create-temp-block', handleCreateTempBlock as EventListener);
+    window.addEventListener('replace-temp-block', handleReplaceTempBlock as EventListener);
+    window.addEventListener('remove-temp-block', handleRemoveTempBlock as EventListener);
+    window.addEventListener('blocks-merged', handleBlocksMerged as EventListener);
+    window.addEventListener('focus-block', handleFocusBlock as EventListener);
+    
+    // 清理事件监听器
+    return () => {
+      window.removeEventListener('create-temp-block', handleCreateTempBlock as EventListener);
+      window.removeEventListener('replace-temp-block', handleReplaceTempBlock as EventListener);
+      window.removeEventListener('remove-temp-block', handleRemoveTempBlock as EventListener);
+      window.removeEventListener('blocks-merged', handleBlocksMerged as EventListener);
+      window.removeEventListener('focus-block', handleFocusBlock as EventListener);
+    };
+  }, [currentChapter]);
 
   // 更新块排序处理函数
   const handleBlockOrderChange = async (draggedId: string, droppedId: string, position: 'before' | 'after') => {
@@ -443,18 +612,49 @@ export function ReaderContent({ book }: ReaderContentProps) {
         return;
       }
 
-      console.log(`开始加载章节 ${chapterIndex} 的含义块数据，语境块数量: ${contextBlockIds.length}`);
-      
-      // 使用批量获取方法
-      const meaningBlocksData = await MeaningBlocksService.getMeaningBlocksByContextIds(contextBlockIds);
-      
-      // 更新含义块状态
-      setMeaningBlocks(prev => ({
-        ...prev,
-        ...meaningBlocksData
-      }));
+      // 如果语境块太多，分批处理
+      const BATCH_SIZE = 20; // 限制批次大小
+      if (contextBlockIds.length > BATCH_SIZE) {
+        console.log(`语境块数量较多 (${contextBlockIds.length})，分批加载含义块数据`);
+        
+        // 分批处理
+        for (let i = 0; i < contextBlockIds.length; i += BATCH_SIZE) {
+          const batch = contextBlockIds.slice(i, i + BATCH_SIZE);
+          
+          try {
+            const batchData = await MeaningBlocksService.getMeaningBlocksByContextIds(batch);
+            
+            // 立即更新已加载的数据
+            setMeaningBlocks(prev => ({
+              ...prev,
+              ...batchData
+            }));
+            
+            console.log(`✓ 批次 ${Math.floor(i / BATCH_SIZE) + 1} 含义块数据加载完成 (${Object.keys(batchData).length} 个语境块)`);
+            
+            // 在批次之间添加短暂延迟，避免阻塞UI
+            if (i + BATCH_SIZE < contextBlockIds.length) {
+              await new Promise(resolve => setTimeout(resolve, 50));
+            }
+          } catch (error) {
+            console.error(`批次 ${Math.floor(i / BATCH_SIZE) + 1} 含义块数据加载失败:`, error);
+            // 继续处理下一批次，不中断整个流程
+          }
+        }
+      } else {
+        console.log(`开始加载章节 ${chapterIndex} 的含义块数据，语境块数量: ${contextBlockIds.length}`);
+        
+        // 使用批量获取方法
+        const meaningBlocksData = await MeaningBlocksService.getMeaningBlocksByContextIds(contextBlockIds);
+        
+        // 更新含义块状态
+        setMeaningBlocks(prev => ({
+          ...prev,
+          ...meaningBlocksData
+        }));
 
-      console.log(`✓ 章节 ${chapterIndex} 含义块数据加载完成，共 ${Object.keys(meaningBlocksData).length} 个语境块有含义块`);
+        console.log(`✓ 章节 ${chapterIndex} 含义块数据加载完成，共 ${Object.keys(meaningBlocksData).length} 个语境块有含义块`);
+      }
     } catch (error) {
       console.error('加载含义块数据失败:', error);
       // 不显示错误提示，因为这是非关键功能
@@ -556,16 +756,19 @@ export function ReaderContent({ book }: ReaderContentProps) {
           } else {
             setContextBlocks({ 0: blocks || [] });
             
-            // 异步加载第一章的含义块数据
+            // 异步加载第一章的含义块数据，不阻塞主流程
             if (blocks && blocks.length > 0) {
-              loadMeaningBlocksForChapter(0, blocks);
+              // 使用 setTimeout 确保不阻塞主要渲染
+              setTimeout(() => {
+                loadMeaningBlocksForChapter(0, blocks);
+              }, 0);
             }
             
             // 简化音频预加载逻辑
             const firstAudioBlock = blocks?.find((block: any) => block.block_type === 'audio_aligned');
             if (firstAudioBlock?.speech_id && isMounted) {
               // 异步预加载音频，不阻塞主流程
-              (async () => {
+              setTimeout(async () => {
                 try {
                   const { data: audioData } = await supabase
                     .from('speech_results')
@@ -588,7 +791,7 @@ export function ReaderContent({ book }: ReaderContentProps) {
                 } catch (error) {
                   console.error('预加载音频失败:', error);
                 }
-              })();
+              }, 100);
             }
           }
         } else {
@@ -681,11 +884,13 @@ export function ReaderContent({ book }: ReaderContentProps) {
     };
   }, [book.id]); // 移除resources.length依赖，防止无限循环
 
-  // 在组件中添加调试日志
+  // 在组件中添加调试日志 - 仅在开发环境启用
   useEffect(() => {
-    console.log('加载的上下文块:', contextBlocks);
-    console.log('当前章节:', currentChapter);
-    console.log('当前章节的块:', contextBlocks[currentChapter]);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('加载的上下文块:', contextBlocks);
+      console.log('当前章节:', currentChapter);
+      console.log('当前章节的块:', contextBlocks[currentChapter]);
+    }
   }, [contextBlocks, currentChapter]);
 
   // 添加预加载相邻章节的函数
@@ -724,10 +929,13 @@ export function ReaderContent({ book }: ReaderContentProps) {
       // 如果已有数据，检查是否需要预加载音频
       const blocks = contextBlocks[newChapter];
       
-      // 检查是否需要加载含义块数据
+      // 检查是否需要加载含义块数据，异步进行
       const needsLoadMeaningBlocks = blocks.some(block => !meaningBlocks[block.id]);
       if (needsLoadMeaningBlocks) {
-        loadMeaningBlocksForChapter(newChapter, blocks);
+        // 异步加载，不阻塞章节切换
+        setTimeout(() => {
+          loadMeaningBlocksForChapter(newChapter, blocks);
+        }, 0);
       }
       
       const firstAudioBlock = blocks.find(block => block.block_type === 'audio_aligned');
@@ -1784,6 +1992,7 @@ export function ReaderContent({ book }: ReaderContentProps) {
       setShowCreatePageDialog(false);
     }
   };
+
 
   return (
     <div className="min-h-screen flex flex-col bg-background">

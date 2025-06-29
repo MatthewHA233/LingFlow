@@ -11,6 +11,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { AnchorWordBlock, SelectedWord } from './AnchorWordBlock';
 import { AnchorHighlightRenderer } from './AnchorHighlightRenderer';
 import { type MeaningBlockFormatted } from '@/lib/services/meaning-blocks-service';
+import { ContextBlocksService } from '@/lib/services/context-blocks-service';
 
 interface ContextBlocksProps {
   block: {
@@ -21,6 +22,7 @@ interface ContextBlocksProps {
     metadata?: Record<string, any>;
     order_index: number;
     speech_id?: string;
+    parent_id?: string;
   };
   resources?: Array<{ original_path: string; oss_path: string }>;
   onBlockUpdate?: (blockId: string, newType: string, content: string) => void;
@@ -103,10 +105,231 @@ export function ContextBlocks({
   const contentEditableRef = useRef<HTMLDivElement>(null);
   
   // 创建唯一ID用于标识当前块
-  const blockId = useId();
+  const uniqueBlockId = useId();
 
   // 添加缺失的ref
   const isClicking = useRef(false);
+
+  // 添加焦点状态管理
+  const [isFocused, setIsFocused] = useState(false);
+
+  // 添加鼠标悬浮状态管理
+  const [isHovered, setIsHovered] = useState(false);
+
+  // 添加拖拽状态管理
+  const [dragStartPos, setDragStartPos] = useState<{x: number, y: number} | null>(null);
+  const [isTextSelecting, setIsTextSelecting] = useState(false);
+
+  // 同步contentEditable的内容，但避免在用户输入时重复更新
+  useEffect(() => {
+    if (contentEditableRef.current && block.block_type === 'text') {
+      const currentContent = contentEditableRef.current.textContent || '';
+      const blockContent = block.content || '';
+      
+      // 只有当内容真的不同时才更新DOM
+      if (currentContent !== blockContent) {
+        // 检查是否当前元素有焦点，如果有焦点说明用户正在编辑，不要更新
+        if (document.activeElement !== contentEditableRef.current) {
+          contentEditableRef.current.textContent = blockContent;
+        }
+      }
+    }
+  }, [block.content, block.block_type]);
+
+  // 处理焦点获得
+  const handleFocus = useCallback(() => {
+    setIsFocused(true);
+  }, []);
+
+  // 处理焦点失去
+  const handleBlur = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+    setIsFocused(false);
+    // 移除这里的内容更新，避免与handleInput重复
+  }, []);
+
+  // 处理鼠标进入
+  const handleMouseEnter = useCallback(() => {
+    setIsHovered(true);
+  }, []);
+
+  // 处理鼠标离开
+  const handleMouseLeave = useCallback(() => {
+    setIsHovered(false);
+  }, []);
+
+  // 处理输入事件 - 用于实时检测内容变化
+  const handleInput = useCallback((e: React.FormEvent<HTMLDivElement>) => {
+    // 实时更新内容，确保占位符能正确显示/隐藏
+    const newContent = e.currentTarget.textContent || '';
+    onBlockUpdate?.(block.id, block.block_type, newContent);
+  }, [onBlockUpdate, block.id, block.block_type]);
+
+  // 处理鼠标按下 - 记录起始位置
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    setDragStartPos({ x: e.clientX, y: e.clientY });
+    setIsTextSelecting(false);
+    
+    // 如果是在contentEditable区域内按下，标记为文本选择
+    const target = e.target as HTMLElement;
+    if (target.isContentEditable || target.closest('[contenteditable="true"]')) {
+      setIsTextSelecting(true);
+    }
+  }, []);
+
+  // 处理鼠标移动 - 检测是否是文本选择
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!dragStartPos) return;
+    
+    const deltaX = Math.abs(e.clientX - dragStartPos.x);
+    const deltaY = Math.abs(e.clientY - dragStartPos.y);
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+    // 如果移动距离超过阈值且在contentEditable区域内，确认为文本选择
+    if (distance > 5 && isTextSelecting) {
+      setIsTextSelecting(true);
+    }
+  }, [dragStartPos, isTextSelecting]);
+
+  // 处理鼠标释放 - 清除状态
+  const handleMouseUp = useCallback(() => {
+    setDragStartPos(null);
+    setIsTextSelecting(false);
+  }, []);
+
+  // 添加创建新块的处理函数 - 优化版本
+  const handleCreateNewBlock = useCallback(async () => {
+    if (!contentEditableRef.current || block.block_type !== 'text') return;
+    
+    try {
+      // 获取光标位置和分割内容
+      const { beforeContent, afterContent, position } = ContextBlocksService.splitContentAtCursor(
+        contentEditableRef.current
+      );
+      
+      // 如果没有 parent_id，尝试从 block 中获取或报错
+      const parentId = block.parent_id;
+      if (!parentId) {
+        toast.error('无法创建新块：缺少父级ID');
+        return;
+      }
+      
+      // === 第一步：立即更新UI，提供即时反馈 ===
+      console.log('🚀 开始分割块 - 立即更新UI', {
+        position,
+        beforeContent: beforeContent.substring(0, 20) + '...',
+        afterContent: afterContent.substring(0, 20) + '...',
+        originalLength: block.content?.length || 0
+      });
+      
+      // 1. 立即更新当前块的显示内容（保留光标前的内容）
+      if (contentEditableRef.current) {
+        contentEditableRef.current.textContent = beforeContent;
+      }
+      
+      // 2. 立即通知父组件更新当前块内容
+      onBlockUpdate?.(block.id, block.block_type, beforeContent);
+      
+      // 3. 立即创建一个临时的新块ID（用于乐观更新）
+      const tempNewBlockId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // 4. 计算临时块应该有的 order_index（紧跟在当前块后面）
+      const tempOrderIndex = block.order_index + 0.5; // 使用小数确保排在当前块后面，但在下一个块前面
+      
+      // 5. 立即通知父组件有新块创建（乐观更新），传递正确的排序信息
+      window.dispatchEvent(new CustomEvent('create-temp-block', {
+        detail: { 
+          tempId: tempNewBlockId,
+          content: afterContent, // 可能为空字符串，这是允许的
+          orderIndex: tempOrderIndex,
+          parentId: parentId,
+          afterBlockId: block.id // 指定在哪个块后面插入
+        }
+      }));
+      
+      // 6. 显示成功提示（乐观）
+      const message = afterContent.trim() 
+        ? '正在创建新文本块...' 
+        : '正在创建空语境块...';
+      toast.success(message);
+      
+      // === 第二步：后台验证数据库操作 ===
+      console.log('📡 后台验证数据库操作');
+      
+      // 异步调用分割函数
+      const result = await ContextBlocksService.splitBlock(
+        block.id,
+        beforeContent,
+        afterContent,
+        position
+      );
+      
+      if (result.success) {
+        console.log('✅ 数据库分割成功:', result);
+        
+        // 如果数据库操作成功，更新成功提示
+        const successMessage = afterContent.trim() 
+          ? '新文本块创建成功' 
+          : '空语境块创建成功';
+        toast.success(successMessage);
+        
+        // 如果真实的新块ID和临时ID不同，通知父组件更新
+        if (result.new_block_id && result.new_block_id !== tempNewBlockId) {
+          // 可以通过自定义事件通知父组件替换临时ID
+          window.dispatchEvent(new CustomEvent('replace-temp-block', {
+            detail: { 
+              tempId: tempNewBlockId, 
+              realId: result.new_block_id,
+              afterContent: afterContent
+            }
+          }));
+        }
+        
+        // 短暂延迟后尝试将焦点移到新块
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('focus-block', {
+            detail: { blockId: result.new_block_id || tempNewBlockId }
+          }));
+        }, 100);
+        
+      } else {
+        console.error('❌ 数据库分割失败:', result);
+        
+        // === 第三步：如果数据库操作失败，回滚UI更改 ===
+        console.log('🔄 回滚UI更改');
+        
+        // 1. 恢复原内容
+        if (contentEditableRef.current) {
+          contentEditableRef.current.textContent = block.content || '';
+        }
+        
+        // 2. 通知父组件恢复原块内容
+        onBlockUpdate?.(block.id, block.block_type, block.content || '');
+        
+        // 3. 通知父组件移除临时创建的块
+        window.dispatchEvent(new CustomEvent('remove-temp-block', {
+          detail: { tempId: tempNewBlockId }
+        }));
+        
+        // 4. 显示错误提示
+        toast.error(`创建新块失败: ${result.error || '未知错误'}`);
+      }
+      
+    } catch (error) {
+      console.error('💥 创建新块异常:', error);
+      
+      // === 异常处理：完全回滚 ===
+      // 1. 恢复原内容
+      if (contentEditableRef.current) {
+        contentEditableRef.current.textContent = block.content || '';
+      }
+      
+      // 2. 通知父组件恢复
+      onBlockUpdate?.(block.id, block.block_type, block.content || '');
+      
+      // 3. 显示错误提示
+      toast.error('创建新块时发生错误');
+    }
+  }, [block.id, block.block_type, block.parent_id, block.content, block.order_index, onBlockUpdate]);
 
   // 先定义辅助函数，不依赖其他函数
   const getSentenceIdsFromContent = useCallback(() => {
@@ -171,7 +394,7 @@ export function ContextBlocks({
         setTimeout(() => playSentenceRef.current(nextSentence, nextIndex), 300);
       }
     }
-  }, [embeddedSentences, playMode, getSentenceIdsFromContent, block.id, blockId, onPlayNext]);
+  }, [embeddedSentences, playMode, getSentenceIdsFromContent, block.id, onPlayNext]);
 
   // 完全重写的playSentence函数
   const playSentence = useCallback((sentence: any, index: number) => {
@@ -481,17 +704,32 @@ export function ContextBlocks({
     }
   };
 
-  // 内容变更处理
-  const handleContentChange = (e: React.FormEvent<HTMLDivElement>) => {
-    if (onBlockUpdate && e.currentTarget.textContent !== null) {
-      onBlockUpdate(block.id, block.block_type, e.currentTarget.textContent);
-    }
-  };
-
   // 处理拖拽开始
   const handleDragStart = (e: React.DragEvent) => {
     // 如果正在对齐，禁止拖拽
     if (localAligning) {
+      e.preventDefault();
+      return;
+    }
+    
+    // 如果检测到文本选择状态，阻止拖拽排序
+    if (isTextSelecting) {
+      e.preventDefault();
+      return;
+    }
+    
+    // 检查是否是文本选择导致的拖拽
+    const selection = window.getSelection();
+    if (selection && selection.toString().length > 0) {
+      // 如果有文本被选中，阻止拖拽排序
+      e.preventDefault();
+      return;
+    }
+    
+    // 检查拖拽源是否是contentEditable区域
+    const target = e.target as HTMLElement;
+    if (target.isContentEditable || target.closest('[contenteditable="true"]')) {
+      // 如果拖拽源是可编辑区域，阻止拖拽排序
       e.preventDefault();
       return;
     }
@@ -765,7 +1003,7 @@ export function ContextBlocks({
       
       // 清除其他播放
       window.dispatchEvent(new CustomEvent(CLEAR_ACTIVE_SENTENCE_EVENT, {
-        detail: { senderId: blockId }
+        detail: { senderId: block.id }
       }));
       
       // 停止所有播放
@@ -793,7 +1031,7 @@ export function ContextBlocks({
         isClicking.current = false;
       }, 100);
     }
-  }, [audioUrl, blockId, block.id, embeddedSentences, getSentenceIdsFromContent, onTimeChange, blockSpeechId]);
+  }, [audioUrl, block.id, block.id, embeddedSentences, getSentenceIdsFromContent, onTimeChange, blockSpeechId]);
 
   // 修改renderSentenceWithWords函数，区分单词高亮和句子高亮
   const renderSentenceWithWords = (sentence: any, sentenceIndex: number) => {
@@ -900,7 +1138,11 @@ export function ContextBlocks({
 
   // 添加渲染嵌入式内容的函数
   const renderEmbeddedContent = () => {
-    if (!block.content) return <span>内容为空</span>;
+    // 确保始终返回一致的DOM结构，避免React DOM错误
+    if (!block.content || block.content.trim() === '') {
+      // 对于空内容，返回一个空的span，保持DOM结构一致但不影响光标
+      return <span></span>;
+    }
     
     // 如果没有嵌入式句子，直接返回内容
     if (!block.content.includes('[[')) {
@@ -1157,22 +1399,79 @@ export function ContextBlocks({
             className="py-2 px-3"
           />
         ) : (
-      <div
-        ref={contentEditableRef}
-        contentEditable={block.block_type === 'text'}
-        suppressContentEditableWarning
-            className="text-sm outline-none whitespace-pre-wrap py-2 px-3"
-        onBlur={handleContentChange}
-        onKeyDown={(e) => {
-          // 按Enter但不按Shift创建新块
-          if (e.key === 'Enter' && !e.shiftKey) {
-            // 创建新块的代码 - 需要由父组件处理
-            e.preventDefault();
-          }
-        }}
-      >
-        {renderEmbeddedContent()}
-        </div>
+      <div className="relative">
+        <div
+          ref={contentEditableRef}
+          contentEditable={block.block_type === 'text'}
+          suppressContentEditableWarning
+              className="text-sm outline-none whitespace-pre-wrap py-2 px-3 min-h-[2rem] relative"
+          onBlur={handleBlur}
+          onFocus={handleFocus}
+          onInput={handleInput}
+          onPaste={handlePaste}
+          onKeyDown={(e) => {
+            console.log('🎹 按键事件:', {
+              key: e.key,
+              shiftKey: e.shiftKey,
+              blockId: block.id,
+              blockType: block.block_type,
+              hasContentEditableRef: !!contentEditableRef.current,
+              meaningBlocksLength: meaningBlocks.length,
+              isInAnchorMode,
+              contentIncludes: block.content?.includes('[[')
+            });
+            
+            // 按Enter但不按Shift创建新块
+            if (e.key === 'Enter' && !e.shiftKey) {
+              console.log('🎹 Enter键处理 - 创建新块');
+              e.preventDefault();
+              handleCreateNewBlock();
+            }
+            // 按Backspace且光标在开头时合并与上一个块
+            if (e.key === 'Backspace') {
+              console.log('🎹 Backspace键处理 - 检查光标位置');
+              const cursorAtStart = isCursorAtStart();
+              console.log('🎹 光标是否在开头:', cursorAtStart);
+              
+              if (cursorAtStart) {
+                console.log('🎹 Backspace键处理 - 光标在开头，执行合并');
+                e.preventDefault();
+                handleMergeWithPreviousBlock();
+              } else {
+                console.log('🎹 Backspace键处理 - 光标不在开头，允许默认行为');
+              }
+            }
+            // 按Delete且光标在末尾时合并到下一个块
+            if (e.key === 'Delete') {
+              console.log('🎹 Delete键处理 - 检查光标位置');
+              const cursorAtEnd = isCursorAtEnd();
+              console.log('🎹 光标是否在末尾:', cursorAtEnd);
+              
+              if (cursorAtEnd) {
+                console.log('🎹 Delete键处理 - 光标在末尾，执行合并到下一块');
+                e.preventDefault();
+                handleMergeWithNextBlock();
+              } else {
+                console.log('🎹 Delete键处理 - 光标不在末尾，允许默认行为');
+              }
+            }
+          }}
+        />
+        
+        {/* 占位符提示 - 悬浮时显示，获得焦点时隐藏 */}
+        {isHovered && !isFocused && !block.content?.trim() && (
+          <div className="absolute inset-0 py-2 px-3 pointer-events-none text-muted-foreground/40 text-sm flex items-start">
+            空语境块，点击输入内容
+          </div>
+        )}
+        
+        {/* 占位符提示 - 只在焦点状态且内容为空时显示 */}
+        {isFocused && !block.content?.trim() && (
+          <div className="absolute inset-0 py-2 px-3 pointer-events-none text-muted-foreground/50 text-sm">
+            空语境块，请输入内容
+          </div>
+        )}
+      </div>
         )}
         
         {/* 渲染含义块信息 */}
@@ -1473,6 +1772,871 @@ export function ContextBlocks({
     };
   }, [block.id, parseAndLoadEmbeddedSentences]);
 
+  // 监听是否需要聚焦到当前块
+  useEffect(() => {
+    const handleFocusBlock = (e: CustomEvent) => {
+      const { blockId, cursorPosition } = e.detail;
+      if (blockId === block.id && contentEditableRef.current && block.block_type === 'text') {
+        // 延迟聚焦，确保DOM已经更新
+        setTimeout(() => {
+          if (contentEditableRef.current) {
+            contentEditableRef.current.focus();
+            
+            // 检查是否是空块
+            const currentContent = block.content || '';
+            const isEmpty = !currentContent.trim();
+            
+            console.log('🎯 聚焦块信息:', {
+              blockId,
+              cursorPosition,
+              isEmpty,
+              contentLength: currentContent.length,
+              innerHTML: contentEditableRef.current.innerHTML
+            });
+            
+            if (isEmpty) {
+              // 空块使用简单的光标设置方法
+              try {
+                const selection = window.getSelection();
+                if (selection) {
+                  selection.removeAllRanges();
+                  const range = document.createRange();
+                  
+                  // 直接设置到contentEditable元素内部
+                  range.setStart(contentEditableRef.current, 0);
+                  range.setEnd(contentEditableRef.current, 0);
+                  selection.addRange(range);
+                  
+                  console.log('🎯 空块光标设置成功');
+                }
+              } catch (error) {
+                console.error('🎯 空块光标设置失败:', error);
+              }
+              return;
+            }
+            
+            // 非空块的光标设置
+            const range = document.createRange();
+            const selection = window.getSelection();
+            
+            if (selection) {
+              // 使用 TreeWalker 找到第一个文本节点
+              const walker = document.createTreeWalker(
+                contentEditableRef.current,
+                NodeFilter.SHOW_TEXT,
+                null
+              );
+              
+              const firstTextNode = walker.nextNode();
+              
+              if (firstTextNode && firstTextNode.textContent !== null) {
+                const textContent = firstTextNode.textContent || '';
+                
+                // 如果指定了光标位置，设置到指定位置；否则设置到开头
+                // 确保位置不超过文本长度
+                const position = typeof cursorPosition === 'number' 
+                  ? Math.min(Math.max(0, cursorPosition), textContent.length) 
+                  : 0;
+                
+                console.log('🎯 准备设置光标:', {
+                  requestedPosition: cursorPosition,
+                  actualPosition: position,
+                  textLength: textContent.length
+                });
+                
+                try {
+                  range.setStart(firstTextNode, position);
+                  range.setEnd(firstTextNode, position);
+                  selection.removeAllRanges();
+                  selection.addRange(range);
+                  
+                  console.log(`🎯 设置光标位置成功: ${position}`);
+                } catch (error) {
+                  console.error('🎯 设置光标位置失败:', error);
+                  
+                  // 备用方案：设置到文本末尾
+                  try {
+                    range.setStart(firstTextNode, textContent.length);
+                    range.setEnd(firstTextNode, textContent.length);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    console.log(`🎯 备用方案：设置光标到文本末尾`);
+                  } catch (fallbackError) {
+                    console.error('🎯 备用方案也失败:', fallbackError);
+                  }
+                }
+              } else {
+                console.warn('🎯 未找到有效的文本节点，使用简单方法');
+                
+                // 备用方法：直接设置到contentEditable元素
+                try {
+                  const element = contentEditableRef.current;
+                  selection.removeAllRanges();
+                  const range = document.createRange();
+                  range.setStart(element, 0);
+                  range.setEnd(element, 0);
+                  selection.addRange(range);
+                  console.log('🎯 使用简单方法设置光标成功');
+                } catch (fallbackError) {
+                  console.error('🎯 简单方法也失败:', fallbackError);
+                }
+              }
+            }
+          }
+        }, 150);
+      }
+    };
+
+    // 监听强制更新块内容事件
+    const handleForceUpdateContent = (e: CustomEvent) => {
+      const { blockId, content } = e.detail;
+      if (blockId === block.id && contentEditableRef.current && block.block_type === 'text') {
+        console.log('🔄 强制更新块内容:', {
+          blockId,
+          newContent: content.substring(0, 50) + '...',
+          currentContent: (contentEditableRef.current.textContent || '').substring(0, 50) + '...'
+        });
+        
+        // 立即更新DOM内容
+        contentEditableRef.current.textContent = content;
+      }
+    };
+
+    window.addEventListener('focus-block', handleFocusBlock as EventListener);
+    window.addEventListener('force-update-block-content', handleForceUpdateContent as EventListener);
+    
+    return () => {
+      window.removeEventListener('focus-block', handleFocusBlock as EventListener);
+      window.removeEventListener('force-update-block-content', handleForceUpdateContent as EventListener);
+    };
+  }, [block.id, block.block_type]);
+
+  // 添加合并块的处理函数
+  const handleMergeWithPreviousBlock = useCallback(async () => {
+    console.log('🔄 尝试合并块 - 开始检查条件');
+    
+    if (!contentEditableRef.current || block.block_type !== 'text') {
+      console.log('❌ 合并块失败：不是文本块或 contentEditableRef 不存在', {
+        hasRef: !!contentEditableRef.current,
+        blockType: block.block_type
+      });
+      return;
+    }
+    
+    // 检查当前块是否是临时块
+    const isTemporaryBlock = block.id.startsWith('temp-');
+    if (isTemporaryBlock) {
+      console.log('⚠️ 当前块是临时块，暂时无法合并，请稍后再试');
+      toast.warning('新块正在创建中，请稍后再试合并');
+      return;
+    }
+    
+    try {
+      // 检查是否有父级ID和排序信息
+      const parentId = block.parent_id;
+      const currentOrderIndex = block.order_index;
+      
+      console.log('🔄 合并块 - 当前块信息:', {
+        blockId: block.id,
+        parentId,
+        currentOrderIndex,
+        blockType: block.block_type,
+        contentPreview: (block.content || '').substring(0, 30) + '...'
+      });
+      
+      if (!parentId || currentOrderIndex === undefined) {
+        console.warn('❌ 无法合并块：缺少父级ID或排序信息', {
+          hasParentId: !!parentId,
+          hasOrderIndex: currentOrderIndex !== undefined,
+          parentId,
+          currentOrderIndex
+        });
+        return;
+      }
+      
+      // 查找上一个可合并的文本块
+      console.log('🔍 开始查找上一个文本块...');
+      const previousBlock = await ContextBlocksService.getPreviousTextBlock(
+        block.id,
+        parentId,
+        currentOrderIndex
+      );
+      
+      console.log('🔍 查找上一个文本块结果:', {
+        found: !!previousBlock,
+        previousBlock: previousBlock ? {
+          id: previousBlock.id,
+          order_index: previousBlock.order_index,
+          contentPreview: (previousBlock.content || '').substring(0, 30) + '...'
+        } : null
+      });
+      
+      if (!previousBlock) {
+        console.log('❌ 没有找到可合并的上一个文本块');
+        return;
+      }
+      
+      console.log('🔄 准备合并块:', {
+        current: { id: block.id, content: block.content?.substring(0, 30) + '...' },
+        target: { id: previousBlock.id, content: previousBlock.content?.substring(0, 30) + '...' }
+      });
+      
+      // === 第一步：立即更新UI，提供即时反馈 ===
+      const currentContent = block.content || '';
+      const targetContent = previousBlock.content || '';
+      const mergedContent = targetContent + currentContent;
+      const cursorPosition = targetContent.length;
+      
+      // 立即通知父组件更新目标块内容
+      onBlockUpdate?.(previousBlock.id, 'text', mergedContent);
+      
+      // 强制更新目标块的DOM内容（因为目标块可能不会立即同步）
+      // 通过自定义事件通知目标块立即更新其DOM
+      window.dispatchEvent(new CustomEvent('force-update-block-content', {
+        detail: { 
+          blockId: previousBlock.id,
+          content: mergedContent
+        }
+      }));
+      
+      // 立即通知父组件删除当前块
+      window.dispatchEvent(new CustomEvent('remove-temp-block', {
+        detail: { tempId: block.id }
+      }));
+      
+      // 立即聚焦到目标块并设置光标位置
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('focus-block', {
+          detail: { 
+            blockId: previousBlock.id,
+            cursorPosition: cursorPosition
+          }
+        }));
+      }, 50);
+      
+      // 显示成功提示（乐观）
+      toast.success('正在合并文本块...');
+      
+      // === 第二步：后台验证数据库操作 ===
+      console.log('📡 后台验证数据库合并操作');
+      
+      const result = await ContextBlocksService.mergeBlocks(
+        block.id,
+        previousBlock.id,
+        currentContent,
+        targetContent
+      );
+      
+      if (result.success) {
+        console.log('✅ 数据库合并成功:', result);
+        toast.success('文本块合并成功');
+        
+        // 数据库操作成功，UI已经更新，不需要再次触发事件
+        
+      } else {
+        console.error('❌ 数据库合并失败:', result);
+        
+        // === 第三步：如果数据库操作失败，回滚UI更改 ===
+        console.log('🔄 回滚UI更改');
+        
+        // 1. 恢复目标块原内容
+        onBlockUpdate?.(previousBlock.id, 'text', targetContent);
+        
+        // 强制恢复目标块的DOM内容
+        window.dispatchEvent(new CustomEvent('force-update-block-content', {
+          detail: { 
+            blockId: previousBlock.id,
+            content: targetContent
+          }
+        }));
+        
+        // 2. 恢复当前块（重新添加）
+        window.dispatchEvent(new CustomEvent('create-temp-block', {
+          detail: { 
+            tempId: block.id,
+            content: currentContent,
+            orderIndex: currentOrderIndex,
+            parentId: parentId,
+            afterBlockId: previousBlock.id
+          }
+        }));
+        
+        // 3. 聚焦回当前块
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('focus-block', {
+            detail: { blockId: block.id }
+          }));
+        }, 100);
+        
+        // 4. 显示错误提示
+        toast.error(`合并块失败: ${result.error || '未知错误'}`);
+      }
+      
+    } catch (error) {
+      console.error('💥 合并块异常:', error);
+      toast.error('合并块时发生错误');
+    }
+  }, [block.id, block.block_type, block.parent_id, block.order_index, block.content, onBlockUpdate]);
+
+  // 检查光标是否在内容开头
+  const isCursorAtStart = useCallback(() => {
+    if (!contentEditableRef.current) {
+      console.log('🔍 光标检测：contentEditableRef 不存在');
+      return false;
+    }
+    
+    const element = contentEditableRef.current;
+    const selection = window.getSelection();
+    
+    if (!selection || selection.rangeCount === 0) {
+      console.log('🔍 光标检测：没有选择范围');
+      return false;
+    }
+    
+    const range = selection.getRangeAt(0);
+    
+    // 检查是否是折叠的选择（光标而不是选择区域）
+    if (!range.collapsed) {
+      console.log('🔍 光标检测：存在选择区域，不是单纯的光标');
+      return false;
+    }
+    
+    // 更准确的光标位置检测
+    const isAtStart = range.startOffset === 0 && range.endOffset === 0;
+    
+    // 检查是否在第一个文本节点或者元素的开头
+    const container = range.startContainer;
+    
+    // 改进的第一个节点检测逻辑
+    let isInFirstNode = false;
+    
+    if (container === element) {
+      // 光标直接在编辑元素中
+      isInFirstNode = true;
+    } else if (container.nodeType === Node.TEXT_NODE) {
+      // 光标在文本节点中，需要检查这个文本节点是否是编辑元素中的第一个文本节点
+      // 使用 TreeWalker 找到第一个文本节点
+      const walker = document.createTreeWalker(
+        element,
+        NodeFilter.SHOW_TEXT,
+        null
+      );
+      
+      const firstTextNode = walker.nextNode();
+      isInFirstNode = container === firstTextNode;
+      
+      console.log('🔍 文本节点检测:', {
+        containerText: container.textContent?.substring(0, 20) + '...',
+        firstTextNodeText: firstTextNode?.textContent?.substring(0, 20) + '...',
+        isSameNode: container === firstTextNode
+      });
+    }
+    
+    const result = isAtStart && isInFirstNode;
+    
+    console.log('🔍 光标检测结果:', {
+      startOffset: range.startOffset,
+      endOffset: range.endOffset,
+      collapsed: range.collapsed,
+      isAtStart,
+      isInFirstNode,
+      containerType: container.nodeType,
+      containerNodeName: container.nodeName,
+      isTextNode: container.nodeType === Node.TEXT_NODE,
+      elementTextContent: element.textContent,
+      elementInnerHTML: element.innerHTML,
+      firstChildType: element.firstChild?.nodeType,
+      firstChildContent: element.firstChild?.textContent,
+      result
+    });
+    
+    return result;
+  }, []);
+
+  // 检查光标是否在内容末尾
+  const isCursorAtEnd = useCallback(() => {
+    if (!contentEditableRef.current) {
+      console.log('🔍 光标末尾检测：contentEditableRef 不存在');
+      return false;
+    }
+    
+    const element = contentEditableRef.current;
+    const selection = window.getSelection();
+    
+    if (!selection || selection.rangeCount === 0) {
+      console.log('🔍 光标末尾检测：没有选择范围');
+      return false;
+    }
+    
+    const range = selection.getRangeAt(0);
+    
+    // 检查是否是折叠的选择（光标而不是选择区域）
+    if (!range.collapsed) {
+      console.log('🔍 光标末尾检测：存在选择区域，不是单纯的光标');
+      return false;
+    }
+    
+    const container = range.startContainer;
+    
+    // 使用 TreeWalker 找到最后一个文本节点
+    const walker = document.createTreeWalker(
+      element,
+      NodeFilter.SHOW_TEXT,
+      null
+    );
+    
+    let lastTextNode = null;
+    let node;
+    while ((node = walker.nextNode())) {
+      lastTextNode = node;
+    }
+    
+    if (!lastTextNode) {
+      console.log('🔍 光标末尾检测：没有找到文本节点');
+      return false;
+    }
+    
+    const textContent = lastTextNode.textContent || '';
+    const isAtEnd = container === lastTextNode && range.startOffset === textContent.length;
+    
+    console.log('🔍 光标末尾检测结果:', {
+      startOffset: range.startOffset,
+      textLength: textContent.length,
+      containerText: container.textContent?.substring(-20) || '',
+      lastTextNodeText: lastTextNode.textContent?.substring(-20) || '',
+      isSameNode: container === lastTextNode,
+      isAtEnd
+    });
+    
+    return isAtEnd;
+  }, []);
+
+  // 添加合并到下一个块的处理函数
+  const handleMergeWithNextBlock = useCallback(async () => {
+    console.log('🔄 尝试合并到下一个块 - 开始检查条件');
+    
+    if (!contentEditableRef.current || block.block_type !== 'text') {
+      console.log('❌ 合并到下一块失败：不是文本块或 contentEditableRef 不存在', {
+        hasRef: !!contentEditableRef.current,
+        blockType: block.block_type
+      });
+      return;
+    }
+    
+    // 检查当前块是否是临时块
+    const isTemporaryBlock = block.id.startsWith('temp-');
+    if (isTemporaryBlock) {
+      console.log('⚠️ 当前块是临时块，暂时无法合并，请稍后再试');
+      toast.warning('新块正在创建中，请稍后再试合并');
+      return;
+    }
+    
+    try {
+      // 检查是否有父级ID和排序信息
+      const parentId = block.parent_id;
+      const currentOrderIndex = block.order_index;
+      
+      if (!parentId || currentOrderIndex === undefined) {
+        console.warn('无法合并到下一块：缺少父级ID或排序信息');
+        return;
+      }
+      
+      // 查找下一个可合并的文本块
+      const nextBlock = await ContextBlocksService.getNextTextBlock(
+        block.id,
+        parentId,
+        currentOrderIndex
+      );
+      
+      if (!nextBlock) {
+        console.log('没有找到可合并的下一个文本块');
+        return;
+      }
+      
+      console.log('🔄 准备合并到下一块:', {
+        current: { id: block.id, content: block.content?.substring(0, 30) + '...' },
+        target: { id: nextBlock.id, content: nextBlock.content?.substring(0, 30) + '...' }
+      });
+      
+      // === 第一步：立即更新UI，提供即时反馈 ===
+      const currentContent = block.content || '';
+      const nextContent = nextBlock.content || '';
+      const mergedContent = currentContent + nextContent;
+      const cursorPosition = currentContent.length;
+      
+      // 立即通知父组件更新当前块内容
+      onBlockUpdate?.(block.id, 'text', mergedContent);
+      
+      // 强制更新当前块的DOM内容（确保合并后的文本立即显示）
+      window.dispatchEvent(new CustomEvent('force-update-block-content', {
+        detail: { 
+          blockId: block.id,
+          content: mergedContent
+        }
+      }));
+      
+      // 立即通知父组件删除下一个块
+      window.dispatchEvent(new CustomEvent('remove-temp-block', {
+        detail: { tempId: nextBlock.id }
+      }));
+      
+      // 立即设置光标位置到合并点
+      setTimeout(() => {
+        if (contentEditableRef.current) {
+          // 设置光标到原当前块内容的末尾
+          const walker = document.createTreeWalker(
+            contentEditableRef.current,
+            NodeFilter.SHOW_TEXT,
+            null
+          );
+          
+          let currentPos = 0;
+          let targetNode = null;
+          let targetOffset = 0;
+          
+          let node;
+          while ((node = walker.nextNode())) {
+            const textLength = node.textContent?.length || 0;
+            if (currentPos + textLength >= cursorPosition) {
+              targetNode = node;
+              targetOffset = cursorPosition - currentPos;
+              break;
+            }
+            currentPos += textLength;
+          }
+          
+          if (targetNode) {
+            const range = document.createRange();
+            const selection = window.getSelection();
+            
+            if (selection) {
+              try {
+                range.setStart(targetNode, targetOffset);
+                range.setEnd(targetNode, targetOffset);
+                selection.removeAllRanges();
+                selection.addRange(range);
+                console.log(`🎯 设置光标到合并点: ${cursorPosition}`);
+              } catch (error) {
+                console.error('🎯 设置光标失败:', error);
+              }
+            }
+          }
+        }
+      }, 50);
+      
+      // 显示成功提示（乐观）
+      toast.success('正在合并文本块...');
+      
+      // === 第二步：后台验证数据库操作 ===
+      console.log('📡 后台验证数据库合并操作');
+      
+      const result = await ContextBlocksService.mergeWithNextBlock(
+        block.id,
+        nextBlock.id,
+        currentContent,
+        nextContent
+      );
+      
+      if (result.success) {
+        console.log('✅ 数据库合并到下一块成功:', result);
+        toast.success('文本块合并成功');
+        
+        // 数据库操作成功，UI已经更新，不需要再次触发事件
+        
+      } else {
+        console.error('❌ 数据库合并到下一块失败:', result);
+        
+        // === 第三步：如果数据库操作失败，回滚UI更改 ===
+        console.log('🔄 回滚UI更改');
+        
+        // 1. 恢复当前块原内容
+        onBlockUpdate?.(block.id, 'text', currentContent);
+        
+        // 强制恢复当前块的DOM内容
+        window.dispatchEvent(new CustomEvent('force-update-block-content', {
+          detail: { 
+            blockId: block.id,
+            content: currentContent
+          }
+        }));
+        
+        // 2. 恢复下一个块（重新添加）
+        window.dispatchEvent(new CustomEvent('create-temp-block', {
+          detail: { 
+            tempId: nextBlock.id,
+            content: nextContent,
+            orderIndex: nextBlock.order_index,
+            parentId: parentId,
+            afterBlockId: block.id
+          }
+        }));
+        
+        // 3. 显示错误提示
+        toast.error(`合并块失败: ${result.error || '未知错误'}`);
+      }
+      
+    } catch (error) {
+      console.error('💥 合并到下一块异常:', error);
+      toast.error('合并块时发生错误');
+    }
+  }, [block.id, block.block_type, block.parent_id, block.order_index, block.content, onBlockUpdate]);
+
+  // 添加粘贴处理函数
+  const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
+    // 只处理文本块的粘贴
+    if (block.block_type !== 'text' || !contentEditableRef.current) return;
+    
+    // 获取粘贴的文本
+    const pastedText = e.clipboardData.getData('text/plain');
+    
+    // 如果没有文本或没有换行符，使用默认行为
+    if (!pastedText || !pastedText.includes('\n')) {
+      return; // 让浏览器处理默认粘贴行为
+    }
+    
+    // 阻止默认粘贴行为
+    e.preventDefault();
+    
+    console.log('📋 检测到包含换行符的粘贴文本:', {
+      textLength: pastedText.length,
+      lineCount: pastedText.split('\n').length,
+      preview: pastedText.substring(0, 100) + '...'
+    });
+    
+    try {
+      // 分割文本为段落，合并连续的空行
+      const paragraphs = pastedText
+        .split(/\n+/) // 按一个或多个换行符分割
+        .map(p => p.trim()) // 去除每段的首尾空白
+        .filter(p => p.length > 0); // 过滤掉空段落
+      
+      console.log('📋 分割后的段落:', paragraphs.map((p, i) => `${i}: ${p.substring(0, 30)}...`));
+      
+      if (paragraphs.length === 0) {
+        console.log('📋 没有有效段落，取消粘贴');
+        return;
+      }
+      
+      if (paragraphs.length === 1) {
+        // 只有一个段落，直接粘贴到当前位置
+        console.log('📋 单段落粘贴，使用默认行为');
+        document.execCommand('insertText', false, paragraphs[0]);
+        return;
+      }
+      
+      // 多个段落，需要创建多个块
+      console.log('📋 多段落粘贴，开始创建多个块');
+      
+      // 获取当前光标位置和内容
+      const { beforeContent, afterContent, position } = ContextBlocksService.splitContentAtCursor(
+        contentEditableRef.current
+      );
+      
+      console.log('📋 当前光标位置信息:', {
+        position,
+        beforeLength: beforeContent.length,
+        afterLength: afterContent.length,
+        beforePreview: beforeContent.substring(Math.max(0, beforeContent.length - 20)),
+        afterPreview: afterContent.substring(0, 20)
+      });
+      
+      // 检查父级ID
+      const parentId = block.parent_id;
+      if (!parentId) {
+        toast.error('无法创建多个块：缺少父级ID');
+        return;
+      }
+      
+      // 定义类型接口
+      interface TempBlock {
+        tempId: string;
+        content: string;
+        orderIndex: number;
+        realId?: string;
+      }
+      
+      interface BlockToCreate {
+        content: string;
+        tempId: string;
+        realId?: string;
+      }
+      
+      // === 第一步：立即更新UI ===
+      
+      // 1. 更新当前块内容为：光标前内容 + 第一段落
+      const firstBlockContent = beforeContent + paragraphs[0];
+      if (contentEditableRef.current) {
+        contentEditableRef.current.textContent = firstBlockContent;
+      }
+      onBlockUpdate?.(block.id, block.block_type, firstBlockContent);
+      
+      // 2. 为剩余段落创建临时块
+      const tempBlocks: TempBlock[] = [];
+      for (let i = 1; i < paragraphs.length; i++) {
+        const tempId = `temp-paste-${Date.now()}-${i}`;
+        const tempOrderIndex = block.order_index + i * 0.1;
+        
+        tempBlocks.push({
+          tempId,
+          content: paragraphs[i],
+          orderIndex: tempOrderIndex
+        });
+        
+        // 立即通知父组件创建临时块
+        window.dispatchEvent(new CustomEvent('create-temp-block', {
+          detail: { 
+            tempId,
+            content: paragraphs[i],
+            orderIndex: tempOrderIndex,
+            parentId: parentId,
+            afterBlockId: i === 1 ? block.id : tempBlocks[i-2].tempId
+          }
+        }));
+      }
+      
+      // 3. 如果光标后还有内容，创建最后一个块
+      if (afterContent.trim()) {
+        const lastTempId = `temp-paste-${Date.now()}-last`;
+        const lastOrderIndex = block.order_index + paragraphs.length * 0.1;
+        
+        tempBlocks.push({
+          tempId: lastTempId,
+          content: afterContent,
+          orderIndex: lastOrderIndex
+        });
+        
+        window.dispatchEvent(new CustomEvent('create-temp-block', {
+          detail: { 
+            tempId: lastTempId,
+            content: afterContent,
+            orderIndex: lastOrderIndex,
+            parentId: parentId,
+            afterBlockId: tempBlocks[tempBlocks.length - 2]?.tempId || block.id
+          }
+        }));
+      }
+      
+      // 4. 显示乐观提示
+      toast.success(`正在创建 ${paragraphs.length + (afterContent.trim() ? 1 : 0)} 个文本块...`);
+      
+      // === 第二步：后台数据库操作 ===
+      console.log('📡 开始后台数据库操作');
+      
+      // 准备所有需要创建的块内容
+      const blocksToCreate: BlockToCreate[] = [];
+      
+      // 剩余段落
+      for (let i = 1; i < paragraphs.length; i++) {
+        blocksToCreate.push({
+          content: paragraphs[i],
+          tempId: tempBlocks[i-1].tempId
+        });
+      }
+      
+      // 光标后内容（如果有）
+      if (afterContent.trim()) {
+        blocksToCreate.push({
+          content: afterContent,
+          tempId: tempBlocks[tempBlocks.length - 1].tempId
+        });
+      }
+      
+      // 批量创建块
+      const results = await Promise.allSettled(
+        blocksToCreate.map(async (blockData, index) => {
+          const result = await ContextBlocksService.createBlockAfter(
+            index === 0 ? block.id : (blocksToCreate[index - 1]?.realId || block.id),
+            blockData.content,
+            parentId
+          );
+          
+          if (result.success) {
+            // 记录真实ID
+            blockData.realId = result.block_id;
+            
+            // 如果真实ID和临时ID不同，通知父组件替换
+            if (result.block_id !== blockData.tempId) {
+              window.dispatchEvent(new CustomEvent('replace-temp-block', {
+                detail: { 
+                  tempId: blockData.tempId, 
+                  realId: result.block_id,
+                  content: blockData.content
+                }
+              }));
+            }
+          }
+          
+          return result;
+        })
+      );
+      
+      // 检查结果
+      const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+      const failCount = results.length - successCount;
+      
+      if (failCount === 0) {
+        console.log('✅ 所有块创建成功');
+        toast.success(`成功创建了 ${successCount + 1} 个文本块`);
+        
+        // 更新当前块内容（包含第一段落）
+        const result = await ContextBlocksService.updateBlockContent(block.id, firstBlockContent);
+        if (!result.success) {
+          console.warn('⚠️ 更新当前块内容失败，但其他块创建成功');
+        }
+        
+        // 聚焦到最后一个创建的块的末尾
+        const lastCreatedBlock = blocksToCreate[blocksToCreate.length - 1];
+        if (lastCreatedBlock?.realId) {
+          // 聚焦到最后一个块的末尾
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('focus-block', {
+              detail: { 
+                blockId: lastCreatedBlock.realId,
+                cursorPosition: lastCreatedBlock.content.length // 设置光标到内容末尾
+              }
+            }));
+          }, 200);
+        } else if (tempBlocks.length > 0) {
+          // 如果没有真实ID，使用临时ID
+          const lastTempBlock = tempBlocks[tempBlocks.length - 1];
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('focus-block', {
+              detail: { 
+                blockId: lastTempBlock.tempId,
+                cursorPosition: lastTempBlock.content.length
+              }
+            }));
+          }, 200);
+        }
+        
+      } else {
+        console.error('❌ 部分块创建失败');
+        
+        // 回滚失败的块
+        results.forEach((result, index) => {
+          if (result.status === 'rejected' || !result.value.success) {
+            const failedBlock = blocksToCreate[index];
+            window.dispatchEvent(new CustomEvent('remove-temp-block', {
+              detail: { tempId: failedBlock.tempId }
+            }));
+          }
+        });
+        
+        toast.error(`创建块时出现错误：${successCount} 个成功，${failCount} 个失败`);
+      }
+      
+    } catch (error) {
+      console.error('💥 粘贴处理异常:', error);
+      toast.error('处理粘贴内容时发生错误');
+      
+      // 完全回滚
+      if (contentEditableRef.current) {
+        contentEditableRef.current.textContent = block.content || '';
+      }
+      onBlockUpdate?.(block.id, block.block_type, block.content || '');
+    }
+  }, [block.id, block.block_type, block.parent_id, block.order_index, block.content, onBlockUpdate]);
+
   return (
     <div
       ref={blockRef}
@@ -1493,6 +2657,11 @@ export function ContextBlocks({
       draggable={!isInAnchorMode} // 锚定模式下禁用拖拽
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
     >
       {/* 拖拽手柄 - 对不同块类型使用不同位置，锚定模式下隐藏 */}
       {!isInAnchorMode && (
