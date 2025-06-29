@@ -31,6 +31,7 @@ import {
 import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
 import { AudioUploader } from './AudioUploader';
 import { createPortal } from 'react-dom';
+import { MeaningBlocksService, type MeaningBlockFormatted } from '@/lib/services/meaning-blocks-service';
 
 interface ReaderContentProps {
   book: Book;
@@ -90,6 +91,10 @@ export function ReaderContent({ book }: ReaderContentProps) {
   const [allSelectedWords, setAllSelectedWords] = useState<SelectedWord[]>([]);
   const [isInAnchorMode, setIsInAnchorMode] = useState(false);
   const [anchorModeBlocks, setAnchorModeBlocks] = useState<Set<string>>(new Set()); // 跟踪所有锚定模式的块
+
+  // 添加含义块数据状态
+  const [meaningBlocks, setMeaningBlocks] = useState<Record<string, MeaningBlockFormatted[]>>({});
+  const [loadingMeaningBlocks, setLoadingMeaningBlocks] = useState(false);
 
   // 添加块更新处理函数
   const handleBlockUpdate = async (blockId: string, newType: string, content: string) => {
@@ -153,16 +158,61 @@ export function ReaderContent({ book }: ReaderContentProps) {
   }, []);
 
   // 处理进入锚定模式
-  const handleEnterAnchorMode = useCallback((blockId?: string) => {
+  const handleEnterAnchorMode = useCallback(async (blockId?: string) => {
     if (blockId) {
-      setAnchorModeBlocks(prev => {
-        const newSet = new Set(prev);
-        newSet.add(blockId);
-        return newSet;
-      });
+      // 如果当前已有其他块处于锚定模式，先退出它们
+      if (anchorModeBlocks.size > 0 && !anchorModeBlocks.has(blockId)) {
+        // 自动退出之前的锚定模式
+        setAnchorModeBlocks(new Set());
+        setAllSelectedWords([]);
+        
+        // 短暂延迟后进入新的锚定模式，确保状态清理完成
+        setTimeout(async () => {
+          await enterAnchorModeForBlock(blockId);
+        }, 100);
+      } else {
+        // 直接进入锚定模式
+        await enterAnchorModeForBlock(blockId);
+      }
     }
     setIsInAnchorMode(true);
     setShowWordCloud(true);
+  }, [anchorModeBlocks]);
+
+  // 提取进入锚定模式的具体逻辑
+  const enterAnchorModeForBlock = useCallback(async (blockId: string) => {
+    // 设置当前块为锚定模式
+    setAnchorModeBlocks(new Set([blockId])); // 只保留当前块
+    setAllSelectedWords([]); // 清空之前的选中词汇
+    
+    // 加载该语境块的含义块数据
+    setLoadingMeaningBlocks(true);
+    try {
+      const blockMeaningBlocks = await MeaningBlocksService.getMeaningBlocksByContextId(blockId);
+      setMeaningBlocks(prev => ({
+        ...prev,
+        [blockId]: blockMeaningBlocks
+      }));
+      
+      // 将已有的含义块转换为 SelectedWord 格式，用于显示在侧边栏
+      const existingWords: SelectedWord[] = blockMeaningBlocks.map(mb => ({
+        id: `existing-${mb.id}`,
+        text: mb.original_word_form || mb.anchor_text, // 优先使用原文单词形式
+        type: mb.anchor_type as 'word' | 'phrase',
+        startIndex: mb.start_position || 0,
+        endIndex: mb.end_position || mb.anchor_text.length,
+        content: mb.original_word_form || mb.anchor_text, // 优先使用原文单词形式
+        isExisting: true, // 标记为已存在的锚点
+        meaningBlock: mb // 保存完整的含义块信息，用于显示音标和释义
+      }));
+      
+      setAllSelectedWords(existingWords);
+    } catch (error) {
+      console.error('加载含义块数据失败:', error);
+      toast.error('加载已有锚点失败');
+    } finally {
+      setLoadingMeaningBlocks(false);
+    }
   }, []);
 
   // 处理退出锚定模式
@@ -176,8 +226,8 @@ export function ReaderContent({ book }: ReaderContentProps) {
         if (newSet.size === 0) {
           setIsInAnchorMode(false);
           setShowWordCloud(false);
-          // 清空该块的选中词汇
-          setAllSelectedWords(prev => prev.filter(w => !w.id.startsWith(blockId)));
+          // 清空选中词汇
+          setAllSelectedWords([]);
         }
         
         return newSet;
@@ -353,10 +403,14 @@ export function ReaderContent({ book }: ReaderContentProps) {
           }
         }
 
+        // 设置语境块数据
         setContextBlocks(prev => ({
           ...prev,
           [chapterIndex]: blocks
         }));
+
+        // 异步加载含义块数据，不阻塞主要渲染
+        loadMeaningBlocksForChapter(chapterIndex, blocks);
       } else {
         // 如果没有块，设置空数组
         setContextBlocks(prev => ({
@@ -370,6 +424,42 @@ export function ReaderContent({ book }: ReaderContentProps) {
       toast.error('加载失败');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 加载章节的含义块数据
+  const loadMeaningBlocksForChapter = async (chapterIndex: number, blocks: any[]) => {
+    try {
+      setLoadingMeaningBlocks(true);
+      
+      // 提取所有语境块的ID
+      const contextBlockIds = blocks.map(block => block.id);
+      
+      if (contextBlockIds.length === 0) {
+        setMeaningBlocks(prev => ({
+          ...prev,
+          [chapterIndex]: {}
+        }));
+        return;
+      }
+
+      console.log(`开始加载章节 ${chapterIndex} 的含义块数据，语境块数量: ${contextBlockIds.length}`);
+      
+      // 使用批量获取方法
+      const meaningBlocksData = await MeaningBlocksService.getMeaningBlocksByContextIds(contextBlockIds);
+      
+      // 更新含义块状态
+      setMeaningBlocks(prev => ({
+        ...prev,
+        ...meaningBlocksData
+      }));
+
+      console.log(`✓ 章节 ${chapterIndex} 含义块数据加载完成，共 ${Object.keys(meaningBlocksData).length} 个语境块有含义块`);
+    } catch (error) {
+      console.error('加载含义块数据失败:', error);
+      // 不显示错误提示，因为这是非关键功能
+    } finally {
+      setLoadingMeaningBlocks(false);
     }
   };
 
@@ -465,6 +555,11 @@ export function ReaderContent({ book }: ReaderContentProps) {
             setContextBlocks({ 0: [] });
           } else {
             setContextBlocks({ 0: blocks || [] });
+            
+            // 异步加载第一章的含义块数据
+            if (blocks && blocks.length > 0) {
+              loadMeaningBlocksForChapter(0, blocks);
+            }
             
             // 简化音频预加载逻辑
             const firstAudioBlock = blocks?.find((block: any) => block.block_type === 'audio_aligned');
@@ -628,6 +723,13 @@ export function ReaderContent({ book }: ReaderContentProps) {
     } else {
       // 如果已有数据，检查是否需要预加载音频
       const blocks = contextBlocks[newChapter];
+      
+      // 检查是否需要加载含义块数据
+      const needsLoadMeaningBlocks = blocks.some(block => !meaningBlocks[block.id]);
+      if (needsLoadMeaningBlocks) {
+        loadMeaningBlocksForChapter(newChapter, blocks);
+      }
+      
       const firstAudioBlock = blocks.find(block => block.block_type === 'audio_aligned');
       
       if (firstAudioBlock?.speech_id) {
@@ -1305,6 +1407,12 @@ export function ReaderContent({ book }: ReaderContentProps) {
         word.id.startsWith(block.id)
       );
       
+      // 获取当前块的含义块数据
+      const blockMeaningBlocks = meaningBlocks[block.id] || [];
+      
+      // 检查当前块是否处于锚定模式
+      const isBlockInAnchorMode = anchorModeBlocks.has(block.id);
+      
       return (
         <div key={block.id} 
           ref={(el) => { blockRefs.current[block.id] = el; }}
@@ -1332,6 +1440,9 @@ export function ReaderContent({ book }: ReaderContentProps) {
               onEnterAnchorMode={() => handleEnterAnchorMode(block.id)}
               onExitAnchorMode={() => handleExitAnchorMode(block.id)}
               anchorSelectedWords={blockSelectedWords}
+              meaningBlocks={blockMeaningBlocks}
+              loadingMeaningBlocks={loadingMeaningBlocks}
+              isInAnchorMode={isBlockInAnchorMode}
             />
           </div>
           
@@ -2054,16 +2165,57 @@ export function ReaderContent({ book }: ReaderContentProps) {
         selectedWords={allSelectedWords}
         isOpen={isInAnchorMode}
         onClose={() => {
-          // 只有在非锚定模式下才允许关闭
-          if (!isInAnchorMode) {
-            setShowWordCloud(false);
-          }
+          // 调用正确的退出锚定模式函数
+          handleExitAnchorMode();
         }}
         onWordsChange={setAllSelectedWords}
         isAnchorMode={isInAnchorMode}
         currentBlocks={Array.from(anchorModeBlocks).map(blockId => 
           contextBlocks[currentChapter]?.find(block => block.id === blockId)
         ).filter(Boolean)}
+        contextBlockId={Array.from(anchorModeBlocks)[0]} // 使用第一个锚定模式块作为主要语境块
+        onAnchorProcessed={async (results) => {
+          console.log('锚点处理完成:', results);
+          
+          // 清除含义块缓存并重新加载数据
+          const currentBlockId = Array.from(anchorModeBlocks)[0];
+          if (currentBlockId) {
+            try {
+              // 清除缓存
+              const { MeaningBlocksService } = await import('@/lib/services/meaning-blocks-service');
+              MeaningBlocksService.clearCache(currentBlockId);
+              
+              // 重新加载含义块数据
+              const updatedMeaningBlocks = await MeaningBlocksService.getMeaningBlocksByContextId(currentBlockId, false);
+              
+              // 更新状态
+              setMeaningBlocks(prev => ({
+                ...prev,
+                [currentBlockId]: updatedMeaningBlocks
+              }));
+              
+              // 更新已有锚点的显示
+              const existingWords: SelectedWord[] = updatedMeaningBlocks.map(mb => ({
+                id: `existing-${mb.id}`,
+                text: mb.original_word_form || mb.anchor_text,
+                type: mb.anchor_type as 'word' | 'phrase',
+                startIndex: mb.start_position || 0,
+                endIndex: mb.end_position || mb.anchor_text.length,
+                content: mb.original_word_form || mb.anchor_text,
+                isExisting: true,
+                meaningBlock: mb
+              }));
+              
+              // 保留新添加的词汇，更新已存在的词汇
+              const newWords = allSelectedWords.filter(w => !w.isExisting);
+              setAllSelectedWords([...existingWords, ...newWords]);
+              
+              console.log(`✅ 含义块数据已刷新，当前语境块有 ${updatedMeaningBlocks.length} 个锚点`);
+            } catch (error) {
+              console.error('刷新含义块数据失败:', error);
+            }
+          }
+        }}
       />
     </div>
   );

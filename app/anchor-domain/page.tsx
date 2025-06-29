@@ -1,610 +1,356 @@
-import { AnchorDomainCard } from '@/components/anchor-domain/AnchorDomainCard';
-import { PlusCircle, Clock, Shapes } from 'lucide-react';
-import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+'use client';
 
-const TIME_DOMAINS = [
-  {
-    id: '1',
-    month: '2024-02',
-    days: [
-      {
-        date: '2024-02-20',
-        anchors: [
-          {
-            word: 'meticulous',
-            meaningBlocks: [
-              {
-                id: '4',
-                meaning: '一丝不苟的，极其细心的',
-                contexts: [
-                  {
-                    text: 'She is meticulous in her research',
-                    source: '《Academic Writing》',
-                    date: '2024-02-20'
-                  }
-                ],
-                reviewCount: 1,
-                nextReviewDate: '2024-02-23',
-                proficiency: 30
-              }
-            ],
-            totalContexts: 1,
-            lastUpdated: '2024-02-20'
-          }
-        ]
-      },
-      {
-        date: '2024-02-19',
-        anchors: [
-          {
-            word: 'carry oneself',
-            meaningBlocks: [
-              {
-                id: '1',
-                meaning: '举止，表现',
-                contexts: [
-                  {
-                    text: 'The way she carries herself suggests confidence',
-                    source: '《The Power of Body Language》',
-                    date: '2024-02-19'
-                  }
-                ],
-                reviewCount: 1,
-                nextReviewDate: '2024-02-22',
-                proficiency: 40
-              }
-            ],
-            totalContexts: 1,
-            lastUpdated: '2024-02-19'
-          },
-          {
-            word: 'eloquent',
-            meaningBlocks: [
-              {
-                id: '2',
-                meaning: '雄辩的，有说服力的',
-                contexts: [
-                  {
-                    text: 'His speech was both eloquent and persuasive',
-                    source: '《The Art of Public Speaking》',
-                    date: '2024-02-19'
-                  }
-                ],
-                reviewCount: 1,
-                nextReviewDate: '2024-02-22',
-                proficiency: 60
-              }
-            ],
-            totalContexts: 1,
-            lastUpdated: '2024-02-19'
-          },
-          {
-            word: 'resilient',
-            meaningBlocks: [
-              {
-                id: '9',
-                meaning: '有适应力的，能快速恢复的',
-                contexts: [
-                  {
-                    text: 'Children are remarkably resilient in the face of challenges',
-                    source: '《Psychology Today》',
-                    date: '2024-02-19'
-                  }
-                ],
-                reviewCount: 1,
-                nextReviewDate: '2024-02-22',
-                proficiency: 45
-              }
-            ],
-            totalContexts: 1,
-            lastUpdated: '2024-02-19'
-          },
-          {
-            word: 'pragmatic',
-            meaningBlocks: [
-              {
-                id: '10',
-                meaning: '务实的，实用的',
-                contexts: [
-                  {
-                    text: 'We need a pragmatic approach to solve this problem',
-                    source: '《Business Strategy》',
-                    date: '2024-02-19'
-                  }
-                ],
-                reviewCount: 1,
-                nextReviewDate: '2024-02-22',
-                proficiency: 50
-              }
-            ],
-            totalContexts: 1,
-            lastUpdated: '2024-02-19'
-          },
-          {
-            word: 'intricate',
-            meaningBlocks: [
-              {
-                id: '11',
-                meaning: '复杂的，精细的',
-                contexts: [
-                  {
-                    text: 'The watch mechanism is incredibly intricate',
-                    source: '《Engineering Weekly》',
-                    date: '2024-02-19'
-                  }
-                ],
-                reviewCount: 1,
-                nextReviewDate: '2024-02-22',
-                proficiency: 35
-              }
-            ],
-            totalContexts: 1,
-            lastUpdated: '2024-02-19'
-          }
-        ]
-      },
-      {
-        date: '2024-02-18',
-        anchors: [
-          {
-            word: 'profound',
-            meaningBlocks: [
-              {
-                id: '3',
-                meaning: '深刻的，意义深远的',
-                contexts: [
-                  {
-                    text: 'The book had a profound impact on my thinking',
-                    source: '《Reading Notes》',
-                    date: '2024-02-18'
-                  }
-                ],
-                reviewCount: 2,
-                nextReviewDate: '2024-02-21',
-                proficiency: 80
-              }
-            ],
-            totalContexts: 1,
-            lastUpdated: '2024-02-18'
-          }
-        ]
-      },
-      {
-        date: '2024-02-17',
-        anchors: [
-          {
-            word: 'ephemeral',
-            meaningBlocks: [
-              {
-                id: '5',
-                meaning: '短暂的，瞬息即逝的',
-                contexts: [
-                  {
-                    text: 'Beauty is ephemeral',
-                    source: '《Philosophy Notes》',
-                    date: '2024-02-17'
-                  }
-                ],
-                reviewCount: 3,
-                nextReviewDate: '2024-02-22',
-                proficiency: 85
-              }
-            ],
-            totalContexts: 1,
-            lastUpdated: '2024-02-17'
-          },
-          {
-            word: 'tenacious',
-            meaningBlocks: [
-              {
-                id: '12',
-                meaning: '坚韧的，顽强的',
-                contexts: [
-                  {
-                    text: 'Her tenacious pursuit of justice inspired many',
-                    source: '《Leadership Stories》',
-                    date: '2024-02-17'
-                  }
-                ],
-                reviewCount: 2,
-                nextReviewDate: '2024-02-20',
-                proficiency: 65
-              }
-            ],
-            totalContexts: 1,
-            lastUpdated: '2024-02-17'
-          },
-          {
-            word: 'enigmatic',
-            meaningBlocks: [
-              {
-                id: '13',
-                meaning: '神秘的，难以理解的',
-                contexts: [
-                  {
-                    text: 'The enigmatic smile of the Mona Lisa',
-                    source: '《Art History》',
-                    date: '2024-02-17'
-                  }
-                ],
-                reviewCount: 2,
-                nextReviewDate: '2024-02-20',
-                proficiency: 55
-              }
-            ],
-            totalContexts: 1,
-            lastUpdated: '2024-02-17'
-          },
-          {
-            word: 'impeccable',
-            meaningBlocks: [
-              {
-                id: '14',
-                meaning: '完美的，无瑕疵的',
-                contexts: [
-                  {
-                    text: 'His impeccable manners impressed everyone at the dinner',
-                    source: '《Social Etiquette》',
-                    date: '2024-02-17'
-                  }
-                ],
-                reviewCount: 2,
-                nextReviewDate: '2024-02-20',
-                proficiency: 70
-              }
-            ],
-            totalContexts: 1,
-            lastUpdated: '2024-02-17'
-          }
-        ]
-      },
-      {
-        date: '2024-02-16',
-        anchors: [
-          {
-            word: 'ubiquitous',
-            meaningBlocks: [
-              {
-                id: '6',
-                meaning: '无处不在的',
-                contexts: [
-                  {
-                    text: 'Smartphones have become ubiquitous',
-                    source: '《Modern Technology》',
-                    date: '2024-02-16'
-                  }
-                ],
-                reviewCount: 4,
-                nextReviewDate: '2024-02-23',
-                proficiency: 75
-              }
-            ],
-            totalContexts: 1,
-            lastUpdated: '2024-02-16'
-          }
-        ]
-      },
-      {
-        date: '2024-02-15',
-        anchors: [
-          {
-            word: 'serendipity',
-            meaningBlocks: [
-              {
-                id: '7',
-                meaning: '意外发现美好事物的能力',
-                contexts: [
-                  {
-                    text: 'Finding this cafe was pure serendipity',
-                    source: '《Daily Journal》',
-                    date: '2024-02-15'
-                  }
-                ],
-                reviewCount: 2,
-                nextReviewDate: '2024-02-22',
-                proficiency: 55
-              }
-            ],
-            totalContexts: 1,
-            lastUpdated: '2024-02-15'
-          }
-        ]
-      },
-      {
-        date: '2024-02-14',
-        anchors: [
-          {
-            word: 'quintessential',
-            meaningBlocks: [
-              {
-                id: '8',
-                meaning: '典型的，最具代表性的',
-                contexts: [
-                  {
-                    text: 'This is the quintessential example of modern architecture',
-                    source: '《Architecture Review》',
-                    date: '2024-02-14'
-                  }
-                ],
-                reviewCount: 3,
-                nextReviewDate: '2024-02-21',
-                proficiency: 70
-              }
-            ],
-            totalContexts: 1,
-            lastUpdated: '2024-02-14'
-          }
-        ]
+import { useState, useCallback, useEffect } from 'react';
+import { TimeDomain } from '@/types/anchor';
+import { CacheStatusIndicator } from '@/components/anchor-domain/CacheStatusIndicator';
+import { YearHeatmap } from '@/components/anchor-domain/YearHeatmap';
+import { MultiDateAnchorCloud } from '@/components/anchor-domain/MultiDateAnchorCloud';
+import { useAnchorDomainData } from '@/hooks/useAnchorDomainData';
+import { useAuthStore } from '@/stores/auth';
+
+export default function AnchorDomainPage() {
+  const { session, loading: authLoading } = useAuthStore();
+  const [timeDomains, setTimeDomains] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [backgroundLoading, setBackgroundLoading] = useState(false);
+  const [isFromCache, setIsFromCache] = useState(false);
+  const [selectedPeriod, setSelectedPeriod] = useState<{start: string, end: string} | null>(null);
+  const [hasAutoSelected, setHasAutoSelected] = useState(false);
+  const [heatmapExpanded, setHeatmapExpanded] = useState(false);
+  const [globalCollapsed, setGlobalCollapsed] = useState<boolean | undefined>(undefined);
+
+  const {
+    timeDomains: dataTimeDomains,
+    loading: dataLoading,
+    isFromCache: dataIsFromCache,
+    backgroundLoading: dataBackgroundLoading,
+    refreshData,
+    clearCache
+  } = useAnchorDomainData(session, authLoading);
+
+  // 从本地存储读取释义显示偏好
+  useEffect(() => {
+    try {
+      const savedCollapsed = localStorage.getItem('anchor-domain-collapsed');
+      if (savedCollapsed !== null) {
+        setGlobalCollapsed(JSON.parse(savedCollapsed));
+      } else {
+        // 默认状态：显示释义（false）
+        setGlobalCollapsed(false);
       }
-    ],
-    totalAnchors: 12,
-    meaningBlocks: 14
+    } catch (error) {
+      console.error('读取释义显示偏好失败:', error);
+      // 出错时使用默认状态
+      setGlobalCollapsed(false);
+    }
+  }, []);
+
+  // 保存释义显示偏好到本地存储
+  const handleGlobalCollapsedChange = useCallback((collapsed: boolean | undefined) => {
+    setGlobalCollapsed(collapsed);
+    try {
+      if (collapsed !== undefined) {
+        localStorage.setItem('anchor-domain-collapsed', JSON.stringify(collapsed));
+      }
+    } catch (error) {
+      console.error('保存释义显示偏好失败:', error);
+    }
+  }, []);
+
+  // 获取最近的活跃时间段
+  const getRecentActivePeriod = useCallback(() => {
+    if (!dataTimeDomains || dataTimeDomains.length === 0) return null;
+    
+    // 收集所有有数据的日期
+    const allActiveDays: any[] = [];
+    for (const domain of dataTimeDomains) {
+      if (domain.days) {
+        const activeDays = domain.days.filter((day: any) => 
+          day.anchors && day.anchors.length > 0
+        );
+        allActiveDays.push(...activeDays);
+      }
+    }
+    
+    if (allActiveDays.length === 0) return null;
+    
+    // 按日期排序，获取最近的日期
+    allActiveDays.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    // 按5天分组，找到最近的活跃时间段
+    const today = new Date();
+    const halfYearAgo = new Date(today);
+    halfYearAgo.setDate(today.getDate() - 180);
+    
+    // 生成最近180天的所有日期
+    const recentDates = [];
+    for (let i = 0; i < 180; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - i);
+      recentDates.push(date.toISOString().split('T')[0]);
+    }
+    
+    // 按5天分组，找到有数据的最近时间段
+    for (let i = 0; i < recentDates.length; i += 5) {
+      const periodDates = recentDates.slice(i, i + 5);
+      const periodHasData = periodDates.some(date => 
+        allActiveDays.some((day: any) => day.date === date)
+      );
+      
+      if (periodHasData) {
+        return {
+          start: periodDates[periodDates.length - 1], // 最早日期
+          end: periodDates[0] // 最晚日期
+        };
+      }
+    }
+    
+    return null;
+  }, [dataTimeDomains]);
+
+  // 自动选择最近的时间段
+  useEffect(() => {
+    if (!dataLoading && !hasAutoSelected && dataTimeDomains && dataTimeDomains.length > 0) {
+      const recentPeriod = getRecentActivePeriod();
+      if (recentPeriod) {
+        setSelectedPeriod(recentPeriod);
+        setHasAutoSelected(true);
+      }
+    }
+  }, [dataLoading, dataTimeDomains, hasAutoSelected, getRecentActivePeriod]);
+
+  // 处理时间段选择
+  const handlePeriodSelect = useCallback((startDate: string, endDate: string) => {
+    setSelectedPeriod({ start: startDate, end: endDate });
+    setHeatmapExpanded(false); // 选择后收起热力图
+  }, []);
+
+  // 获取选中时间段的数据
+  const getSelectedPeriodData = () => {
+    if (!selectedPeriod || !dataTimeDomains || dataTimeDomains.length === 0) return [];
+    
+    const daysInPeriod = [];
+    for (const domain of dataTimeDomains) {
+      if (domain.days) {
+        const filteredDays = domain.days.filter((day: any) => 
+          day.date >= selectedPeriod.start && 
+          day.date <= selectedPeriod.end &&
+          day.anchors && day.anchors.length > 0
+        );
+        daysInPeriod.push(...filteredDays);
+      }
+    }
+    
+    // 按日期排序
+    return daysInPeriod.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  };
+
+  const selectedPeriodData = getSelectedPeriodData();
+
+  // 快捷键支持
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      // 只在锚点域页面且有数据时响应快捷键
+      if (selectedPeriodData.length > 0 && event.key.toLowerCase() === 'x') {
+        // 防止在输入框中触发
+        if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+          return;
+        }
+        event.preventDefault();
+        const newCollapsed = globalCollapsed === undefined ? true : !globalCollapsed;
+        handleGlobalCollapsedChange(newCollapsed);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [selectedPeriodData.length, globalCollapsed, handleGlobalCollapsedChange]);
+
+  // 认证检查
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mb-4"></div>
+          <div className="text-white/60">验证用户身份...</div>
+        </div>
+      </div>
+    );
   }
-];
 
-const SPACE_DOMAINS = [
-  {
-    id: '1',
-    title: '表达"看"的动词辨析',
-    description: 'look, watch, see, observe, gaze...',
-    type: 'synonym' as const,
-    anchors: [
-      {
-        word: 'look',
-        meaningBlocks: [
-          {
-            id: '1',
-            meaning: '主动看，寻找',
-            contexts: [
-              {
-                text: 'Look at the sky',
-                source: '《English Verbs》',
-                date: '2024-02-15'
-              },
-              {
-                text: 'Look for your keys',
-                source: '《Daily English》',
-                date: '2024-02-16'
-              }
-            ],
-            reviewCount: 2,
-            nextReviewDate: '2024-02-20',
-            proficiency: 65
-          }
-        ],
-        totalContexts: 2,
-        lastUpdated: '2024-02-16'
-      },
-      {
-        word: 'watch',
-        meaningBlocks: [
-          {
-            id: '2',
-            meaning: '持续观看，关注',
-            contexts: [
-              {
-                text: 'Watch a movie',
-                source: '《English Verbs》',
-                date: '2024-02-15'
-              },
-              {
-                text: 'Watch the kids',
-                source: '《Daily English》',
-                date: '2024-02-16'
-              }
-            ],
-            reviewCount: 2,
-            nextReviewDate: '2024-02-20',
-            proficiency: 65
-          }
-        ],
-        totalContexts: 2,
-        lastUpdated: '2024-02-16'
-      }
-    ],
-    totalAnchors: 8,
-    meaningBlocks: 12
-  },
-  {
-    id: '2',
-    title: 'affect/effect 形近词辨析',
-    description: '常见易混淆词对',
-    type: 'similar' as const,
-    anchors: [
-      {
-        word: 'affect',
-        meaningBlocks: [
-          {
-            id: '1',
-            meaning: '影响(动词)',
-            contexts: [
-              {
-                text: 'The weather affects my mood',
-                source: '《Common Confusing Words》',
-                date: '2024-02-18'
-              }
-            ],
-            reviewCount: 1,
-            nextReviewDate: '2024-02-21',
-            proficiency: 65
-          }
-        ],
-        totalContexts: 1,
-        lastUpdated: '2024-02-18'
-      },
-      {
-        word: 'effect',
-        meaningBlocks: [
-          {
-            id: '2',
-            meaning: '效果(名词)',
-            contexts: [
-              {
-                text: 'The effect was immediate',
-                source: '《Common Confusing Words》',
-                date: '2024-02-18'
-              }
-            ],
-            reviewCount: 1,
-            nextReviewDate: '2024-02-21',
-            proficiency: 65
-          },
-          {
-            id: '3',
-            meaning: '实现(动词)',
-            contexts: [
-              {
-                text: 'to effect change',
-                source: '《Advanced English Usage》',
-                date: '2024-02-18'
-              }
-            ],
-            reviewCount: 1,
-            nextReviewDate: '2024-02-21',
-            proficiency: 65
-          }
-        ],
-        totalContexts: 2,
-        lastUpdated: '2024-02-18'
-      }
-    ],
-    totalAnchors: 2,
-    meaningBlocks: 4
-  },
-  {
-    id: '3',
-    title: '描述性形容词集合',
-    description: 'beautiful, gorgeous, stunning, magnificent...',
-    type: 'synonym' as const,
-    anchors: [
-      {
-        word: 'beautiful',
-        meaningBlocks: [
-          {
-            id: '1',
-            meaning: '美丽的，普遍用法',
-            contexts: [
-              {
-                text: 'A beautiful sunset over the ocean',
-                source: '《Descriptive Writing》',
-                date: '2024-02-19'
-              }
-            ],
-            reviewCount: 1,
-            nextReviewDate: '2024-02-22',
-            proficiency: 90
-          }
-        ],
-        totalContexts: 1,
-        lastUpdated: '2024-02-19'
-      },
-      {
-        word: 'gorgeous',
-        meaningBlocks: [
-          {
-            id: '2',
-            meaning: '华丽的，令人印象深刻的美',
-            contexts: [
-              {
-                text: 'She wore a gorgeous evening gown',
-                source: '《Fashion Magazine》',
-                date: '2024-02-19'
-              }
-            ],
-            reviewCount: 1,
-            nextReviewDate: '2024-02-22',
-            proficiency: 75
-          }
-        ],
-        totalContexts: 1,
-        lastUpdated: '2024-02-19'
-      }
-    ],
-    totalAnchors: 2,
-    meaningBlocks: 2
-  },
-  {
-    id: '4',
-    title: '商务英语常用词组',
-    description: 'implement, execute, carry out...',
-    type: 'synonym' as const,
-    anchors: [
-      {
-        word: 'implement',
-        meaningBlocks: [
-          {
-            id: '1',
-            meaning: '实施，执行（正式）',
-            contexts: [
-              {
-                text: 'We need to implement this strategy by next quarter',
-                source: '《Business English》',
-                date: '2024-02-20'
-              }
-            ],
-            reviewCount: 1,
-            nextReviewDate: '2024-02-23',
-            proficiency: 65
-          }
-        ],
-        totalContexts: 1,
-        lastUpdated: '2024-02-20'
-      }
-    ],
-    totalAnchors: 1,
-    meaningBlocks: 1
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-white text-xl mb-4">请先登录</div>
+          <div className="text-white/60">需要登录后才能查看锚点域</div>
+        </div>
+      </div>
+    );
   }
-];
-
-export default async function AnchorDomainPage() {
-  console.log('TIME_DOMAINS:', JSON.stringify(TIME_DOMAINS, null, 2));
 
   return (
-    <div className="h-full p-2 sm:p-4">
-      <div className="container mx-auto px-4 sm:px-6">
-        <div className="flex items-center justify-between gap-4 mb-4 px-2 sm:px-4">
-          <div>
-            <h1 className="text-2xl font-bold">锚点域</h1>
-            <p className="text-sm text-muted-foreground mt-2 max-w-md">
-              在这里探索你的锚点网络，见证语言知识的时空交织
-            </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col">
+      {/* 顶部控制栏 */}
+      <div className="sticky top-0 z-40 bg-black/20 backdrop-blur-md border-b border-white/10">
+        <div className="container mx-auto px-4 py-3">
+          <div className="relative flex items-center justify-between">
+            {/* 左侧 */}
+            <div className="flex items-center gap-4">
+              <h1 className="text-xl font-bold text-white">锚点域</h1>
+              <CacheStatusIndicator 
+                isFromCache={dataIsFromCache}
+                backgroundLoading={dataBackgroundLoading}
+                loading={dataLoading}
+              />
+            </div>
+            
+            {/* 中间 - 时间段信息（绝对居中） */}
+            <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+              {selectedPeriod ? (
+                <div className="text-center">
+                  <div className="text-lg font-bold text-white mb-1">
+                    {new Date(selectedPeriod.start).toLocaleDateString('zh-CN', {
+                      month: 'long',
+                      day: 'numeric'
+                    })} - {new Date(selectedPeriod.end).toLocaleDateString('zh-CN', {
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </div>
+                  <div className="text-sm text-white/60">
+                    {selectedPeriodData.length} 个活跃日期，
+                    共学习 {selectedPeriodData.reduce((sum, day) => sum + day.anchors.length, 0)} 个单词，
+                    新增 {selectedPeriodData.reduce((sum, day) => 
+                      sum + day.anchors.reduce((anchorSum: number, anchor: any) => 
+                        anchorSum + anchor.meaning_blocks.length, 0), 0)} 个含义
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <div className="text-lg font-bold text-white/80 mb-1">
+                    {dataLoading ? '正在加载学习数据...' : '探索你的学习宇宙'}
+                  </div>
+                  <div className="text-sm text-white/50">
+                    {dataLoading ? '请稍候' : '点击右上角&ldquo;热力图&rdquo;按钮选择学习时间段'}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* 右侧 */}
+            <div className="flex items-center gap-2">
+              {/* 全局释义控制 */}
+              {selectedPeriodData.length > 0 && (
+                <div className="flex items-center gap-1 mr-2">
+                  <span className="text-xs text-white/60">释义:</span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => handleGlobalCollapsedChange(false)}
+                      className={`px-2 py-1 text-xs rounded transition-all duration-200 ${
+                        globalCollapsed === false 
+                          ? 'bg-green-600/80 text-white shadow-md' 
+                          : 'bg-gray-600/50 text-white/70 hover:bg-gray-600/70'
+                      }`}
+                      title="显示完整释义信息 (快捷键: X)"
+                    >
+                      显示释义
+                    </button>
+                    <button
+                      onClick={() => handleGlobalCollapsedChange(true)}
+                      className={`px-2 py-1 text-xs rounded transition-all duration-200 ${
+                        globalCollapsed === true 
+                          ? 'bg-blue-600/80 text-white shadow-md' 
+                          : 'bg-gray-600/50 text-white/70 hover:bg-gray-600/70'
+                      }`}
+                      title="隐藏释义，只显示例句 (快捷键: X)"
+                    >
+                      隐藏释义
+                    </button>
+                  </div>
+                  {globalCollapsed !== undefined && (
+                    <div className="text-xs text-white/50 ml-1">
+                      {globalCollapsed ? '仅例句' : '完整释义'}
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* 热力图展开按钮 */}
+              <button
+                onClick={() => setHeatmapExpanded(!heatmapExpanded)}
+                className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                  heatmapExpanded 
+                    ? 'bg-purple-600/80 text-white' 
+                    : 'bg-gray-600/80 text-white hover:bg-gray-600'
+                }`}
+              >
+                热力图
+              </button>
+              
+              <button
+                onClick={refreshData}
+                disabled={dataLoading || dataBackgroundLoading}
+                className="px-3 py-1.5 text-sm bg-blue-600/80 text-white rounded hover:bg-blue-600 disabled:opacity-50 transition-colors"
+              >
+                {dataLoading || dataBackgroundLoading ? '刷新中...' : '刷新'}
+              </button>
+              <button
+                onClick={clearCache}
+                className="px-3 py-1.5 text-sm bg-gray-600/80 text-white rounded hover:bg-gray-600 transition-colors"
+              >
+                清缓存
+              </button>
+            </div>
           </div>
-          <HoverBorderGradient
-            containerClassName="rounded-full flex-shrink-0"
-            className="flex items-center gap-2 text-sm"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>创建锚点</span>
-          </HoverBorderGradient>
+        </div>
+      </div>
+
+      {/* 主要内容区域 */}
+      <div className="flex-1 relative">
+        {/* 锚点域容器 - 铺满剩余页面 */}
+        <div className="absolute inset-0">
+          {dataLoading && !dataTimeDomains.length ? (
+            // 初始加载状态
+            <div className="flex flex-col items-center justify-center h-full">
+              <div className="w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mb-4"></div>
+              <div className="text-white/60">正在加载学习数据...</div>
+            </div>
+          ) : selectedPeriodData.length > 0 ? (
+            // 显示选中时间段的数据
+            <MultiDateAnchorCloud 
+              days={selectedPeriodData} 
+              globalCollapsed={globalCollapsed}
+              onGlobalCollapsedChange={handleGlobalCollapsedChange}
+            />
+          ) : (
+            // 无数据状态
+            <div className="flex flex-col items-center justify-center h-full">
+              <div className="text-6xl mb-4">🌌</div>
+              <div className="text-white/60 text-center">
+                <div className="text-lg mb-2">
+                  {selectedPeriod ? '选中的时间段没有学习记录' : '还没有学习记录'}
+                </div>
+                <div className="text-sm">
+                  {selectedPeriod ? '尝试选择其他时间段' : '开始你的学习之旅，创建第一个锚点吧！'}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        <Tabs defaultValue="time" className="h-[calc(100vh-10rem)] px-2 sm:px-4">
-          <TabsList className="grid w-full max-w-md grid-cols-2 mb-4">
-            <TabsTrigger value="time" className="flex items-center gap-2">
-              <Clock className="w-4 h-4" />
-              时间锚点域
-            </TabsTrigger>
-            <TabsTrigger value="space" className="flex items-center gap-2">
-              <Shapes className="w-4 h-4" />
-              空间锚点域
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="time" className="h-full">
-            {TIME_DOMAINS.map(domain => (
-              <AnchorDomainCard key={domain.id} domain={domain} type="time" />
-            ))}
-          </TabsContent>
-
-          <TabsContent value="space">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {SPACE_DOMAINS.map(domain => (
-                <AnchorDomainCard key={domain.id} domain={domain} type="space" />
-              ))}
+        {/* 热力图展开面板 */}
+        <div className={`absolute top-4 right-4 z-30 transition-all duration-300 ${
+          heatmapExpanded ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'
+        }`}>
+          <div className="w-80 max-h-96">
+            <YearHeatmap
+              timeDomains={dataTimeDomains || []}
+              onPeriodSelect={handlePeriodSelect}
+              selectedPeriod={selectedPeriod}
+            />
           </div>
-          </TabsContent>
-        </Tabs>
+        </div>
       </div>
     </div>
   );

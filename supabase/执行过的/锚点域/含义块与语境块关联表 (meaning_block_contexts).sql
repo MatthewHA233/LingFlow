@@ -7,6 +7,7 @@ CREATE TABLE public.meaning_block_contexts (
   -- 在语境块中的位置信息
   start_position INTEGER, -- 开始位置
   end_position INTEGER, -- 结束位置
+  original_word_form TEXT, -- 语境下的原始单词形态（非原型），如 "running"、"cats"、"better" 等
   
   -- 关联信息
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -23,3 +24,11 @@ CREATE TABLE public.meaning_block_contexts (
 -- 索引
 CREATE INDEX idx_meaning_block_contexts_meaning_block ON meaning_block_contexts (meaning_block_id);
 CREATE INDEX idx_meaning_block_contexts_context_block ON meaning_block_contexts (context_block_id);
+CREATE INDEX idx_meaning_block_contexts_word_position ON meaning_block_contexts (original_word_form, start_position, end_position);
+
+-- 表和字段注释
+COMMENT ON TABLE public.meaning_block_contexts IS '含义块与语境块关联表 - 记录含义块在特定语境中的出现位置和原始形态';
+COMMENT ON COLUMN public.meaning_block_contexts.original_word_form IS '语境下的原始单词形态，如 "running"、"cats"、"better" 等非原型形式';
+COMMENT ON COLUMN public.meaning_block_contexts.start_position IS '单词在语境块中的开始位置';
+COMMENT ON COLUMN public.meaning_block_contexts.end_position IS '单词在语境块中的结束位置';
+COMMENT ON COLUMN public.meaning_block_contexts.confidence_score IS '关联置信度，用于表示匹配的准确性';

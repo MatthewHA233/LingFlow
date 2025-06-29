@@ -1,4 +1,3 @@
-
 # LingFlow 锚点系统 Supabase 接口指南
 
 ## 目录
@@ -10,6 +9,7 @@
 6. [统计分析](#统计分析)
 7. [高级查询](#高级查询)
 8. [最佳实践](#最佳实践)
+9. [大语言模型生成格式](#大语言模型生成格式)
 
 ## 基础配置
 
@@ -36,6 +36,49 @@ import {
   ReviewSession,
   ReviewQueue 
 } from '@/types/anchor'
+
+// 新增类型定义
+interface ExampleSentenceData {
+  context_explanation: string;  // 上下文解释
+  original_sentence: string;    // 原始完整句子
+  source_context_id?: string;   // 来源语境块ID
+}
+
+interface LLMGeneratedMeaning {
+  phonetic: string;        // 音标，如 /məˈʃiːn/
+  chinese_meaning: string; // 中文含义，如 机器，设备
+  part_of_speech: string[]; // 词性，如 ['noun', 'countable']
+  context_explanation: string; // 上下文解释
+  original_sentence: string;   // 原始句子
+}
+```
+
+## 大语言模型生成格式
+
+### 生成内容结构
+大语言模型为词汇生成的解释包含以下部分：
+1. **单词原型** - 存储在 `anchors.text` 字段
+2. **音标** - 存储在 `meaning_blocks.meaning` 字段前部分
+3. **词性** - 存储在 `meaning_blocks.tags` 数组中
+4. **中文解释** - 存储在 `meaning_blocks.meaning` 字段后部分
+5. **上下文解释** - 存储在 `meaning_blocks.example_sentence` JSON 的 `context_explanation`
+6. **原始句子** - 存储在 `meaning_blocks.example_sentence` JSON 的 `original_sentence`
+
+### 数据格式规范
+
+```typescript
+// meaning 字段格式：音标 + 中文含义
+const meaningFormat = "/məˈʃiːn/ 机器，设备";
+
+// example_sentence 字段格式：JSON
+const exampleSentenceFormat = {
+  context_explanation: "在工业生产中使用的自动化设备",
+  original_sentence: "这台机器运行得很好。",
+  source_context_id: "context-block-uuid"
+};
+
+// tags 字段格式：词性数组
+const tagsFormat = ["noun", "countable"];
 ```
 
 ## 锚点管理
@@ -46,20 +89,19 @@ import {
 // services/anchor.service.ts
 
 /**
- * 创建新锚点
+ * 创建新锚点 - 使用词汇原型形式
  */
 export async function createAnchor(anchorData: {
-  text: string;
+  text: string;  // 存储词汇原型，无需标准化
   type: 'word' | 'phrase' | 'compound';
   language?: string;
 }) {
   const { data, error } = await supabase
     .from('anchors')
     .insert({
-      text: anchorData.text,
+      text: anchorData.text.trim(), // 只进行简单的去空格处理
       type: anchorData.type,
-      normalized_text: anchorData.text.toLowerCase().trim(),
-      language: anchorData.language || 'zh'
+      language: anchorData.language || 'en'
     })
     .select()
     .single();
@@ -79,21 +121,21 @@ export async function findOrCreateAnchor(
   text: string, 
   type: 'word' | 'phrase' | 'compound' = 'word'
 ) {
-  const normalizedText = text.toLowerCase().trim();
+  const trimmedText = text.trim();
   
-  // 首先尝试查找
+  // 首先尝试查找（基于 text 字段精确匹配）
   const { data: existing, error: findError } = await supabase
     .from('anchors')
     .select('*')
-    .eq('normalized_text', normalizedText)
-    .eq('language', 'zh')
+    .eq('text', trimmedText)
+    .eq('language', 'en')
     .single();
 
   if (existing) return existing as Anchor;
   
   // 如果不存在则创建
   if (findError?.code === 'PGRST116') { // 未找到记录
-    return await createAnchor({ text, type });
+    return await createAnchor({ text: trimmedText, type });
   }
   
   throw findError;
@@ -104,34 +146,16 @@ export async function findOrCreateAnchor(
 
 ```typescript
 /**
- * 获取锚点完整信息，包括含义块
+ * 获取锚点完整信息，包括格式化的含义块
  */
 export async function getAnchorWithDetails(anchorId: string) {
   const { data, error } = await supabase
-    .from('anchors')
-    .select(`
-      *,
-      meaning_blocks (
-        *,
-        proficiency_records (
-          *
-        ),
-        meaning_block_contexts (
-          *,
-          context_block:context_blocks (
-            id,
-            content,
-            block_type,
-            created_at
-          )
-        )
-      )
-    `)
-    .eq('id', anchorId)
-    .single();
+    .from('meaning_blocks_formatted')  // 使用格式化视图
+    .select('*')
+    .eq('anchor_id', anchorId);
 
   if (error) throw error;
-  return data as Anchor;
+  return data;
 }
 ```
 
@@ -158,16 +182,61 @@ export async function searchAnchors(query: string, limit: number = 20) {
 
 ## 含义块管理
 
-### 1. 创建含义块
+### 1. 创建含义块（基于LLM生成格式）
 
 ```typescript
 /**
- * 为锚点创建含义块
+ * 为锚点创建含义块 - 使用LLM生成的格式
+ */
+export async function createMeaningBlockFromLLM(meaningData: {
+  anchor_id: string;
+  phonetic: string;           // 音标
+  chinese_meaning: string;    // 中文含义
+  part_of_speech: string[];   // 词性数组
+  context_explanation: string; // 上下文解释
+  original_sentence: string;   // 原始句子
+  source_context_id?: string;  // 来源语境块ID
+}) {
+  // 组合 meaning 字段：音标 + 中文含义
+  const meaning = `/${meaningData.phonetic}/ ${meaningData.chinese_meaning}`;
+  
+  // 构建 example_sentence JSON
+  const example_sentence = {
+    context_explanation: meaningData.context_explanation,
+    original_sentence: meaningData.original_sentence,
+    source_context_id: meaningData.source_context_id || null
+  };
+
+  const { data, error } = await supabase
+    .from('meaning_blocks')
+    .insert({
+      anchor_id: meaningData.anchor_id,
+      meaning: meaning,
+      example_sentence: example_sentence,
+      tags: meaningData.part_of_speech,
+      current_proficiency: 0.0,
+      easiness_factor: 2.5,
+      interval_days: 1,
+      next_review_date: new Date().toISOString()
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as MeaningBlock;
+}
+```
+
+### 2. 传统方式创建含义块
+
+```typescript
+/**
+ * 传统方式创建含义块
  */
 export async function createMeaningBlock(meaningData: {
   anchor_id: string;
-  meaning: string;
-  example_sentence?: string;
+  meaning: string;  // 格式：/音标/ 中文含义
+  example_sentence: ExampleSentenceData;
   tags?: string[];
 }) {
   const { data, error } = await supabase
@@ -190,7 +259,7 @@ export async function createMeaningBlock(meaningData: {
 }
 ```
 
-### 2. 更新含义块
+### 3. 更新含义块
 
 ```typescript
 /**
@@ -198,7 +267,11 @@ export async function createMeaningBlock(meaningData: {
  */
 export async function updateMeaningBlock(
   meaningBlockId: string, 
-  updates: Partial<Pick<MeaningBlock, 'meaning' | 'example_sentence' | 'tags'>>
+  updates: Partial<{
+    meaning: string;
+    example_sentence: ExampleSentenceData;
+    tags: string[];
+  }>
 ) {
   const { data, error } = await supabase
     .from('meaning_blocks')
@@ -215,19 +288,21 @@ export async function updateMeaningBlock(
 }
 ```
 
-### 3. 删除含义块
+### 4. 获取格式化的含义块
 
 ```typescript
 /**
- * 删除含义块（会级联删除相关记录）
+ * 获取格式化的含义块（分离音标和中文含义）
  */
-export async function deleteMeaningBlock(meaningBlockId: string) {
-  const { error } = await supabase
-    .from('meaning_blocks')
-    .delete()
-    .eq('id', meaningBlockId);
+export async function getFormattedMeaningBlock(meaningBlockId: string) {
+  const { data, error } = await supabase
+    .from('meaning_blocks_formatted')
+    .select('*')
+    .eq('id', meaningBlockId)
+    .single();
 
   if (error) throw error;
+  return data;
 }
 ```
 
@@ -252,42 +327,26 @@ export async function recordReview(session: ReviewSession) {
 }
 ```
 
-### 2. 获取复习队列
+### 2. 获取复习队列（使用格式化视图）
 
 ```typescript
 /**
- * 获取今日复习队列
+ * 获取今日复习队列 - 使用格式化视图
  */
 export async function getReviewQueue(): Promise<ReviewQueue> {
   const today = new Date().toISOString().split('T')[0];
   
   // 今日到期
   const { data: dueToday, error: dueTodayError } = await supabase
-    .from('meaning_blocks')
-    .select(`
-      *,
-      anchors (text, type),
-      meaning_block_contexts (
-        context_block:context_blocks (
-          id, content, block_type
-        )
-      )
-    `)
+    .from('meaning_blocks_formatted')
+    .select('*')
     .lte('next_review_date', `${today}T23:59:59`)
     .gte('next_review_date', `${today}T00:00:00`);
 
   // 过期
   const { data: overdue, error: overdueError } = await supabase
-    .from('meaning_blocks')
-    .select(`
-      *,
-      anchors (text, type),
-      meaning_block_contexts (
-        context_block:context_blocks (
-          id, content, block_type
-        )
-      )
-    `)
+    .from('meaning_blocks_formatted')
+    .select('*')
     .lt('next_review_date', `${today}T00:00:00`);
 
   // 即将到期（未来7天）
@@ -295,11 +354,8 @@ export async function getReviewQueue(): Promise<ReviewQueue> {
   nextWeek.setDate(nextWeek.getDate() + 7);
   
   const { data: upcoming, error: upcomingError } = await supabase
-    .from('meaning_blocks')
-    .select(`
-      *,
-      anchors (text, type)
-    `)
+    .from('meaning_blocks_formatted')
+    .select('*')
     .gt('next_review_date', `${today}T23:59:59`)
     .lte('next_review_date', nextWeek.toISOString())
     .order('next_review_date', { ascending: true });
@@ -309,9 +365,9 @@ export async function getReviewQueue(): Promise<ReviewQueue> {
   }
 
   return {
-    due_today: dueToday as MeaningBlock[],
-    overdue: overdue as MeaningBlock[],
-    upcoming: upcoming as MeaningBlock[]
+    due_today: dueToday as any[],
+    overdue: overdue as any[],
+    upcoming: upcoming as any[]
   };
 }
 ```
@@ -391,35 +447,37 @@ export async function createMeaningBlockContext(contextData: {
 }
 ```
 
-### 2. 批量创建语境关联
+### 2. 批量创建语境关联（从LLM解释结果）
 
 ```typescript
 /**
- * 批量创建语境关联
+ * 从LLM解释结果批量创建语境关联
  */
-export async function batchCreateContexts(
-  meaningBlockId: string,
-  contextBlocks: Array<{
-    context_block_id: string;
-    start_position?: number;
-    end_position?: number;
-  }>
+export async function createContextsFromLLMResult(
+  llmResult: LLMGeneratedMeaning,
+  contextBlockId: string
 ) {
-  const insertData = contextBlocks.map(block => ({
-    meaning_block_id: meaningBlockId,
-    context_block_id: block.context_block_id,
-    start_position: block.start_position,
-    end_position: block.end_position,
-    confidence_score: 1.0
-  }));
+  // 1. 创建或查找锚点
+  const anchor = await findOrCreateAnchor(llmResult.phonetic.replace(/[\/]/g, ''), 'word');
+  
+  // 2. 创建含义块
+  const meaningBlock = await createMeaningBlockFromLLM({
+    anchor_id: anchor.id,
+    phonetic: llmResult.phonetic,
+    chinese_meaning: llmResult.chinese_meaning,
+    part_of_speech: llmResult.part_of_speech,
+    context_explanation: llmResult.context_explanation,
+    original_sentence: llmResult.original_sentence,
+    source_context_id: contextBlockId
+  });
 
-  const { data, error } = await supabase
-    .from('meaning_block_contexts')
-    .insert(insertData)
-    .select();
+  // 3. 创建语境关联
+  const context = await createMeaningBlockContext({
+    meaning_block_id: meaningBlock.id,
+    context_block_id: contextBlockId
+  });
 
-  if (error) throw error;
-  return data as MeaningBlockContext[];
+  return { anchor, meaningBlock, context };
 }
 ```
 
@@ -575,7 +633,7 @@ export async function getReviewTrend(days: number = 30) {
 
 ## 高级查询
 
-### 1. 智能推荐复习
+### 1. 智能推荐复习（使用格式化视图）
 
 ```typescript
 /**
@@ -583,22 +641,14 @@ export async function getReviewTrend(days: number = 30) {
  */
 export async function getIntelligentReviewRecommendations(limit: number = 10) {
   const { data, error } = await supabase
-    .from('meaning_blocks')
-    .select(`
-      *,
-      anchors (text, type),
-      proficiency_records (
-        reviewed_at,
-        quality_score
-      )
-    `)
+    .from('meaning_blocks_formatted')
+    .select('*')
     .order('current_proficiency', { ascending: true })
     .order('next_review_date', { ascending: true })
     .limit(limit);
 
   if (error) throw error;
 
-  // 可以添加更复杂的推荐算法
   return data?.map(block => ({
     ...block,
     recommendation_score: calculateRecommendationScore(block)
@@ -614,35 +664,34 @@ function calculateRecommendationScore(block: any): number {
 }
 ```
 
-### 2. 相关锚点推荐
+### 2. 按词性分组查询
 
 ```typescript
 /**
- * 基于上下文推荐相关锚点
+ * 按词性分组查询含义块
  */
-export async function getRelatedAnchors(anchorId: string, limit: number = 5) {
-  // 查找在相同语境块中出现的其他锚点
+export async function getMeaningBlocksByPartOfSpeech(partOfSpeech: string) {
   const { data, error } = await supabase
-    .from('meaning_block_contexts')
-    .select(`
-      context_block_id,
-      meaning_block:meaning_blocks (
-        anchor:anchors (*)
-      )
-    `)
-    .in('context_block_id', 
-      // 子查询：获取当前锚点出现的所有语境块
-      supabase
-        .from('meaning_block_contexts')
-        .select('context_block_id')
-        .in('meaning_block_id',
-          supabase
-            .from('meaning_blocks')
-            .select('id')
-            .eq('anchor_id', anchorId)
-        )
-    )
-    .limit(limit);
+    .from('meaning_blocks_formatted')
+    .select('*')
+    .contains('tags', [partOfSpeech]);
+
+  if (error) throw error;
+  return data;
+}
+```
+
+### 3. 音标搜索
+
+```typescript
+/**
+ * 基于音标搜索
+ */
+export async function searchByPhonetic(phoneticPattern: string) {
+  const { data, error } = await supabase
+    .from('meaning_blocks_formatted')
+    .select('*')
+    .ilike('phonetic', `%${phoneticPattern}%`);
 
   if (error) throw error;
   return data;
@@ -651,7 +700,49 @@ export async function getRelatedAnchors(anchorId: string, limit: number = 5) {
 
 ## 最佳实践
 
-### 1. 错误处理
+### 1. LLM结果处理
+
+```typescript
+/**
+ * 处理LLM生成的词汇解释结果
+ */
+export async function processLLMVocabularyExplanation(
+  llmResponse: string,
+  contextBlockId: string
+): Promise<any[]> {
+  // 解析LLM响应为结构化数据
+  const parsedResults = parseLLMResponse(llmResponse);
+  
+  const results = [];
+  
+  for (const result of parsedResults) {
+    try {
+      const processed = await createContextsFromLLMResult(result, contextBlockId);
+      results.push(processed);
+    } catch (error) {
+      console.error('处理词汇失败:', result, error);
+      // 继续处理其他词汇
+    }
+  }
+  
+  return results;
+}
+
+function parseLLMResponse(response: string): LLMGeneratedMeaning[] {
+  // 这里需要根据实际的LLM响应格式来实现解析逻辑
+  // 示例格式可能是：
+  // 单词: machine
+  // 音标: /məˈʃiːn/
+  // 词性: noun, countable
+  // 中文释义: 机器，设备
+  // 上下文解释: 在工业生产中使用的自动化设备
+  
+  // 实现具体的解析逻辑...
+  return [];
+}
+```
+
+### 2. 错误处理
 
 ```typescript
 // utils/error-handler.ts
@@ -669,148 +760,72 @@ export function handleSupabaseError(error: any): never {
   if (error.code === '23505') {
     throw new AnchorSystemError('记录已存在', 'DUPLICATE');
   }
+  if (error.code === '23503') {
+    throw new AnchorSystemError('违反外键约束', 'FOREIGN_KEY_VIOLATION');
+  }
   throw new AnchorSystemError(error.message || '数据库操作失败');
 }
 ```
 
-### 2. 缓存策略
-
-```typescript
-// utils/cache.ts
-import { createClient } from '@supabase/supabase-js';
-
-class AnchorCache {
-  private cache = new Map();
-  private ttl = 5 * 60 * 1000; // 5分钟
-
-  async get<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
-    const cached = this.cache.get(key);
-    if (cached && Date.now() - cached.timestamp < this.ttl) {
-      return cached.data;
-    }
-
-    const data = await fetcher();
-    this.cache.set(key, { data, timestamp: Date.now() });
-    return data;
-  }
-
-  invalidate(pattern?: string) {
-    if (pattern) {
-      for (const key of this.cache.keys()) {
-        if (key.includes(pattern)) {
-          this.cache.delete(key);
-        }
-      }
-    } else {
-      this.cache.clear();
-    }
-  }
-}
-
-export const anchorCache = new AnchorCache();
-```
-
-### 3. 批量操作
+### 3. 数据验证
 
 ```typescript
 /**
- * 批量处理锚点创建，避免重复查询
+ * 验证含义块数据格式
  */
-export async function batchProcessAnchors(
-  anchors: Array<{text: string, type: 'word' | 'phrase' | 'compound'}>
-) {
-  // 先批量查询已存在的锚点
-  const texts = anchors.map(a => a.text.toLowerCase().trim());
-  const { data: existing } = await supabase
-    .from('anchors')
-    .select('normalized_text, id')
-    .in('normalized_text', texts);
-
-  const existingTexts = new Set(existing?.map(a => a.normalized_text) || []);
-  
-  // 筛选出需要创建的锚点
-  const toCreate = anchors.filter(
-    anchor => !existingTexts.has(anchor.text.toLowerCase().trim())
-  );
-
-  // 批量创建
-  if (toCreate.length > 0) {
-    const { data: created, error } = await supabase
-      .from('anchors')
-      .insert(toCreate.map(anchor => ({
-        text: anchor.text,
-        type: anchor.type,
-        normalized_text: anchor.text.toLowerCase().trim(),
-        language: 'zh'
-      })))
-      .select();
-
-    if (error) throw error;
-    return [...(existing || []), ...(created || [])];
+export function validateMeaningBlockData(data: any): boolean {
+  // 验证 meaning 字段格式
+  const meaningPattern = /^\/[^\/]+\/\s+.+/;
+  if (!meaningPattern.test(data.meaning)) {
+    throw new AnchorSystemError('meaning 字段格式不正确，应为 /音标/ 中文含义');
   }
 
-  return existing || [];
-}
-```
-
-### 4. 性能监控
-
-```typescript
-// utils/performance.ts
-export function withPerformanceMonitoring<T>(
-  operation: string,
-  fn: () => Promise<T>
-): Promise<T> {
-  return new Promise(async (resolve, reject) => {
-    const startTime = performance.now();
-    
-    try {
-      const result = await fn();
-      const duration = performance.now() - startTime;
-      
-      if (duration > 1000) { // 超过1秒的操作记录警告
-        console.warn(`Slow operation: ${operation} took ${duration}ms`);
+  // 验证 example_sentence JSON 格式
+  if (data.example_sentence) {
+    const required = ['context_explanation', 'original_sentence'];
+    for (const field of required) {
+      if (!data.example_sentence[field]) {
+        throw new AnchorSystemError(`example_sentence 缺少必需字段: ${field}`);
       }
-      
-      resolve(result);
-    } catch (error) {
-      const duration = performance.now() - startTime;
-      console.error(`Operation failed: ${operation} after ${duration}ms`, error);
-      reject(error);
     }
-  });
-}
+  }
 
-// 使用示例
-export const getAnchorWithDetailsMonitored = (anchorId: string) =>
-  withPerformanceMonitoring(
-    `getAnchorWithDetails(${anchorId})`,
-    () => getAnchorWithDetails(anchorId)
-  );
+  // 验证 tags 是否为数组
+  if (data.tags && !Array.isArray(data.tags)) {
+    throw new AnchorSystemError('tags 字段必须是数组');
+  }
+
+  return true;
+}
 ```
 
-### 5. 使用示例
+### 4. 使用示例
 
 ```typescript
 // 完整的使用示例
-async function exampleUsage() {
+async function exampleUsageWithNewFormat() {
   try {
-    // 1. 创建锚点和含义块
-    const anchor = await findOrCreateAnchor('机器学习', 'phrase');
-    const meaningBlock = await createMeaningBlock({
+    // 1. 使用LLM格式创建锚点和含义块
+    const llmData: LLMGeneratedMeaning = {
+      phonetic: 'məˈʃiːn',
+      chinese_meaning: '机器，设备',
+      part_of_speech: ['noun', 'countable'],
+      context_explanation: '在工业生产中使用的自动化设备',
+      original_sentence: '这台机器运行得很好。'
+    };
+
+    const anchor = await findOrCreateAnchor('machine', 'word');
+    const meaningBlock = await createMeaningBlockFromLLM({
       anchor_id: anchor.id,
-      meaning: '一种人工智能技术，通过算法从数据中学习模式',
-      example_sentence: '机器学习在图像识别中有广泛应用',
-      tags: ['AI', '技术', '算法']
+      ...llmData,
+      source_context_id: 'context-block-id'
     });
 
-    // 2. 关联到语境块
-    await createMeaningBlockContext({
-      meaning_block_id: meaningBlock.id,
-      context_block_id: 'some-context-block-id',
-      start_position: 10,
-      end_position: 14
-    });
+    // 2. 获取格式化的数据
+    const formatted = await getFormattedMeaningBlock(meaningBlock.id);
+    console.log('音标:', formatted.phonetic);
+    console.log('中文含义:', formatted.chinese_meaning);
+    console.log('上下文解释:', formatted.context_explanation);
 
     // 3. 进行复习
     await recordReview({
@@ -823,14 +838,47 @@ async function exampleUsage() {
     const reviewQueue = await getReviewQueue();
     console.log('今日需要复习的项目:', reviewQueue.due_today.length);
 
-    // 5. 获取统计信息
-    const stats = await getAnchorSystemStats();
-    console.log('系统统计:', stats);
-
   } catch (error) {
     handleSupabaseError(error);
   }
 }
 ```
 
-这个接口指南提供了完整的锚点系统操作方法，包括CRUD操作、复习算法、统计分析等功能。建议在实际使用时根据具体需求进行调整和优化。
+### 5. 性能优化查询
+
+```typescript
+/**
+ * 批量获取格式化的含义块
+ */
+export async function getBatchFormattedMeaningBlocks(ids: string[]) {
+  const { data, error } = await supabase
+    .from('meaning_blocks_formatted')
+    .select('*')
+    .in('id', ids);
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * 获取包含特定词性的所有含义块
+ */
+export async function getMeaningBlocksWithPartOfSpeech(pos: string[]) {
+  const { data, error } = await supabase
+    .from('meaning_blocks_formatted')
+    .select('*')
+    .overlaps('tags', pos);
+
+  if (error) throw error;
+  return data;
+}
+```
+
+这个更新后的接口指南反映了表结构的变化，支持大语言模型生成的词汇解释格式，包括音标、词性、中文释义和上下文信息的结构化存储。主要改进包括：
+
+1. **删除了 `normalized_text` 相关的所有引用**
+2. **更新了 `meaning` 字段的使用方式**（存储音标+中文含义）
+3. **将 `example_sentence` 改为 JSON 格式**（存储上下文解释和原句）
+4. **增加了 LLM 生成格式的专门处理方法**
+5. **提供了格式化视图的使用示例**
+6. **增加了数据验证和错误处理**

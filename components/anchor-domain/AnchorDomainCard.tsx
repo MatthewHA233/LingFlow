@@ -54,8 +54,8 @@ export function AnchorDomainCard({ domain, type }: AnchorDomainCardProps) {
 
         <div className="flex flex-wrap gap-2">
           {spaceDomain.anchors.map(anchor => (
-            <span key={anchor.word} className="px-2 py-1 bg-muted rounded-full text-sm">
-              {anchor.word}
+            <span key={anchor.id} className="px-2 py-1 bg-muted rounded-full text-sm">
+              {anchor.text}
             </span>
           ))}
         </div>

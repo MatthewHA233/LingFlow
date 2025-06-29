@@ -136,6 +136,12 @@ interface WordExplainerProps {
     original_content?: string;
   }>; // 所有处于锚定模式的语境块
   existingContent?: string; // 已有的完整解释内容，如果提供则不重新请求
+  processingLogs?: Array<{
+    word: string;
+    type: 'anchor_creation' | 'meaning_duplicate_check';
+    log: any;
+    timestamp: Date;
+  }>; // LLM处理日志
 }
 
 interface ExplanationMessage {
@@ -151,7 +157,8 @@ export function WordExplainer({
   onClose, 
   onExplainComplete, 
   currentBlocks,
-  existingContent = ''
+  existingContent = '',
+  processingLogs = []
 }: WordExplainerProps) {
   // 生成消息ID
   const generateId = () => Math.random().toString(36).substring(2, 11);
@@ -205,7 +212,7 @@ export function WordExplainer({
         const fullUserMessage = contextContent ? `${contextContent}\n${wordsList}` : wordsList;
         
         // 如果有现成的内容，直接显示
-        setMessages([
+        const initialMessages: ExplanationMessage[] = [
           {
             id: generateId(),
             role: 'user',
@@ -218,13 +225,100 @@ export function WordExplainer({
             content: existingContent,
             timestamp: new Date()
           }
-        ]);
+        ];
+
+        // 如果有处理日志，添加独立的对话消息
+        if (processingLogs && processingLogs.length > 0) {
+          // 过滤出真正进行了重复检测的词汇（即有existingMeanings且不是空数组，或者有parsedResult的）
+          const duplicateCheckLogs = processingLogs.filter(logEntry => 
+            (logEntry.log.existingMeanings && logEntry.log.existingMeanings.length > 0) ||
+            logEntry.log.parsedResult ||
+            (logEntry.log.decision && logEntry.log.decision.includes('LLM判断'))
+          );
+          
+          // 按词汇去重，确保每个词汇只显示一次重复检测过程
+          const uniqueWords = new Map<string, typeof duplicateCheckLogs[0]>();
+          duplicateCheckLogs.forEach(logEntry => {
+            const word = logEntry.word;
+            if (!uniqueWords.has(word)) {
+              uniqueWords.set(word, logEntry);
+            }
+          });
+          
+          const uniqueDuplicateCheckLogs = Array.from(uniqueWords.values());
+          
+          if (uniqueDuplicateCheckLogs.length > 0) {
+            // 添加说明消息
+            initialMessages.push({
+              id: generateId(),
+              role: 'assistant',
+              content: `## 🤖 AI含义重复检测过程\n\n检测到 ${uniqueDuplicateCheckLogs.length} 个词汇需要进行重复检测：`,
+              timestamp: new Date()
+            });
+            
+            // 为每个需要检测的词汇添加独立的对话
+            uniqueDuplicateCheckLogs.forEach((logEntry) => {
+              // 用户问题
+              initialMessages.push({
+                id: generateId(),
+                role: 'user',
+                content: `检测「${logEntry.word}」的新含义是否与现有含义重复`,
+                timestamp: new Date()
+              });
+              
+              // AI回答
+              let aiResponse = '';
+              if (logEntry.log.parsedResult) {
+                const result = logEntry.log.parsedResult;
+                const isDuplicate = result.isDuplicate || result.is_duplicate || result.isRedundant;
+                const reason = result.reason || result.explanation || '未提供理由';
+                
+                // 添加调试日志
+                console.log('判断结果调试:', {
+                  word: logEntry.word,
+                  isDuplicate,
+                  result,
+                  reason
+                });
+                
+                if (isDuplicate) {
+                  aiResponse = `✅ **判断为重复含义**\n\n💭 ${reason}\n\n🔄 **处理方式：** 合并到现有含义块，新例句追加到例句列表中`;
+                } else {
+                  aiResponse = `❌ **判断为不同含义**\n\n💭 ${reason}\n\n➕ **处理方式：** 创建新的含义块`;
+                }
+              } else {
+                const isLikelyDuplicate = logEntry.log.decision?.includes('重复') || 
+                                        logEntry.log.decision?.includes('合并');
+                aiResponse = `${isLikelyDuplicate ? '✅' : '❌'} ${logEntry.log.decision}`;
+              }
+              
+              initialMessages.push({
+                id: generateId(),
+                role: 'assistant',
+                content: aiResponse,
+                timestamp: new Date()
+              });
+            });
+          } else {
+            // 所有词汇都是新词汇 - 统计实际的新词汇数量
+            const newWords = selectedWords.filter(word => !word.isExisting);
+            const totalWords = newWords.length;
+            initialMessages.push({
+              id: generateId(),
+              role: 'assistant',
+              content: `## 📝 处理结果\n\n本次处理了 **${totalWords}** 个词汇，全部为新词汇，直接创建含义块。`,
+              timestamp: new Date()
+            });
+          }
+        }
+        
+        setMessages(initialMessages);
       } else {
         // 清空消息
         setMessages([]);
       }
     }
-  }, [isOpen, existingContent]);
+  }, [isOpen, existingContent, processingLogs]);
 
   // 自动滚动到底部
   useEffect(() => {

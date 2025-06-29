@@ -1,32 +1,34 @@
-// 首先定义一些类型
+// 锚点系统的类型定义
+
 export interface MeaningBlock {
   id: string;
   anchor_id: string;
   meaning: string;
-  example_sentence?: string;
   tags: string[];
   
-  // 复习状态
+  // 基础状态
   current_proficiency: number; // 0-1
   review_count: number;
   next_review_date?: string;
   
-  // SuperMemo参数
+  // SuperMemo参数（保留但不使用）
   easiness_factor: number;
   interval_days: number;
   
   // 关联的语境块
   contexts: MeaningBlockContext[];
   
-  // 复习历史
-  proficiency_records: ProficiencyRecord[];
+  // 移除复习历史
+  proficiency_records: any[];
+  
+  // 添加创建时间用于高亮
+  created_at: string;
 }
 
 export interface Anchor {
   id: string;
   text: string;
   type: 'word' | 'phrase' | 'compound';
-  normalized_text: string;
   language: string;
   total_contexts: number;
   total_meaning_blocks: number;
@@ -63,6 +65,9 @@ export interface MeaningBlockContext {
   start_position?: number;
   end_position?: number;
   confidence_score: number;
+  original_sentence?: string;
+  context_explanation?: string;
+  original_word_form?: string; // 语境下的原始单词形态，如 "running"、"cats"、"better" 等
   
   // 关联的语境块信息
   context_block?: {
@@ -73,24 +78,7 @@ export interface MeaningBlockContext {
   };
 }
 
-export interface ProficiencyRecord {
-  id: string;
-  reviewed_at: string;
-  proficiency_before: number;
-  proficiency_after: number;
-  quality_score: number; // 0-5
-  review_duration_seconds?: number;
-}
-
-// 复习相关
-export interface ReviewSession {
-  meaning_block_id: string;
-  quality_score: number;
-  review_duration_seconds?: number;
-}
-
-export interface ReviewQueue {
-  due_today: MeaningBlock[];
-  overdue: MeaningBlock[];
-  upcoming: MeaningBlock[];
-} 
+// 移除复习相关的接口
+// export interface ProficiencyRecord
+// export interface ReviewSession
+// export interface ReviewQueue 

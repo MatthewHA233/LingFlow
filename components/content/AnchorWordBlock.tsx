@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Type, Layers3, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { type MeaningBlockFormatted } from '@/lib/services/meaning-blocks-service';
 
 interface AnchorWordBlockProps {
   content: string;
@@ -10,6 +11,7 @@ interface AnchorWordBlockProps {
   onSelectedWordsChange: (words: SelectedWord[]) => void;
   onExit: () => void;
   initialSelectedWords?: SelectedWord[];
+  existingMeaningBlocks?: MeaningBlockFormatted[];
 }
 
 export interface SelectedWord {
@@ -19,6 +21,8 @@ export interface SelectedWord {
   startIndex: number;
   endIndex: number;
   content: string; // 选中的文本内容（单词或短语的实际文本）
+  isExisting?: boolean;
+  meaningBlock?: MeaningBlockFormatted; // 完整的含义块信息（仅当 isExisting 为 true 时存在）
 }
 
 // 新增短语选择接口
@@ -114,7 +118,8 @@ export function AnchorWordBlock({
   blockId, 
   onSelectedWordsChange, 
   onExit,
-  initialSelectedWords = []
+  initialSelectedWords = [],
+  existingMeaningBlocks = []
 }: AnchorWordBlockProps) {
   const [selectionMode, setSelectionMode] = useState<SelectionMode>('word');
   const [selectedWords, setSelectedWords] = useState<SelectedWord[]>(initialSelectedWords);
@@ -171,6 +176,67 @@ export function AnchorWordBlock({
     
     setSelectedPhrases(convertedPhrases);
   }, [initialSelectedWords, wordSegments]);
+
+  // 处理已有含义块的范围
+  const existingAnchorRanges = useMemo(() => {
+    return existingMeaningBlocks.map(mb => ({
+      start: mb.start_position || 0,
+      end: mb.end_position || mb.anchor_text.length,
+      meaningBlock: mb,
+      text: mb.original_word_form || mb.anchor_text, // 优先使用原文单词形式
+      displayText: mb.original_word_form || mb.anchor_text
+    })).sort((a, b) => a.start - b.start);
+  }, [existingMeaningBlocks]);
+
+  // 添加强制重新渲染的key，基于existingMeaningBlocks的内容
+  const renderKey = useMemo(() => {
+    return existingMeaningBlocks.map(mb => `${mb.id}-${mb.updated_at || mb.created_at}`).join('-');
+  }, [existingMeaningBlocks]);
+
+  // 检查segment是否在已有锚点范围内
+  const getExistingAnchorInfo = useCallback((segment: {text: string, start: number, end: number}) => {
+    for (const range of existingAnchorRanges) {
+      if (segment.start >= range.start && segment.end <= range.end) {
+        const segmentsInRange = wordSegments.filter(seg => 
+          seg.start >= range.start && seg.end <= range.end &&
+          !/[，。！？；：""''（）【】《》、\s]/.test(seg.text)
+        );
+        
+        return {
+          isInExistingAnchor: true,
+          anchorRange: range,
+          isPhrase: segmentsInRange.length > 1
+        };
+      }
+    }
+    return { isInExistingAnchor: false, anchorRange: null, isPhrase: false };
+  }, [existingAnchorRanges, wordSegments]);
+
+  // 获取已有锚点的短语边框信息
+  const getExistingPhraseRanges = useMemo(() => {
+    const phraseRanges: Array<{
+      anchorRange: any;
+      segmentIndices: number[];
+    }> = [];
+
+    existingAnchorRanges.forEach(anchorRange => {
+      const segmentIndices: number[] = [];
+      
+      wordSegments.forEach((segment, index) => {
+        if (segment.start >= anchorRange.start && 
+            segment.end <= anchorRange.end &&
+            !/[，。！？；：""''（）【】《》、\s]/.test(segment.text)) {
+          segmentIndices.push(index);
+        }
+      });
+
+      if (segmentIndices.length > 1) {
+        phraseRanges.push({ anchorRange, segmentIndices });
+      }
+    });
+
+    return phraseRanges;
+  }, [existingAnchorRanges, wordSegments]);
 
   // 单词模式：切换单个词的选择状态
   const toggleWordSelection = useCallback((segment: {text: string, start: number, end: number}) => {
@@ -505,7 +571,7 @@ export function AnchorWordBlock({
     requestAnimationFrame(() => {
       setForceUpdate(prev => prev + 1);
     });
-  }, [selectedPhrases]);
+  }, [selectedPhrases, existingMeaningBlocks]); // 同时监听已有含义块的变化
 
   // 检查segment是否在单词模式下被选中
   const isSegmentSelectedAsWord = useCallback((segment: {text: string, start: number, end: number}) => {
@@ -553,86 +619,211 @@ export function AnchorWordBlock({
     return ranges;
   }, [selectedPhrases, currentSegments]);
 
+  // 强制清理refs和状态当含义块数据变化时
+  useEffect(() => {
+    // 延迟清理refs，确保当前渲染周期完成
+    const timeoutId = setTimeout(() => {
+      if (segmentRefs.current.length > 0) {
+        console.log('清理segment refs，准备重新渲染');
+        // 不直接重置数组，而是标记需要更新
+        setForceUpdate(prev => prev + 1);
+      }
+    }, 100);
+    
+    return () => clearTimeout(timeoutId);
+  }, [renderKey]);
+
   // 渲染segments
   const renderSegments = () => {
     const phraseRanges = getPhraseRanges();
+    const existingPhraseRanges = getExistingPhraseRanges;
     
     return (
       <div className="relative">
-        {/* 渲染短语边框 */}
+        {/* 渲染新选择的短语边框 */}
         {phraseRanges.map((range, rangeIndex) => {
-          // 获取范围内第一个和最后一个segment的位置
-          const startRef = segmentRefs.current[range.startIndex];
-          const endRef = segmentRefs.current[range.endIndex];
+          // 获取范围内所有segment的位置信息
+          const segmentRects: Array<{rect: DOMRect, index: number}> = [];
           
-          if (!startRef || !endRef || !containerRef.current) {
+          range.segmentIndices.forEach(segmentIndex => {
+            const ref = segmentRefs.current[segmentIndex];
+            if (ref && containerRef.current) {
+              const rect = ref.getBoundingClientRect();
+              segmentRects.push({ rect, index: segmentIndex });
+            }
+          });
+          
+          if (segmentRects.length === 0 || !containerRef.current) {
             return null;
           }
           
           const containerRect = containerRef.current.getBoundingClientRect();
-          const startRect = startRef.getBoundingClientRect();
-          const endRect = endRef.getBoundingClientRect();
           
-          const left = startRect.left - containerRect.left - 4;
-          const width = endRect.right - startRect.left + 8;
-          const top = startRect.top - containerRect.top - 4;
-          const height = startRect.height + 8;
+          // 按行分组segments
+          const lineGroups: Array<Array<{rect: DOMRect, index: number}>> = [];
+          let currentLine: Array<{rect: DOMRect, index: number}> = [];
+          let currentTop = segmentRects[0].rect.top;
           
-          return (
-            <motion.div
-              key={`phrase-border-${range.phraseId}`}
-              className="absolute border-2 border-orange-400/60 rounded-md pointer-events-none"
-              style={{
-                left: `${left}px`,
-                width: `${width}px`,
-                top: `${top}px`,
-                height: `${height}px`,
-                zIndex: 1
-              }}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              transition={{ duration: 0.2 }}
-            />
-          );
+          segmentRects.forEach(segmentRect => {
+            // 如果Y坐标差异超过一定阈值，认为是新行
+            if (Math.abs(segmentRect.rect.top - currentTop) > 10) {
+              if (currentLine.length > 0) {
+                lineGroups.push(currentLine);
+              }
+              currentLine = [segmentRect];
+              currentTop = segmentRect.rect.top;
+            } else {
+              currentLine.push(segmentRect);
+            }
+          });
+          
+          if (currentLine.length > 0) {
+            lineGroups.push(currentLine);
+          }
+          
+          // 为每一行渲染边框
+          return lineGroups.map((lineSegments, lineIndex) => {
+            const firstSegment = lineSegments[0];
+            const lastSegment = lineSegments[lineSegments.length - 1];
+            
+            const left = firstSegment.rect.left - containerRect.left - 4;
+            const width = lastSegment.rect.right - firstSegment.rect.left + 8;
+            const top = firstSegment.rect.top - containerRect.top - 4;
+            const height = firstSegment.rect.height + 8;
+            
+            return (
+              <motion.div
+                key={`phrase-border-${range.phraseId}-line-${lineIndex}-${forceUpdate}`}
+                className="absolute border-2 rounded-md pointer-events-none"
+                style={{
+                  left: `${left}px`,
+                  width: `${width}px`,
+                  top: `${top}px`,
+                  height: `${height}px`,
+                  zIndex: 1,
+                  borderImage: 'linear-gradient(to right, rgb(99 102 241), rgb(168 85 247)) 1'
+                }}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.2 }}
+              />
+            );
+          });
+        })}
+
+        {/* 渲染已有的短语边框 */}
+        {existingPhraseRanges.map((range: { anchorRange: any; segmentIndices: number[] }, rangeIndex: number) => {
+          // 获取范围内所有segment的位置信息
+          const segmentRects: Array<{rect: DOMRect, index: number}> = [];
+          
+          range.segmentIndices.forEach((segmentIndex: number) => {
+            const ref = segmentRefs.current[segmentIndex];
+            if (ref && containerRef.current) {
+              const rect = ref.getBoundingClientRect();
+              segmentRects.push({ rect, index: segmentIndex });
+            }
+          });
+          
+          if (segmentRects.length === 0 || !containerRef.current) {
+            return null;
+          }
+          
+          const containerRect = containerRef.current.getBoundingClientRect();
+          
+          // 按行分组segments
+          const lineGroups: Array<Array<{rect: DOMRect, index: number}>> = [];
+          let currentLine: Array<{rect: DOMRect, index: number}> = [];
+          let currentTop = segmentRects[0].rect.top;
+          
+          segmentRects.forEach(segmentRect => {
+            if (Math.abs(segmentRect.rect.top - currentTop) > 10) {
+              if (currentLine.length > 0) {
+                lineGroups.push(currentLine);
+              }
+              currentLine = [segmentRect];
+              currentTop = segmentRect.rect.top;
+            } else {
+              currentLine.push(segmentRect);
+            }
+          });
+          
+          if (currentLine.length > 0) {
+            lineGroups.push(currentLine);
+          }
+          
+          // 为每一行渲染边框 - 使用暗黄色表示已有锚点
+          return lineGroups.map((lineSegments, lineIndex) => {
+            const firstSegment = lineSegments[0];
+            const lastSegment = lineSegments[lineSegments.length - 1];
+            
+            const left = firstSegment.rect.left - containerRect.left - 4;
+            const width = lastSegment.rect.right - firstSegment.rect.left + 8;
+            const top = firstSegment.rect.top - containerRect.top - 4;
+            const height = firstSegment.rect.height + 8;
+            
+            return (
+              <div
+                key={`existing-phrase-border-${range.anchorRange.meaningBlock.id}-${rangeIndex}-line-${lineIndex}-${forceUpdate}`}
+                className="absolute border-2 rounded-md pointer-events-none"
+                style={{
+                  left: `${left}px`,
+                  width: `${width}px`,
+                  top: `${top}px`,
+                  height: `${height}px`,
+                  zIndex: 1,
+                  borderImage: 'linear-gradient(to right, rgb(245 158 11), rgb(217 119 6)) 1' // 暗黄色表示已有锚点
+                }}
+              />
+            );
+          });
         })}
         
         {/* 渲染文本segments */}
         {currentSegments.map((segment, index) => {
           const isWordSelected = isSegmentSelectedAsWord(segment);
           const isPhraseSelected = isSegmentSelectedAsPhrase(segment);
+          const existingInfo = getExistingAnchorInfo(segment);
           const isPunctuation = /[，。！？；：""''（）【】《》、\s]/.test(segment.text);
           
           return (
             <motion.span
-              key={`${segment.start}-${segment.end}`}
+              key={`${segment.start}-${segment.end}-${forceUpdate}`}
               ref={(el) => {
                 segmentRefs.current[index] = el;
               }}
               className={cn(
                 "relative inline-block transition-all duration-200 select-none",
-                !isPunctuation && "mx-0.5 px-1 rounded-sm cursor-pointer",
-                // 单词模式背景层
-                !isPunctuation && !isWordSelected && "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700",
-                !isPunctuation && isWordSelected && "bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-md",
+                !isPunctuation && "mx-0.5 px-1 rounded-sm",
+                // 已有锚点样式 - 改为暗黄色
+                !isPunctuation && existingInfo.isInExistingAnchor && !existingInfo.isPhrase && "bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-md cursor-not-allowed",
+                !isPunctuation && existingInfo.isInExistingAnchor && existingInfo.isPhrase && "cursor-not-allowed",
+                // 新选择的样式
+                !isPunctuation && !existingInfo.isInExistingAnchor && !isWordSelected && "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer",
+                !isPunctuation && !existingInfo.isInExistingAnchor && isWordSelected && "bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-md cursor-pointer",
                 isPunctuation && "text-muted-foreground"
               )}
               onClick={() => !isPunctuation && handleSegmentClick(segment)}
               data-word-segment={!isPunctuation ? JSON.stringify(segment) : undefined}
-              whileHover={!isPunctuation ? { scale: 1.05 } : {}}
-              whileTap={!isPunctuation ? { scale: 0.95 } : {}}
+              whileHover={!isPunctuation && !existingInfo.isInExistingAnchor ? { scale: 1.05 } : {}}
+              whileTap={!isPunctuation && !existingInfo.isInExistingAnchor ? { scale: 0.95 } : {}}
               layout
             >
               {segment.text}
               
-              {/* 单词模式选中效果 */}
-              {isWordSelected && (
+              {/* 新选择的单词模式选中效果 */}
+              {isWordSelected && !existingInfo.isInExistingAnchor && (
                 <motion.div
                   className="absolute -inset-px bg-gradient-to-r from-blue-400 to-purple-400 rounded blur-sm -z-10"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 0.3 }}
                   exit={{ opacity: 0 }}
                 />
+              )}
+
+              {/* 已有锚点的光晕效果 - 使用暗黄色 */}
+              {existingInfo.isInExistingAnchor && !existingInfo.isPhrase && (
+                <div className="absolute -inset-px bg-gradient-to-r from-amber-400 to-yellow-400 rounded blur-sm -z-10 opacity-30" />
               )}
             </motion.span>
           );

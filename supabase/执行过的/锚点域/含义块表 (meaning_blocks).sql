@@ -2,9 +2,9 @@
 CREATE TABLE public.meaning_blocks (
   id UUID NOT NULL DEFAULT extensions.uuid_generate_v4(),
   anchor_id UUID NOT NULL,
-  meaning TEXT NOT NULL, -- 含义解释
-  example_sentence TEXT, -- 例句
-  tags TEXT[], -- 标签数组
+  meaning TEXT NOT NULL, -- 音标 + 简洁中文含义，格式如：/məˈʃiːn/ 机器，设备
+  example_sentence JSONB, -- JSON格式存储: {"context_explanation": "上下文解释", "original_sentence": "原始完整句子", "source_context_id": "语境块ID"}
+  tags TEXT[], -- 标签数组，主要用于存储词性信息，如: ["noun", "countable"]
   
   -- 复习相关
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -28,3 +28,10 @@ CREATE TABLE public.meaning_blocks (
 CREATE INDEX idx_meaning_blocks_anchor_id ON meaning_blocks (anchor_id);
 CREATE INDEX idx_meaning_blocks_next_review ON meaning_blocks (next_review_date);
 CREATE INDEX idx_meaning_blocks_proficiency ON meaning_blocks (current_proficiency);
+CREATE INDEX idx_meaning_blocks_example_sentence_gin ON meaning_blocks USING gin (example_sentence);
+
+-- 表注释
+COMMENT ON TABLE public.meaning_blocks IS '含义块表 - 存储锚点的具体含义，包括音标、中文解释、上下文信息等';
+COMMENT ON COLUMN public.meaning_blocks.meaning IS '音标 + 简洁中文含义，格式如：/məˈʃiːn/ 机器，设备';
+COMMENT ON COLUMN public.meaning_blocks.example_sentence IS 'JSON格式存储: {"context_explanation": "上下文解释", "original_sentence": "原始完整句子", "source_context_id": "语境块ID"}';
+COMMENT ON COLUMN public.meaning_blocks.tags IS '标签数组，主要用于存储词性信息，如: ["noun", "countable"]';

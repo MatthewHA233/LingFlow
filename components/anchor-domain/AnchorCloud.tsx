@@ -38,9 +38,9 @@ export function AnchorCloud({ days }: AnchorCloudProps) {
 
   // 计算每个锚点的颜色
   const getAnchorColor = (proficiency: number) => {
-    if (proficiency >= 80) return 'bg-green-500/20 hover:bg-green-500/30 border-green-500/30';
-    if (proficiency >= 60) return 'bg-blue-500/20 hover:bg-blue-500/30 border-blue-500/30';
-    if (proficiency >= 40) return 'bg-yellow-500/20 hover:bg-yellow-500/30 border-yellow-500/30';
+    if (proficiency >= 0.8) return 'bg-green-500/20 hover:bg-green-500/30 border-green-500/30';
+    if (proficiency >= 0.6) return 'bg-blue-500/20 hover:bg-blue-500/30 border-blue-500/30';
+    if (proficiency >= 0.4) return 'bg-yellow-500/20 hover:bg-yellow-500/30 border-yellow-500/30';
     return 'bg-red-500/20 hover:bg-red-500/30 border-red-500/30';
   };
 
@@ -118,22 +118,28 @@ export function AnchorCloud({ days }: AnchorCloudProps) {
                   }}
                 >
                   {day.anchors.map((anchor, anchorIndex) => {
-                    const avgProficiency = anchor.meaningBlocks.reduce(
-                      (sum: number, block: MeaningBlock) => sum + block.proficiency,
+                    const avgProficiency = anchor.meaning_blocks.reduce(
+                      (sum: number, block: MeaningBlock) => sum + block.current_proficiency,
                       0
-                    ) / anchor.meaningBlocks.length;
+                    ) / anchor.meaning_blocks.length;
+
+                    // 检查锚点本身是否在当天创建（而不是含义块）
+                    const isAnchorCreatedToday = anchor.created_at && anchor.created_at.split('T')[0] === day.date;
 
                     return (
-                      <AnchorTooltip key={anchor.word} anchor={anchor}>
+                      <AnchorTooltip key={anchor.id} anchor={anchor} currentDate={day.date}>
                         <div
                           className={`px-3 py-1.5 rounded-full backdrop-blur-sm cursor-pointer text-xs
                             ${getAnchorColor(avgProficiency)}
                             border transition-transform duration-200 shadow-lg hover:shadow-xl
-                            flex items-center gap-1.5 hover:scale-110`}
+                            flex items-center gap-1.5 hover:scale-110
+                            ${isAnchorCreatedToday ? 'ring-2 ring-green-400/50 shadow-green-400/20' : ''}`}
                           style={{ transform: 'translate3d(0,0,0)' }}
                         >
-                          <span className="text-white/90">{anchor.word}</span>
-                          {anchor.meaningBlocks.some((b: MeaningBlock) => new Date(b.nextReviewDate!) <= new Date()) && (
+                          <span className={`${isAnchorCreatedToday ? 'text-green-200' : 'text-white/90'}`}>
+                            {anchor.text}
+                          </span>
+                          {anchor.meaning_blocks.some((b: MeaningBlock) => b.next_review_date && new Date(b.next_review_date) <= new Date()) && (
                             <span className="w-1.5 h-1.5 rounded-full bg-red-500/80 animate-pulse" />
                           )}
                         </div>

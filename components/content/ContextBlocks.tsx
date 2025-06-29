@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { DragHandleDots2Icon } from '@radix-ui/react-icons';
-import { Play, Pause, Loader2, FileText, FileEdit, Music2, Globe, Network } from 'lucide-react';
+import { Play, Pause, Loader2, FileText, FileEdit, Music2, Globe, Network, Hash } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TextAlignmentService } from '@/lib/services/text-alignment';
 import { supabase } from '@/lib/supabase-client';
@@ -9,6 +9,8 @@ import Image from 'next/image';
 import { AudioController, AUDIO_EVENTS } from '@/lib/audio-controller';
 import { AnimatePresence, motion } from "framer-motion";
 import { AnchorWordBlock, SelectedWord } from './AnchorWordBlock';
+import { AnchorHighlightRenderer } from './AnchorHighlightRenderer';
+import { type MeaningBlockFormatted } from '@/lib/services/meaning-blocks-service';
 
 interface ContextBlocksProps {
   block: {
@@ -38,6 +40,9 @@ interface ContextBlocksProps {
   onEnterAnchorMode?: () => void;
   onExitAnchorMode?: () => void;
   anchorSelectedWords?: SelectedWord[];
+  meaningBlocks?: MeaningBlockFormatted[];
+  loadingMeaningBlocks?: boolean;
+  isInAnchorMode?: boolean;
 }
 
 // 添加一个全局活跃块ID事件
@@ -66,6 +71,9 @@ export function ContextBlocks({
   onEnterAnchorMode,
   onExitAnchorMode,
   anchorSelectedWords = [],
+  meaningBlocks = [],
+  loadingMeaningBlocks = false,
+  isInAnchorMode = false,
 }: ContextBlocksProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -84,8 +92,12 @@ export function ContextBlocks({
   const [sentences, setSentences] = useState<any[]>([]);
   const [blockSpeechId, setBlockSpeechId] = useState<string | undefined>(block.speech_id);
   
-  // 新增锚定词块相关状态
-  const [isAnchorMode, setIsAnchorMode] = useState(false);
+  const [activeWordIndex, setActiveWordIndex] = useState<number | null>(null);
+  const [activeSentenceIndex, setActiveSentenceIndex] = useState<number | null>(null);
+  const [loopMode, setLoopMode] = useState<'sentence' | 'block' | 'continuous'>('continuous');
+  const [audioContext, setAudioContext] = useState<'sentence' | 'block' | 'word' | 'main'>('main');
+  const [currentWordIndex, setCurrentWordIndex] = useState<number | null>(null);
+  const [currentSentenceIndex, setCurrentSentenceIndex] = useState<number | null>(null);
   
   const blockRef = useRef<HTMLDivElement>(null);
   const contentEditableRef = useRef<HTMLDivElement>(null);
@@ -1000,20 +1012,23 @@ export function ContextBlocks({
 
   // 进入锚定模式
   const handleEnterAnchorMode = useCallback(() => {
-    setIsAnchorMode(true);
     onEnterAnchorMode?.();
   }, [onEnterAnchorMode]);
 
   // 退出锚定模式
   const handleExitAnchorMode = useCallback(() => {
-    setIsAnchorMode(false);
     onExitAnchorMode?.();
   }, [onExitAnchorMode]);
 
-  // 修改renderContent函数，支持锚定词块模式
+  // 渲染含义块信息
+  const renderMeaningBlocksInfo = () => {
+    return null; // 不再显示含义块计数
+  };
+
+  // 修改renderContent函数，添加含义块信息显示
   const renderContent = () => {
     // 如果处于锚定模式，渲染锚定词块
-    if (isAnchorMode) {
+    if (isInAnchorMode) {
       return (
         <AnchorWordBlock
           content={getAnchorContent()}
@@ -1021,6 +1036,7 @@ export function ContextBlocks({
           onSelectedWordsChange={handleAnchorWordsChange}
           onExit={handleExitAnchorMode}
           initialSelectedWords={anchorSelectedWords}
+          existingMeaningBlocks={meaningBlocks}
         />
       );
     }
@@ -1040,6 +1056,9 @@ export function ContextBlocks({
               className="max-w-full h-auto rounded-md"
             />
             {/* 我们使用img标签而不是Image组件是为了确保图片质量不受影响 */}
+            
+            {/* 渲染含义块信息 */}
+            {renderMeaningBlocksInfo()}
           </div>
         );
       }
@@ -1061,6 +1080,9 @@ export function ContextBlocks({
             )}
             </div>
           </div>
+          
+          {/* 渲染含义块信息 */}
+          {renderMeaningBlocksInfo()}
           
           {/* 底部功能图标栏 - 放在语境块外部但靠近底部 */}
           <div className="absolute right-1 bottom-1 flex gap-1">
@@ -1107,6 +1129,9 @@ export function ContextBlocks({
             )}
           </div>
           
+          {/* 渲染含义块信息 */}
+          {renderMeaningBlocksInfo()}
+          
           {/* 为包含嵌入式句子的文本块也添加词锚点按钮 */}
           <div className="absolute right-1 bottom-1 flex gap-1">
             <button
@@ -1124,11 +1149,19 @@ export function ContextBlocks({
     // 普通文本块 - 直接可编辑
     return (
       <div className="relative">
+        {/* 如果有含义块数据，使用锚点高亮渲染器 */}
+        {meaningBlocks.length > 0 ? (
+          <AnchorHighlightRenderer
+            content={block.content}
+            meaningBlocks={meaningBlocks}
+            className="py-2 px-3"
+          />
+        ) : (
       <div
         ref={contentEditableRef}
         contentEditable={block.block_type === 'text'}
         suppressContentEditableWarning
-        className="text-sm outline-none whitespace-pre-wrap"
+            className="text-sm outline-none whitespace-pre-wrap py-2 px-3"
         onBlur={handleContentChange}
         onKeyDown={(e) => {
           // 按Enter但不按Shift创建新块
@@ -1140,6 +1173,10 @@ export function ContextBlocks({
       >
         {renderEmbeddedContent()}
         </div>
+        )}
+        
+        {/* 渲染含义块信息 */}
+        {renderMeaningBlocksInfo()}
         
         {/* 为普通文本块也添加词锚点按钮 */}
         {block.block_type === 'text' && block.content && (
@@ -1447,18 +1484,18 @@ export function ContextBlocks({
         dropPosition === 'after' ? 'border-b-2 border-b-primary' : '',
         localAligning ? 'bg-primary/5 border border-primary/30 shadow-md' : '',
         showCompleteAnimation ? 'alignment-complete' : '',
-        isAnchorMode ? 'bg-gradient-to-r from-blue-50/50 to-purple-50/50 dark:from-blue-950/20 dark:to-purple-950/20 border-blue-200 dark:border-blue-800' : ''
+        isInAnchorMode ? 'bg-gradient-to-r from-blue-50/50 to-purple-50/50 dark:from-blue-950/20 dark:to-purple-950/20 border-blue-200 dark:border-blue-800' : ''
       )}
       onClick={handleClick}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      draggable={!isAnchorMode} // 锚定模式下禁用拖拽
+      draggable={!isInAnchorMode} // 锚定模式下禁用拖拽
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
       {/* 拖拽手柄 - 对不同块类型使用不同位置，锚定模式下隐藏 */}
-      {!isAnchorMode && (
+      {!isInAnchorMode && (
       <div className={cn(
         "absolute flex items-center justify-center opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity",
         block.block_type === 'audio_aligned' 
@@ -1471,7 +1508,7 @@ export function ContextBlocks({
       
       {/* 块内容 */}
       <div className={cn(
-        isAnchorMode ? 'pl-0' : 'pl-6' // 锚定模式下不需要左内边距
+        isInAnchorMode ? 'pl-0' : 'pl-6' // 锚定模式下不需要左内边距
       )}>
         {renderContent()}
       </div>
