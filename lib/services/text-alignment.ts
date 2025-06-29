@@ -590,7 +590,7 @@ export class TextAlignmentService {
       // 查找第一个对齐句子在原文中的位置
       const firstSentenceIndex = originalText.indexOf(firstSentence.alignedText);
       
-      // 提取对齐前文本
+      // 提取对齐前文本H5
       const prefixText = firstSentenceIndex > 0 ? originalText.substring(0, firstSentenceIndex) : '';
       
       // 构建新的内容格式: 对齐前文本 + [[对齐的句子id]] + 剩余未对齐文本

@@ -12,6 +12,7 @@ import { AnchorWordBlock, SelectedWord } from './AnchorWordBlock';
 import { AnchorHighlightRenderer } from './AnchorHighlightRenderer';
 import { type MeaningBlockFormatted } from '@/lib/services/meaning-blocks-service';
 import { ContextBlocksService } from '@/lib/services/context-blocks-service';
+import { SimpleBlockMenu, type BlockType } from '@/components/ui/SimpleBlockMenu';
 
 interface ContextBlocksProps {
   block: {
@@ -120,9 +121,16 @@ export function ContextBlocks({
   const [dragStartPos, setDragStartPos] = useState<{x: number, y: number} | null>(null);
   const [isTextSelecting, setIsTextSelecting] = useState(false);
 
+  // 添加块操作菜单状态
+  const [showBlockMenu, setShowBlockMenu] = useState(false);
+  const [blockMenuPosition, setBlockMenuPosition] = useState({ x: 0, y: 0 });
+
   // 同步contentEditable的内容，但避免在用户输入时重复更新
   useEffect(() => {
-    if (contentEditableRef.current && block.block_type === 'text') {
+    // 检查是否是可编辑的块类型（文本块或标题块）
+    const isEditableBlock = block.block_type === 'text' || block.block_type.startsWith('heading_');
+    
+    if (contentEditableRef.current && isEditableBlock) {
       const currentContent = contentEditableRef.current.textContent || '';
       const blockContent = block.content || '';
       
@@ -195,6 +203,112 @@ export function ContextBlocks({
     setDragStartPos(null);
     setIsTextSelecting(false);
   }, []);
+
+  // 处理拖拽手柄点击 - 显示块操作菜单
+  const handleDragHandleClick = useCallback((e: React.MouseEvent) => {
+    // 只有在真正的点击（而不是拖拽结束）时才显示菜单
+    // 通过检查鼠标移动距离来判断是点击还是拖拽
+    if (isDragging) {
+      // 如果正在拖拽，不显示菜单
+      return;
+    }
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // 获取手柄元素的位置信息
+    const handleElement = e.currentTarget as HTMLElement;
+    const rect = handleElement.getBoundingClientRect();
+    
+    // 设置菜单位置 - 使用手柄的中心位置
+    setBlockMenuPosition({ 
+      x: rect.left + rect.width / 2, // 手柄水平中心
+      y: rect.top + rect.height / 2  // 手柄垂直中心
+    });
+    setShowBlockMenu(true);
+  }, [isDragging]);
+
+  // 处理块类型转换
+  const handleBlockTypeChange = useCallback(async (newType: BlockType) => {
+    try {
+      // 调用父组件的更新函数
+      onBlockUpdate?.(block.id, newType, block.content);
+      
+      // 根据块类型显示不同的提示消息
+      const typeLabels = {
+        'text': '文本',
+        'heading_1': '一级标题',
+        'heading_2': '二级标题', 
+        'heading_3': '三级标题',
+        'heading_4': '四级标题'
+      };
+      
+      toast.success(`块类型已转换为${typeLabels[newType] || newType}`);
+    } catch (error) {
+      console.error('转换块类型失败:', error);
+      toast.error('转换失败');
+    }
+  }, [block.id, block.content, onBlockUpdate]);
+
+  // 处理块删除 - 使用事件机制而不是刷新页面
+  const handleBlockDelete = useCallback(async () => {
+    try {
+      // === 第一步：立即更新UI，提供即时反馈 ===
+      // 立即通知父组件移除块（乐观更新）
+      window.dispatchEvent(new CustomEvent('remove-temp-block', {
+        detail: { tempId: block.id }
+      }));
+      
+      // 不显示"正在删除"的提示，直接进行后台操作
+      console.log('📡 后台验证数据库删除操作');
+      
+      const result = await ContextBlocksService.deleteBlock(block.id);
+      
+      if (result.success) {
+        console.log('✅ 数据库删除成功:', result);
+        // 只在成功时显示一次提示
+        toast.success('块已删除');
+        
+      } else {
+        console.error('❌ 数据库删除失败:', result);
+        
+        // === 第三步：如果数据库操作失败，回滚UI更改 ===
+        console.log('🔄 回滚UI更改 - 重新创建块');
+        
+        // 重新创建块（回滚删除操作）
+        window.dispatchEvent(new CustomEvent('create-temp-block', {
+          detail: { 
+            tempId: block.id,
+            content: block.content || '',
+            orderIndex: block.order_index,
+            parentId: block.parent_id || '',
+            afterBlockId: null // 可能需要重新计算位置
+          }
+        }));
+        
+        // 只在真正失败时显示错误提示
+        toast.error(`删除失败: ${result.error || '未知错误'}`);
+      }
+    } catch (error) {
+      console.error('💥 删除块异常:', error);
+      
+      // 异常情况下的回滚处理
+      console.log('🔄 异常回滚 - 重新创建块');
+      
+      // 重新创建块
+      window.dispatchEvent(new CustomEvent('create-temp-block', {
+        detail: { 
+          tempId: block.id,
+          content: block.content || '',
+          orderIndex: block.order_index,
+          parentId: block.parent_id || '',
+          afterBlockId: null
+        }
+      }));
+      
+      toast.error('删除失败');
+    }
+  }, [block.id, block.content, block.order_index, block.parent_id]);
 
   // 添加创建新块的处理函数 - 优化版本
   const handleCreateNewBlock = useCallback(async () => {
@@ -1396,82 +1510,122 @@ export function ContextBlocks({
           <AnchorHighlightRenderer
             content={block.content}
             meaningBlocks={meaningBlocks}
-            className="py-2 px-3"
+            className={cn(
+              "py-2 px-3",
+              // 为不同标题级别设置字体大小和加粗
+              block.block_type === 'heading_1' && "text-2xl font-bold",
+              block.block_type === 'heading_2' && "text-xl font-bold", 
+              block.block_type === 'heading_3' && "text-lg font-bold",
+              block.block_type === 'heading_4' && "text-base font-bold",
+              block.block_type === 'text' && "text-sm"
+            )}
           />
         ) : (
-      <div className="relative">
-        <div
-          ref={contentEditableRef}
-          contentEditable={block.block_type === 'text'}
-          suppressContentEditableWarning
-              className="text-sm outline-none whitespace-pre-wrap py-2 px-3 min-h-[2rem] relative"
-          onBlur={handleBlur}
-          onFocus={handleFocus}
-          onInput={handleInput}
-          onPaste={handlePaste}
-          onKeyDown={(e) => {
-            console.log('🎹 按键事件:', {
-              key: e.key,
-              shiftKey: e.shiftKey,
-              blockId: block.id,
-              blockType: block.block_type,
-              hasContentEditableRef: !!contentEditableRef.current,
-              meaningBlocksLength: meaningBlocks.length,
-              isInAnchorMode,
-              contentIncludes: block.content?.includes('[[')
-            });
+          <div className="relative">
+            <div
+              ref={contentEditableRef}
+              contentEditable={block.block_type === 'text' || block.block_type.startsWith('heading_')}
+              suppressContentEditableWarning
+              className={cn(
+                "outline-none whitespace-pre-wrap py-2 px-3 min-h-[2rem] relative",
+                // 为不同标题级别设置字体大小和加粗
+                block.block_type === 'heading_1' && "text-2xl font-bold leading-tight",
+                block.block_type === 'heading_2' && "text-xl font-bold leading-tight", 
+                block.block_type === 'heading_3' && "text-lg font-bold leading-snug",
+                block.block_type === 'heading_4' && "text-base font-bold leading-snug",
+                block.block_type === 'text' && "text-sm"
+              )}
+              onBlur={handleBlur}
+              onFocus={handleFocus}
+              onInput={handleInput}
+              onPaste={handlePaste}
+              onKeyDown={(e) => {
+                console.log('🎹 按键事件:', {
+                  key: e.key,
+                  shiftKey: e.shiftKey,
+                  blockId: block.id,
+                  blockType: block.block_type,
+                  hasContentEditableRef: !!contentEditableRef.current,
+                  meaningBlocksLength: meaningBlocks.length,
+                  isInAnchorMode,
+                  contentIncludes: block.content?.includes('[[')
+                });
+                
+                // 按Enter但不按Shift创建新块
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  console.log('🎹 Enter键处理 - 创建新块');
+                  e.preventDefault();
+                  handleCreateNewBlock();
+                }
+                // 按Backspace且光标在开头时合并与上一个块
+                if (e.key === 'Backspace') {
+                  console.log('🎹 Backspace键处理 - 检查光标位置');
+                  const cursorAtStart = isCursorAtStart();
+                  console.log('🎹 光标是否在开头:', cursorAtStart);
+                  
+                  if (cursorAtStart) {
+                    console.log('🎹 Backspace键处理 - 光标在开头，执行合并');
+                    e.preventDefault();
+                    handleMergeWithPreviousBlock();
+                  } else {
+                    console.log('🎹 Backspace键处理 - 光标不在开头，允许默认行为');
+                  }
+                }
+                // 按Delete且光标在末尾时合并到下一个块
+                if (e.key === 'Delete') {
+                  console.log('🎹 Delete键处理 - 检查光标位置');
+                  const cursorAtEnd = isCursorAtEnd();
+                  console.log('🎹 光标是否在末尾:', cursorAtEnd);
+                  
+                  if (cursorAtEnd) {
+                    console.log('🎹 Delete键处理 - 光标在末尾，执行合并到下一块');
+                    e.preventDefault();
+                    handleMergeWithNextBlock();
+                  } else {
+                    console.log('🎹 Delete键处理 - 光标不在末尾，允许默认行为');
+                  }
+                }
+              }}
+            />
             
-            // 按Enter但不按Shift创建新块
-            if (e.key === 'Enter' && !e.shiftKey) {
-              console.log('🎹 Enter键处理 - 创建新块');
-              e.preventDefault();
-              handleCreateNewBlock();
-            }
-            // 按Backspace且光标在开头时合并与上一个块
-            if (e.key === 'Backspace') {
-              console.log('🎹 Backspace键处理 - 检查光标位置');
-              const cursorAtStart = isCursorAtStart();
-              console.log('🎹 光标是否在开头:', cursorAtStart);
-              
-              if (cursorAtStart) {
-                console.log('🎹 Backspace键处理 - 光标在开头，执行合并');
-                e.preventDefault();
-                handleMergeWithPreviousBlock();
-              } else {
-                console.log('🎹 Backspace键处理 - 光标不在开头，允许默认行为');
-              }
-            }
-            // 按Delete且光标在末尾时合并到下一个块
-            if (e.key === 'Delete') {
-              console.log('🎹 Delete键处理 - 检查光标位置');
-              const cursorAtEnd = isCursorAtEnd();
-              console.log('🎹 光标是否在末尾:', cursorAtEnd);
-              
-              if (cursorAtEnd) {
-                console.log('🎹 Delete键处理 - 光标在末尾，执行合并到下一块');
-                e.preventDefault();
-                handleMergeWithNextBlock();
-              } else {
-                console.log('🎹 Delete键处理 - 光标不在末尾，允许默认行为');
-              }
-            }
-          }}
-        />
-        
-        {/* 占位符提示 - 悬浮时显示，获得焦点时隐藏 */}
-        {isHovered && !isFocused && !block.content?.trim() && (
-          <div className="absolute inset-0 py-2 px-3 pointer-events-none text-muted-foreground/40 text-sm flex items-start">
-            空语境块，点击输入内容
+            {/* 占位符提示 - 悬浮时显示，获得焦点时隐藏 */}
+            {isHovered && !isFocused && !block.content?.trim() && (
+              <div className={cn(
+                "absolute inset-0 py-2 px-3 pointer-events-none text-muted-foreground/40 flex items-start",
+                // 为不同标题级别设置相同的字体大小和加粗
+                block.block_type === 'heading_1' && "text-2xl font-bold leading-tight",
+                block.block_type === 'heading_2' && "text-xl font-bold leading-tight", 
+                block.block_type === 'heading_3' && "text-lg font-bold leading-snug",
+                block.block_type === 'heading_4' && "text-base font-bold leading-snug",
+                block.block_type === 'text' && "text-sm"
+              )}>
+                {block.block_type === 'text' && '空语境块，点击输入内容'}
+                {block.block_type === 'heading_1' && '一级标题'}
+                {block.block_type === 'heading_2' && '二级标题'}
+                {block.block_type === 'heading_3' && '三级标题'}
+                {block.block_type === 'heading_4' && '四级标题'}
+              </div>
+            )}
+            
+            {/* 占位符提示 - 只在焦点状态且内容为空时显示 */}
+            {isFocused && !block.content?.trim() && (
+              <div className={cn(
+                "absolute inset-0 py-2 px-3 pointer-events-none text-muted-foreground/50",
+                // 为不同标题级别设置相同的字体大小和加粗
+                block.block_type === 'heading_1' && "text-2xl font-bold leading-tight",
+                block.block_type === 'heading_2' && "text-xl font-bold leading-tight", 
+                block.block_type === 'heading_3' && "text-lg font-bold leading-snug",
+                block.block_type === 'heading_4' && "text-base font-bold leading-snug",
+                block.block_type === 'text' && "text-sm"
+              )}>
+                {block.block_type === 'text' && '空语境块，请输入内容'}
+                {block.block_type === 'heading_1' && '请输入一级标题'}
+                {block.block_type === 'heading_2' && '请输入二级标题'}
+                {block.block_type === 'heading_3' && '请输入三级标题'}
+                {block.block_type === 'heading_4' && '请输入四级标题'}
+              </div>
+            )}
           </div>
-        )}
-        
-        {/* 占位符提示 - 只在焦点状态且内容为空时显示 */}
-        {isFocused && !block.content?.trim() && (
-          <div className="absolute inset-0 py-2 px-3 pointer-events-none text-muted-foreground/50 text-sm">
-            空语境块，请输入内容
-          </div>
-        )}
-      </div>
         )}
         
         {/* 渲染含义块信息 */}
@@ -2665,13 +2819,26 @@ export function ContextBlocks({
     >
       {/* 拖拽手柄 - 对不同块类型使用不同位置，锚定模式下隐藏 */}
       {!isInAnchorMode && (
-      <div className={cn(
-        "absolute flex items-center justify-center opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity",
-        block.block_type === 'audio_aligned' 
-          ? "left-2 top-3 w-8 h-8" 
-          : "left-0 top-0.5 w-8 h-8"
-      )}>
-        <DragHandleDots2Icon className="h-6 w-6 text-muted-foreground cursor-grab" />
+      <div
+        className={cn(
+          "absolute flex items-center justify-center opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity cursor-grab hover:cursor-pointer",
+          block.block_type === 'audio_aligned' 
+            ? "left-2 top-3 w-8 h-8" 
+            : "left-0 top-2.5 w-8 h-8"
+        )}
+        onClick={handleDragHandleClick}
+        draggable={true}
+        onDragStart={(e) => {
+          // 设置拖拽数据
+          e.dataTransfer.setData('text/plain', block.id);
+          e.dataTransfer.effectAllowed = 'move';
+          setIsDragging(true);
+        }}
+        onDragEnd={() => {
+          setIsDragging(false);
+        }}
+      >
+        <DragHandleDots2Icon className="h-6 w-6 text-muted-foreground" />
       </div>
       )}
       
@@ -2692,6 +2859,22 @@ export function ContextBlocks({
           </div>
         </div>
       )}
+
+      {/* 块操作菜单 */}
+      <SimpleBlockMenu
+        isOpen={showBlockMenu}
+        onClose={() => setShowBlockMenu(false)}
+        position={blockMenuPosition}
+        currentBlockType={block.block_type}
+        onTypeChange={handleBlockTypeChange}
+        onDelete={() => {}} // 空函数，SimpleBlockMenu内部自己处理删除
+        blockId={block.id}
+        blockData={{
+          content: block.content || '',
+          order_index: block.order_index,
+          parent_id: block.parent_id || ''
+        }}
+      />
     </div>
   );
 }
