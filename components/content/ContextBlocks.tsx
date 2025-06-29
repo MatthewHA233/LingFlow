@@ -763,6 +763,22 @@ export function ContextBlocks({
     parseAndLoadEmbeddedSentences();
   }, [parseAndLoadEmbeddedSentences]);
 
+  // 添加监听块类型变化的useEffect，防止重复渲染
+  useEffect(() => {
+    // 当块类型发生变化时，清理嵌入式句子状态
+    // 这可以防止在音频对齐完成后出现重复渲染的问题
+    console.log(`🔄 块类型变化检测: ${block.id}, 类型: ${block.block_type}`);
+    
+    // 如果块类型不是audio_aligned且不包含[[]]标记，清理句子状态
+    if (block.block_type !== 'audio_aligned' && 
+        (!block.content || !block.content.includes('[['))) {
+      console.log(`🧹 清理块 ${block.id} 的嵌入式句子状态`);
+      setEmbeddedSentences(new Map());
+      setSentences([]);
+      setIsLoadingSentences(false);
+    }
+  }, [block.id, block.block_type, block.content]);
+
   useEffect(() => {
     setLocalAligning(isAligning);
   }, [isAligning]);
