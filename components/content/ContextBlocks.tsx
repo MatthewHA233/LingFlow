@@ -10,6 +10,7 @@ import { AudioController, AUDIO_EVENTS } from '@/lib/audio-controller';
 import { AnimatePresence, motion } from "framer-motion";
 import { AnchorWordBlock, SelectedWord } from './AnchorWordBlock';
 import { AnchorHighlightRenderer } from './AnchorHighlightRenderer';
+import { AudioAnchorRenderer } from './AudioAnchorRenderer';
 import { type MeaningBlockFormatted } from '@/lib/services/meaning-blocks-service';
 import { ContextBlocksService } from '@/lib/services/context-blocks-service';
 import { SimpleBlockMenu, type BlockType } from '@/components/ui/SimpleBlockMenu';
@@ -1466,7 +1467,21 @@ export function ContextBlocks({
           <div className="prose prose-sm max-w-none">
             {isLoadingSentences ? (
               <span className="text-muted-foreground">加载句子内容中...</span>
+              ) : meaningBlocks.length > 0 ? (
+                // 使用AudioAnchorRenderer融合音频点读和锚点高亮
+                <AudioAnchorRenderer
+                  content={block.content}
+                  meaningBlocks={meaningBlocks}
+                  embeddedSentences={embeddedSentences}
+                  activeIndex={activeIndex}
+                  activeWordId={activeWordId}
+                  currentAudioTime={currentAudioTime}
+                  isPlaying={isPlaying}
+                  onSentenceClick={handleSentenceClick}
+                  onWordClick={handleWordClick}
+                />
             ) : (
+                // 没有锚点时使用原来的渲染方式
               renderEmbeddedContent()
             )}
             </div>
@@ -1515,7 +1530,21 @@ export function ContextBlocks({
           <div className="prose prose-sm max-w-none">
             {isLoadingSentences ? (
               <span className="text-muted-foreground">加载句子内容中...</span>
+            ) : meaningBlocks.length > 0 ? (
+              // 使用AudioAnchorRenderer融合音频点读和锚点高亮
+              <AudioAnchorRenderer
+                content={block.content}
+                meaningBlocks={meaningBlocks}
+                embeddedSentences={embeddedSentences}
+                activeIndex={activeIndex}
+                activeWordId={activeWordId}
+                currentAudioTime={currentAudioTime}
+                isPlaying={isPlaying}
+                onSentenceClick={handleSentenceClick}
+                onWordClick={handleWordClick}
+              />
             ) : (
+              // 没有锚点时使用原来的渲染方式
               renderEmbeddedContent()
             )}
           </div>

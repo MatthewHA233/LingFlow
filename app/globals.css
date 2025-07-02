@@ -1021,3 +1021,99 @@
   background: rgba(0, 0, 0, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
+
+/* 新增：AudioAnchorRenderer 专用样式 */
+
+/* 音频播放时的单词高亮流动动画 - 增强版 */
+@keyframes audio-word-highlight {
+  0% {
+    background-position: 0% 50%;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+  }
+  50% {
+    background-position: 100% 50%;
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.6);
+  }
+  100% {
+    background-position: 0% 50%;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+  }
+}
+
+/* 锚点悬浮效果增强 */
+.anchor-hover-effect {
+  transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+}
+
+.anchor-hover-effect:hover {
+  transform: scale(1.02);
+  filter: brightness(1.1);
+}
+
+/* 音频上下文感知的悬浮窗口动画 */
+@keyframes audio-tooltip-pulse {
+  0%, 100% {
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+  }
+  50% {
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.25);
+  }
+}
+
+.audio-context-playing {
+  animation: audio-tooltip-pulse 2s ease-in-out infinite;
+}
+
+/* 融合高亮效果：音频优先，锚点补充 */
+.audio-anchor-word {
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.audio-anchor-word.is-audio-active {
+  z-index: 10;
+}
+
+.audio-anchor-word.is-anchor-only {
+  z-index: 5;
+}
+
+/* 渐变边框效果用于短语锚点 */
+@keyframes phrase-border-flow {
+  0% {
+    border-image-source: linear-gradient(90deg, rgb(99 102 241), rgb(168 85 247), rgb(99 102 241));
+  }
+  50% {
+    border-image-source: linear-gradient(90deg, rgb(168 85 247), rgb(99 102 241), rgb(168 85 247));
+  }
+  100% {
+    border-image-source: linear-gradient(90deg, rgb(99 102 241), rgb(168 85 247), rgb(99 102 241));
+  }
+}
+
+.phrase-border-animated {
+  animation: phrase-border-flow 3s ease-in-out infinite;
+}
+
+/* 音频状态指示器 */
+.audio-status-indicator {
+  transition: all 0.3s ease;
+}
+
+.audio-status-indicator.playing {
+  background: linear-gradient(45deg, #10b981, #059669);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.audio-status-indicator.paused {
+  background: linear-gradient(45deg, #f59e0b, #d97706);
+}
+
+/* 确保文本选择不会干扰音频高亮 */
+.audio-anchor-renderer ::selection {
+  background-color: rgba(59, 130, 246, 0.3);
+}
+
+.audio-anchor-renderer .sentence-inline ::selection {
+  background-color: rgba(16, 185, 129, 0.3);
+}
