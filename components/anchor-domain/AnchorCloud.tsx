@@ -13,12 +13,57 @@ interface AnchorCloudProps {
   }[];
 }
 
+// 性能优化常量
+const VIEWPORT_PADDING = 300;
+const MAX_VISIBLE_ITEMS = 200;
+const PERFORMANCE_MODE_THRESHOLD = 1000; // 超过1000个锚点启用性能模式
+
 export function AnchorCloud({ days }: AnchorCloudProps) {
-  // 使用 spring 让移动更流畅
   const x = useSpring(0, { stiffness: 1000, damping: 50 });
   const y = useSpring(0, { stiffness: 1000, damping: 50 });
   
   const [isDragging, setIsDragging] = useState(false);
+  const [viewportBounds, setViewportBounds] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [performanceMode, setPerformanceMode] = useState(false);
+
+  // 计算总锚点数量
+  const totalAnchors = useMemo(() => {
+    return days.reduce((sum, day) => sum + day.anchors.length, 0);
+  }, [days]);
+
+  // 检查是否需要性能模式
+  useEffect(() => {
+    setPerformanceMode(totalAnchors > PERFORMANCE_MODE_THRESHOLD);
+  }, [totalAnchors]);
+
+  // 监听窗口大小变化
+  useEffect(() => {
+    const updateViewport = () => {
+      setViewportBounds({
+        x: -window.innerWidth / 2,
+        y: -window.innerHeight / 2,
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    };
+    
+    updateViewport();
+    window.addEventListener('resize', updateViewport);
+    return () => window.removeEventListener('resize', updateViewport);
+  }, []);
+
+  // 视窗剔除函数
+  const isInViewport = useCallback((position: { x: number; y: number }) => {
+    const currentX = x.get();
+    const currentY = y.get();
+    
+    return (
+      position.x + currentX > viewportBounds.x - VIEWPORT_PADDING &&
+      position.x + currentX < viewportBounds.x + viewportBounds.width + VIEWPORT_PADDING &&
+      position.y + currentY > viewportBounds.y - VIEWPORT_PADDING &&
+      position.y + currentY < viewportBounds.y + viewportBounds.height + VIEWPORT_PADDING
+    );
+  }, [x, y, viewportBounds]);
 
   const handleDragStart = useCallback(() => {
     setIsDragging(true);
@@ -30,27 +75,13 @@ export function AnchorCloud({ days }: AnchorCloudProps) {
     document.body.style.cursor = 'auto';
   }, []);
 
-  // 使用 CSS transform 替代 framer-motion 动画
-  const containerStyle = {
-    transform: 'translate3d(0,0,0)', // 启用硬件加速
-    willChange: 'transform', // 提示浏览器优化
-  };
-
-  // 计算每个锚点的颜色
-  const getAnchorColor = (proficiency: number) => {
-    if (proficiency >= 0.8) return 'bg-green-500/20 hover:bg-green-500/30 border-green-500/30';
-    if (proficiency >= 0.6) return 'bg-blue-500/20 hover:bg-blue-500/30 border-blue-500/30';
-    if (proficiency >= 0.4) return 'bg-yellow-500/20 hover:bg-yellow-500/30 border-yellow-500/30';
-    return 'bg-red-500/20 hover:bg-red-500/30 border-red-500/30';
-  };
-
-  // 修改位置计算逻辑
-  const getPosition = (index: number) => {
-    const ITEMS_PER_ROW = 5;
-    const HORIZONTAL_GAP = 220;
-    const VERTICAL_GAP = 150;
-    const START_X = -450;
-    const START_Y = -150;
+  // 优化的位置计算
+  const getPosition = useCallback((index: number) => {
+    const ITEMS_PER_ROW = performanceMode ? 8 : 5; // 性能模式下增加每行项目数
+    const HORIZONTAL_GAP = performanceMode ? 160 : 220;
+    const VERTICAL_GAP = performanceMode ? 120 : 150;
+    const START_X = performanceMode ? -600 : -450;
+    const START_Y = performanceMode ? -200 : -150;
 
     const row = Math.floor(index / ITEMS_PER_ROW);
     const col = index % ITEMS_PER_ROW;
@@ -63,26 +94,67 @@ export function AnchorCloud({ days }: AnchorCloudProps) {
     const y = START_Y + (row * VERTICAL_GAP);
 
     return { x, y };
+  }, [performanceMode]);
+
+  // 计算每个锚点的颜色
+  const getAnchorColor = (proficiency: number) => {
+    if (proficiency >= 0.8) return 'bg-green-500/20 hover:bg-green-500/30 border-green-500/30';
+    if (proficiency >= 0.6) return 'bg-blue-500/20 hover:bg-blue-500/30 border-blue-500/30';
+    if (proficiency >= 0.4) return 'bg-yellow-500/20 hover:bg-yellow-500/30 border-yellow-500/30';
+    return 'bg-red-500/20 hover:bg-red-500/30 border-red-500/30';
   };
+
+  // 过滤可见的日期和锚点
+  const visibleItems = useMemo(() => {
+    let visibleDays = [];
+    let itemCount = 0;
+    
+    for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
+      const position = getPosition(dayIndex);
+      
+      if (isInViewport(position)) {
+        const day = days[dayIndex];
+        
+        // 在性能模式下限制每个日期的锚点数量
+        const maxAnchorsPerDay = performanceMode ? 20 : day.anchors.length;
+        const limitedAnchors = day.anchors.slice(0, maxAnchorsPerDay);
+        
+        visibleDays.push({
+          ...day,
+          anchors: limitedAnchors,
+          position,
+          dayIndex
+        });
+        
+        itemCount += limitedAnchors.length;
+        
+        // 限制总可见项目数
+        if (itemCount >= MAX_VISIBLE_ITEMS) {
+          break;
+        }
+      }
+    }
+    
+    return visibleDays;
+  }, [days, getPosition, isInViewport, performanceMode]);
 
   return (
     <div 
       className="relative w-full h-full overflow-hidden cursor-grab active:cursor-grabbing"
       style={{
         background: 'radial-gradient(circle at 50% 50%, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.5) 100%)',
-        ...containerStyle
+        transform: 'translate3d(0,0,0)',
+        willChange: 'transform',
       }}
     >
-      {/* 粒子背景 */}
+      {/* 减少粒子数量以提升性能 */}
       <Particles
         className="absolute inset-0"
-        quantity={200}
-        staticity={30}
-        ease={50}
-        size={0.5}
+        quantity={performanceMode ? 50 : 150}
+        staticity={50}
+        ease={80}
+        size={performanceMode ? 0.3 : 0.5}
         color="#ffffff"
-        vx={isDragging ? x.get() * 0.02 : 0}
-        vy={isDragging ? y.get() * 0.02 : 0}
       />
 
       <motion.div 
@@ -90,30 +162,39 @@ export function AnchorCloud({ days }: AnchorCloudProps) {
         drag
         dragElastic={0}
         dragMomentum={false}
-        style={{ x, y, ...containerStyle }}
+        style={{ 
+          x, 
+          y,
+          transform: 'translate3d(0,0,0)',
+          willChange: 'transform'
+        }}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
         <div className="relative w-full max-w-7xl h-full">
-          {days?.map((day, dayIndex) => {
-            const { x: posX, y: posY } = getPosition(dayIndex);
+          {visibleItems.map((day) => {
+            const { x: posX, y: posY } = day.position;
 
             return (
               <div
                 key={day.date} 
                 className={`absolute left-1/2 top-1/2 transition-opacity duration-300
-                  ${isDragging ? 'opacity-90' : 'opacity-100'}`}
+                  ${isDragging ? 'opacity-80' : 'opacity-100'}`}
                 style={{
                   transform: `translate3d(${posX}px, ${posY}px, 0) translate(-50%, -50%)`,
                 }}
               >
-                <div className="text-white/60 text-sm mb-4 text-center backdrop-blur-sm px-3 py-1 rounded-full bg-white/5">
+                {/* 简化的日期标签 */}
+                <div className={`text-white/60 mb-3 text-center backdrop-blur-sm px-2 py-1 rounded-full bg-white/5 ${performanceMode ? 'text-xs' : 'text-sm'}`}>
                   {new Date(day.date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
                 </div>
-                <div className="flex flex-wrap gap-3 justify-center" 
+                
+                {/* 锚点容器 */}
+                <div 
+                  className="flex flex-wrap gap-3 justify-center" 
                   style={{ 
-                    width: '220px',
-                    maxHeight: '150px',
+                    width: performanceMode ? '180px' : '220px',
+                    maxHeight: performanceMode ? '120px' : '150px',
                     transform: 'translate3d(0,0,0)',
                   }}
                 >
@@ -123,24 +204,27 @@ export function AnchorCloud({ days }: AnchorCloudProps) {
                       0
                     ) / anchor.meaning_blocks.length;
 
-                    // 检查锚点本身是否在当天创建（而不是含义块）
                     const isAnchorCreatedToday = anchor.created_at && anchor.created_at.split('T')[0] === day.date;
 
                     return (
                       <AnchorTooltip key={anchor.id} anchor={anchor} currentDate={day.date}>
                         <div
-                          className={`px-3 py-1.5 rounded-full backdrop-blur-sm cursor-pointer text-xs
+                          className={`px-4 py-2 rounded-full backdrop-blur-sm cursor-pointer
                             ${getAnchorColor(avgProficiency)}
-                            border transition-transform duration-200 shadow-lg hover:shadow-xl
-                            flex items-center gap-1.5 hover:scale-110
-                            ${isAnchorCreatedToday ? 'ring-2 ring-green-400/50 shadow-green-400/20' : ''}`}
-                          style={{ transform: 'translate3d(0,0,0)' }}
+                            border transition-transform duration-200 shadow-md hover:shadow-lg
+                            flex items-center gap-1 hover:scale-105
+                            ${isAnchorCreatedToday ? 'ring-1 ring-green-400/50 shadow-green-400/20' : ''}
+                            ${performanceMode ? 'text-xs' : 'text-xs'}`}
+                          style={{ 
+                            transform: 'translate3d(0,0,0)',
+                            whiteSpace: 'nowrap' // 防止文本换行
+                          }}
                         >
                           <span className={`${isAnchorCreatedToday ? 'text-green-200' : 'text-white/90'}`}>
                             {anchor.text}
                           </span>
                           {anchor.meaning_blocks.some((b: MeaningBlock) => b.next_review_date && new Date(b.next_review_date) <= new Date()) && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-500/80 animate-pulse" />
+                            <span className="w-1 h-1 rounded-full bg-red-500/80 animate-pulse" />
                           )}
                         </div>
                       </AnchorTooltip>
@@ -153,8 +237,20 @@ export function AnchorCloud({ days }: AnchorCloudProps) {
         </div>
       </motion.div>
 
-      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white/60 text-sm">
+      {/* 性能信息显示 */}
+      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white/60 text-center">
+        <div className={performanceMode ? 'text-xs' : 'text-sm'}>
         拖动画布探索更多锚点
+          {performanceMode && (
+            <span className="ml-2 px-2 py-1 bg-yellow-500/20 text-yellow-200 rounded text-xs">
+              性能模式
+            </span>
+          )}
+        </div>
+        <div className="text-xs text-white/40 mt-1">
+          显示 {visibleItems.length}/{days.length} 个日期 • 
+          {visibleItems.reduce((sum, day) => sum + day.anchors.length, 0)}/{totalAnchors} 个锚点
+        </div>
       </div>
     </div>
   );

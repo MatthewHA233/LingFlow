@@ -18,6 +18,8 @@ export default function AnchorDomainPage() {
   const [hasAutoSelected, setHasAutoSelected] = useState(false);
   const [heatmapExpanded, setHeatmapExpanded] = useState(false);
   const [globalCollapsed, setGlobalCollapsed] = useState<boolean | undefined>(undefined);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10); // 每页显示的日期数量
 
   const {
     timeDomains: dataTimeDomains,
@@ -125,7 +127,7 @@ export default function AnchorDomainPage() {
     setHeatmapExpanded(false); // 选择后收起热力图
   }, []);
 
-  // 获取选中时间段的数据
+  // 获取选中时间段的数据（分页优化）
   const getSelectedPeriodData = () => {
     if (!selectedPeriod || !dataTimeDomains || dataTimeDomains.length === 0) return [];
     
@@ -142,10 +144,45 @@ export default function AnchorDomainPage() {
     }
     
     // 按日期排序
-    return daysInPeriod.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const sortedDays = daysInPeriod.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    
+    // 如果数据量大于50天或总锚点数超过1000，启用分页
+    const totalAnchors = sortedDays.reduce((sum, day) => sum + day.anchors.length, 0);
+    const shouldPaginate = sortedDays.length > 50 || totalAnchors > 1000;
+    
+    if (shouldPaginate) {
+      const startIndex = (currentPage - 1) * itemsPerPage;
+      const endIndex = startIndex + itemsPerPage;
+      return sortedDays.slice(startIndex, endIndex);
+    }
+    
+    return sortedDays;
   };
 
   const selectedPeriodData = getSelectedPeriodData();
+  
+  // 计算分页信息
+  const getAllPeriodData = () => {
+    if (!selectedPeriod || !dataTimeDomains || dataTimeDomains.length === 0) return [];
+    
+    const daysInPeriod = [];
+    for (const domain of dataTimeDomains) {
+      if (domain.days) {
+        const filteredDays = domain.days.filter((day: any) => 
+          day.date >= selectedPeriod.start && 
+          day.date <= selectedPeriod.end &&
+          day.anchors && day.anchors.length > 0
+        );
+        daysInPeriod.push(...filteredDays);
+      }
+    }
+    
+    return daysInPeriod.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  };
+  
+  const allPeriodData = getAllPeriodData();
+  const totalPages = Math.ceil(allPeriodData.length / itemsPerPage);
+  const shouldShowPagination = allPeriodData.length > 50 || allPeriodData.reduce((sum, day) => sum + day.anchors.length, 0) > 1000;
 
   // 快捷键支持
   useEffect(() => {
@@ -165,6 +202,11 @@ export default function AnchorDomainPage() {
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [selectedPeriodData.length, globalCollapsed, handleGlobalCollapsedChange]);
+
+  // 监听分页变化，重置页码当选择新时间段时
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedPeriod]);
 
   // 认证检查
   if (authLoading) {
@@ -199,9 +241,9 @@ export default function AnchorDomainPage() {
             <div className="flex items-center gap-4">
               <h1 className="text-xl font-bold text-white">锚点域</h1>
               <CacheStatusIndicator 
+                timeDomains={dataTimeDomains}
                 isFromCache={dataIsFromCache}
                 backgroundLoading={dataBackgroundLoading}
-                loading={dataLoading}
               />
             </div>
             
@@ -351,6 +393,62 @@ export default function AnchorDomainPage() {
             />
           </div>
         </div>
+
+        {/* 数据统计和分页控制 */}
+        {selectedPeriodData.length > 0 && (
+          <div className="absolute bottom-4 left-4 z-30">
+            <div className="bg-slate-900/90 backdrop-blur-md rounded-lg border border-slate-700/50 p-3">
+              <div className="flex items-center gap-4">
+                <div className="text-sm text-white/70">
+                  {shouldShowPagination ? (
+                    <>显示 {(currentPage - 1) * itemsPerPage + 1}-{Math.min(currentPage * itemsPerPage, allPeriodData.length)} / {allPeriodData.length} 天</>
+                  ) : (
+                    <>共 {selectedPeriodData.length} 天</>
+                  )}
+                  <span className="mx-2">•</span>
+                  {selectedPeriodData.reduce((sum, day) => sum + day.anchors.length, 0)} 个锚点
+                </div>
+                
+                {/* 分页控制 */}
+                {shouldShowPagination && totalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                      disabled={currentPage === 1}
+                      className="px-2 py-1 text-xs bg-white/10 rounded border border-white/20 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white/20 transition-colors"
+                    >
+                      上一页
+                    </button>
+                    <span className="text-xs text-white/70">
+                      {currentPage} / {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                      disabled={currentPage === totalPages}
+                      className="px-2 py-1 text-xs bg-white/10 rounded border border-white/20 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white/20 transition-colors"
+                    >
+                      下一页
+                    </button>
+                  </div>
+                )}
+                
+                {/* 性能指示器 */}
+                <div className="flex items-center gap-2 text-xs">
+                  {selectedPeriodData.reduce((sum, day) => sum + day.anchors.length, 0) > 500 && (
+                    <span className="px-2 py-1 bg-yellow-500/20 text-yellow-200 rounded border border-yellow-500/30">
+                      大数据集
+                    </span>
+                  )}
+                  {shouldShowPagination && (
+                    <span className="px-2 py-1 bg-blue-500/20 text-blue-200 rounded border border-blue-500/30">
+                      分页模式
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
