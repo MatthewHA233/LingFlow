@@ -32,6 +32,7 @@ import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
 import { AudioUploader } from './AudioUploader';
 import { createPortal } from 'react-dom';
 import { MeaningBlocksService, type MeaningBlockFormatted } from '@/lib/services/meaning-blocks-service';
+import { TranslationPanel } from './TranslationPanel';
 
 interface ReaderContentProps {
   book: Book;
@@ -1390,101 +1391,125 @@ export function ReaderContent({ book }: ReaderContentProps) {
     });
   }, [currentChapter, setContextBlocks]);
 
-  const renderSplitViewBlock = (block: { id: string; [key: string]: any }) => (
-    <div className="col-span-1">
-      <div className={cn(
-        'group relative my-1 p-2 rounded-md border transition-all duration-300',
-        'bg-primary/5 border-primary/20',
-        'hover:bg-primary/10',
-        'h-full flex flex-col'
-      )}>
-        {/* 小标签 - 只在非撤销状态下显示 */}
-        {!isUndoing && (
-          <div className="absolute -top-3 left-0 right-0 mx-auto w-fit px-3 py-0.5 bg-background text-[14px] font-medium text-muted-foreground">
-            对齐原文
-          </div>
-        )}
-        
-        {/* 右上角操作按钮组 */}
-        <div className="absolute right-2 top-2 flex space-x-2">
-          {/* 撤销按钮 - 使用 Undo 图标替换 X */}
-          <button
-            onClick={() => {
-              if (activeSplitViewBlockId) {
-                handleUndoAlignment(activeSplitViewBlockId);
-              }
-            }}
-            className="p-0.5 rounded-full opacity-0 group-hover:opacity-60 hover:opacity-100 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors"
-            title="撤销对齐"
-          >
-            <Undo className="h-3.5 w-3.5" />
-          </button>
-
-          {/* 详情按钮 */}
-          <button
-            onClick={() => {
-              if (activeSplitViewBlockId) {
-                handleShowAlignmentDetails(activeSplitViewBlockId);
-              }
-            }}
-            className="p-0.5 rounded-full opacity-0 group-hover:opacity-60 hover:opacity-100 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
-            title="查看详细对齐信息"
-          >
-            <Info className="h-3.5 w-3.5" />
-          </button>
-          
-          {/* 关闭按钮 */}
-          <button
-            onClick={() => {
-              setActiveSplitViewBlockId(null);
-              setSplitViewType(null);
-              setSplitViewData(null);
-            }}
-            className="p-0.5 rounded-full opacity-0 group-hover:opacity-60 hover:opacity-100 hover:bg-muted/80 text-muted-foreground hover:text-primary transition-colors"
-            title="关闭"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-        
-        {/* 进度显示 - 仅在处理中显示 */}
-        {isUndoing && block.id === activeSplitViewBlockId && (
-          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex flex-col items-center justify-center z-10">
-            <div className="w-64 space-y-4">
-              <div className="relative w-full h-2 bg-secondary rounded-full overflow-hidden">
-                <div 
-                  className="absolute left-0 top-0 h-full bg-primary transition-all duration-300"
-                  style={{ width: `${undoProgress}%` }}
-                />
+  const renderSplitViewBlock = (block: { id: string; [key: string]: any }) => {
+    return (
+      <div className="col-span-1">
+        {splitViewType === 'source' ? (
+          <div className={cn(
+            'group relative my-1 p-2 rounded-md border transition-all duration-300',
+            'bg-primary/5 border-primary/20',
+            'hover:bg-primary/10',
+            'h-full flex flex-col'
+          )}>
+            {/* 小标签 - 只在对齐原文模式下显示 */}
+            {!isUndoing && (
+              <div className="absolute -top-3 left-0 right-0 mx-auto w-fit px-3 py-0.5 bg-background text-[14px] font-medium text-muted-foreground">
+                对齐原文
               </div>
-              <p className="text-sm text-center text-muted-foreground">
-                {undoStatus}
-              </p>
+            )}
+            
+            {/* 右上角操作按钮组 - 只在对齐原文模式下显示 */}
+            <div className="absolute right-2 top-2 flex space-x-2">
+              {/* 撤销按钮 */}
+              <button
+                onClick={() => {
+                  if (activeSplitViewBlockId) {
+                    handleUndoAlignment(activeSplitViewBlockId);
+                  }
+                }}
+                className="p-0.5 rounded-full opacity-0 group-hover:opacity-60 hover:opacity-100 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors"
+                title="撤销对齐"
+              >
+                <Undo className="h-3.5 w-3.5" />
+              </button>
+
+              {/* 详情按钮 */}
+              <button
+                onClick={() => {
+                  if (activeSplitViewBlockId) {
+                    handleShowAlignmentDetails(activeSplitViewBlockId);
+                  }
+                }}
+                className="p-0.5 rounded-full opacity-0 group-hover:opacity-60 hover:opacity-100 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+                title="查看详细对齐信息"
+              >
+                <Info className="h-3.5 w-3.5" />
+              </button>
+              
+              {/* 关闭按钮 */}
+              <button
+                onClick={() => {
+                  setActiveSplitViewBlockId(null);
+                  setSplitViewType(null);
+                  setSplitViewData(null);
+                }}
+                className="p-0.5 rounded-full opacity-0 group-hover:opacity-60 hover:opacity-100 hover:bg-muted/80 text-muted-foreground hover:text-primary transition-colors"
+                title="关闭"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
+            
+            {/* 进度显示 - 仅在撤销对齐时显示 */}
+            {isUndoing && block.id === activeSplitViewBlockId && (
+              <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex flex-col items-center justify-center z-10">
+                <div className="w-64 space-y-4">
+                  <div className="relative w-full h-2 bg-secondary rounded-full overflow-hidden">
+                    <div 
+                      className="absolute left-0 top-0 h-full bg-primary transition-all duration-300"
+                      style={{ width: `${undoProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-sm text-center text-muted-foreground">
+                    {undoStatus}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 内容部分 */}
+            <div className="pl-6 pt-3 flex-grow overflow-auto">
+              <div className="py-2 px-3 text-sm leading-relaxed h-full">
+                <div className="prose prose-sm max-w-none h-full">
+                  {loadingSplitView ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                    </div>
+                  ) : (
+                    <div className="whitespace-pre-wrap user-select-all h-full">
+                      {splitViewData?.original_content || ''}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          // 翻译模式 - 简洁的Notion风格
+          <div className="col-span-1 my-1">
+            {loadingSplitView ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+              </div>
+            ) : (
+              <TranslationPanel
+                blockId={activeSplitViewBlockId!}
+                originalContent={splitViewData?.content || ''}
+                blockType={splitViewData?.block_type || 'text'}
+                initialTranslation={splitViewData?.translation_content || ''}
+                onClose={() => {
+                  setActiveSplitViewBlockId(null);
+                  setSplitViewType(null);
+                  setSplitViewData(null);
+                }}
+                className="border-0 shadow-none bg-transparent"
+              />
+            )}
           </div>
         )}
-
-        {/* 内容部分 */}
-        <div className="pl-6 pt-3 flex-grow overflow-auto">
-          <div className="py-2 px-3 text-sm leading-relaxed h-full">
-            <div className="prose prose-sm max-w-none h-full">
-              {loadingSplitView ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                </div>
-              ) : (
-                <div className="whitespace-pre-wrap user-select-all h-full">
-                  {splitViewType === 'source' 
-                    ? (splitViewData?.original_content || '')
-                    : '翻译内容将在此显示'}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderBlocks = () => {
     // 显示初始化错误
@@ -1715,19 +1740,18 @@ export function ReaderContent({ book }: ReaderContentProps) {
     };
   }, []);
 
-  // 修改分栏视图显示函数，添加加载状态控制
+  // 修改分栏视图显示函数，优化翻译模式的加载速度
   const handleShowSplitView = useCallback(async (blockId: string, type: 'source' | 'translation') => {
-    // 先重置视图数据，避免显示旧数据
-    setSplitViewData(null);
-    
-    // 设置加载状态为true
-    setLoadingSplitView(true);
-    
     try {
       setActiveSplitViewBlockId(blockId);
       setSplitViewType(type);
       
       if (type === 'source') {
+        // 先重置视图数据，避免显示旧数据
+        setSplitViewData(null);
+        // 设置加载状态为true
+        setLoadingSplitView(true);
+        
         // 获取原始内容
         const { data, error } = await supabase
           .from('context_blocks')
@@ -1741,17 +1765,47 @@ export function ReaderContent({ book }: ReaderContentProps) {
         }
         
         setSplitViewData(data);
-      } else {
-        // 处理翻译内容...
+      } else if (type === 'translation') {
+        // 翻译模式：直接使用内存中的块数据，无需数据库查询
+        // 从当前章节的语境块中找到对应的块
+        const currentBlocks = contextBlocks[currentChapter];
+        const targetBlock = currentBlocks?.find((block: any) => block.id === blockId);
+        
+        if (!targetBlock) {
+          console.error('未找到目标块:', blockId);
+          toast.error('未找到目标块');
+          return;
+        }
+        
+        // 对于音频对齐块，使用original_content作为原文；其他块使用content
+        const originalContent = targetBlock.block_type === 'audio_aligned' 
+          ? (targetBlock.original_content || targetBlock.content)
+          : targetBlock.content;
+        
+        // 直接设置数据，包含所有翻译相关字段
+        setSplitViewData({
+          content: originalContent,
+          block_type: targetBlock.block_type,
+          translation_content: targetBlock.translation_content || '',
+          translation_status: targetBlock.translation_status || 'none',
+          translation_metadata: targetBlock.translation_metadata || {},
+          translation_updated_at: targetBlock.translation_updated_at || null,
+          original_content: targetBlock.original_content
+        });
+        
+        // 翻译模式不需要loading状态，直接设置为false
+        setLoadingSplitView(false);
       }
     } catch (err) {
       console.error('加载分栏视图数据失败:', err);
       toast.error('加载失败');
     } finally {
-      // 无论成功与否，都设置加载状态为false
-      setLoadingSplitView(false);
+      // 只有source模式才需要设置加载状态为false
+      if (type === 'source') {
+        setLoadingSplitView(false);
+      }
     }
-  }, []);
+  }, [contextBlocks, currentChapter]);
 
   // 修改显示对齐详情的方法
   const handleShowAlignmentDetails = (blockId: string) => {
@@ -1993,6 +2047,100 @@ export function ReaderContent({ book }: ReaderContentProps) {
     }
   };
 
+  // 更新语境块缓存中的翻译数据
+  const updateBlockTranslationInCache = useCallback((blockId: string, translationData: {
+    translation_content?: string;
+    translation_status?: string;
+    translation_metadata?: any;
+    translation_updated_at?: string;
+  }) => {
+    setContextBlocks(prev => {
+      const newContextBlocks = { ...prev };
+      
+      // 遍历所有章节，找到对应的块并更新
+      for (const chapterIndex in newContextBlocks) {
+        const blocks = newContextBlocks[chapterIndex];
+        const blockIndex = blocks.findIndex((block: any) => block.id === blockId);
+        
+        if (blockIndex !== -1) {
+          newContextBlocks[chapterIndex] = [
+            ...blocks.slice(0, blockIndex),
+            {
+              ...blocks[blockIndex],
+              ...translationData
+            },
+            ...blocks.slice(blockIndex + 1)
+          ];
+          break;
+        }
+      }
+      
+      return newContextBlocks;
+    });
+  }, []);
+
+  // 批量更新多个语境块的翻译数据
+  const updateMultipleBlockTranslationsInCache = useCallback((updates: Array<{
+    blockId: string;
+    translationData: {
+      translation_content?: string;
+      translation_status?: string;
+      translation_metadata?: any;
+      translation_updated_at?: string;
+    }
+  }>) => {
+    setContextBlocks(prev => {
+      const newContextBlocks = { ...prev };
+      
+      updates.forEach(({ blockId, translationData }) => {
+        // 遍历所有章节，找到对应的块并更新
+        for (const chapterIndex in newContextBlocks) {
+          const blocks = newContextBlocks[chapterIndex];
+          const blockIndex = blocks.findIndex((block: any) => block.id === blockId);
+          
+          if (blockIndex !== -1) {
+            newContextBlocks[chapterIndex] = [
+              ...blocks.slice(0, blockIndex),
+              {
+                ...blocks[blockIndex],
+                ...translationData
+              },
+              ...blocks.slice(blockIndex + 1)
+            ];
+            break;
+          }
+        }
+      });
+      
+      return newContextBlocks;
+    });
+  }, []);
+
+  // 监听翻译更新事件
+  useEffect(() => {
+    const handleTranslationUpdate = (event: CustomEvent) => {
+      const { blockId, translationData } = event.detail;
+      updateBlockTranslationInCache(blockId, translationData);
+    };
+
+    const handleTranslationBatchUpdate = (event: CustomEvent) => {
+      const { updates } = event.detail;
+      
+      if (updates && Array.isArray(updates)) {
+        // 使用批量更新函数
+        updateMultipleBlockTranslationsInCache(updates);
+        console.log(`批量更新了 ${updates.length} 个语境块的翻译数据`);
+      }
+    };
+
+    window.addEventListener('translation-updated', handleTranslationUpdate as EventListener);
+    window.addEventListener('translation-batch-updated', handleTranslationBatchUpdate as EventListener);
+
+    return () => {
+      window.removeEventListener('translation-updated', handleTranslationUpdate as EventListener);
+      window.removeEventListener('translation-batch-updated', handleTranslationBatchUpdate as EventListener);
+    };
+  }, [updateBlockTranslationInCache, updateMultipleBlockTranslationsInCache]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">

@@ -25,6 +25,10 @@ interface ContextBlocksProps {
     order_index: number;
     speech_id?: string;
     parent_id?: string;
+    translation_content?: string;
+    translation_status?: string;
+    translation_metadata?: Record<string, any>;
+    translation_updated_at?: string;
   };
   resources?: Array<{ original_path: string; oss_path: string }>;
   onBlockUpdate?: (blockId: string, newType: string, content: string) => void;
@@ -1503,7 +1507,7 @@ export function ContextBlocks({
             
             {/* 翻译图标 */}
             <button
-              onClick={() => toast("翻译功能开发中", { description: "敬请期待" })}
+              onClick={() => handleShowTranslation()}
               className="p-0.5 rounded-full bg-background/80 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
               title="翻译"
             >
@@ -1552,8 +1556,17 @@ export function ContextBlocks({
           {/* 渲染含义块信息 */}
           {renderMeaningBlocksInfo()}
           
-          {/* 为包含嵌入式句子的文本块也添加词锚点按钮 */}
+          {/* 为包含嵌入式句子的文本块添加功能按钮 */}
           <div className="absolute right-1 bottom-1 flex gap-1">
+            {/* 翻译图标 */}
+            <button
+              onClick={() => handleShowTranslation()}
+              className="p-0.5 rounded-full bg-background/80 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
+              title="翻译"
+            >
+              <Globe className="h-3 w-3" />
+            </button>
+            
             <button
               onClick={handleEnterAnchorMode}
               className="p-0.5 rounded-full bg-background/80 hover:bg-blue-500/10 text-muted-foreground hover:text-blue-500 transition-all"
@@ -1695,9 +1708,18 @@ export function ContextBlocks({
         {/* 渲染含义块信息 */}
         {renderMeaningBlocksInfo()}
         
-        {/* 为普通文本块也添加词锚点按钮 */}
-        {block.block_type === 'text' && block.content && (
+        {/* 为普通文本块和标题块添加功能按钮 */}
+        {(block.block_type === 'text' || block.block_type.startsWith('heading_')) && block.content && (
           <div className="absolute right-1 bottom-1 flex gap-1">
+            {/* 翻译图标 */}
+            <button
+              onClick={() => handleShowTranslation()}
+              className="p-0.5 rounded-full bg-background/80 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all opacity-0 group-hover:opacity-100 transition-opacity"
+              title="翻译"
+            >
+              <Globe className="h-3 w-3" />
+            </button>
+            
             <button
               onClick={handleEnterAnchorMode}
               className="p-0.5 rounded-full bg-background/80 hover:bg-blue-500/10 text-muted-foreground hover:text-blue-500 transition-all opacity-0 group-hover:opacity-100 transition-opacity"
@@ -2854,6 +2876,11 @@ export function ContextBlocks({
       onBlockUpdate?.(block.id, block.block_type, block.content || '');
     }
   }, [block.id, block.block_type, block.parent_id, block.order_index, block.content, onBlockUpdate]);
+
+  // 处理翻译功能
+  const handleShowTranslation = useCallback(() => {
+    onShowSplitView?.(block.id, 'translation');
+  }, [block.id, onShowSplitView]);
 
   return (
     <div
