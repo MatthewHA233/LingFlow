@@ -267,7 +267,7 @@ export function AnchorHighlightRenderer({
         position,
         isExpanded: false
       });
-    }, 300);
+    }, 0);
   };
 
   // 处理锚点离开

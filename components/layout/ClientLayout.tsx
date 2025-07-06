@@ -21,6 +21,14 @@ export function ClientLayout({ children }: ClientLayoutProps) {
     }
   }, [searchParams, openLoginDialog]);
 
+  // 初始化全局状态
+  useEffect(() => {
+    // 初始化全局翻译状态
+    if (typeof window !== 'undefined') {
+      (window as any).globalTranslationState = false;
+    }
+  }, []);
+
   return (
     <>
       {children}

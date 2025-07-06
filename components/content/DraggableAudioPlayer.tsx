@@ -1630,6 +1630,22 @@ export function DraggableAudioPlayer({
                     Q
                   </kbd>
                 </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/80">翻译显隐</span>
+                  <kbd 
+                    className="px-1.5 py-0.5 bg-blue-900/50 rounded text-blue-300 font-mono text-[10px] cursor-pointer hover:bg-blue-800/60 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const event = new KeyboardEvent('keydown', {
+                        key: 'e',
+                        bubbles: true
+                      });
+                      window.dispatchEvent(event);
+                    }}
+                  >
+                    E
+                  </kbd>
+                </div>
               </div>
               
               {/* 底部提示 */}

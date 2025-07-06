@@ -85,6 +85,11 @@ class KeyboardControllerClass {
         e.preventDefault();
         this.clickLoopModeButton();
         break;
+      
+      case 'e':
+        e.preventDefault();
+        this.toggleTranslationDisplay();
+        break;
     }
   };
 
@@ -95,7 +100,7 @@ class KeyboardControllerClass {
       // 进入键盘控制模式 - 增强唱片光晕
       this.enhanceVinylGlow(true);
       toast.success('音频快捷控制已开启', {
-        description: '空格:播放/暂停 | WS:上下句 | AD:快退/快进 | 1-6:倍速 | Q:循环模式',
+        description: '空格:播放/暂停 | WS:上下句 | AD:快退/快进 | 1-6:倍速 | Q:循环模式 | E:翻译显隐',
         duration: 3000,
       });
     } else {
@@ -198,6 +203,15 @@ class KeyboardControllerClass {
   private triggerNextSentence() {
     // 触发下一句播放事件
     window.dispatchEvent(new CustomEvent('keyboard-next-sentence'));
+  }
+
+  private toggleTranslationDisplay() {
+    // 触发翻译显隐事件
+    window.dispatchEvent(new CustomEvent('keyboard-toggle-translation'));
+    toast.success('切换翻译显示', {
+      position: 'bottom-right',
+      duration: 1000,
+    });
   }
 
   // 获取当前状态

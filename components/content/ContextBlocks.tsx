@@ -130,6 +130,9 @@ export function ContextBlocks({
   const [showBlockMenu, setShowBlockMenu] = useState(false);
   const [blockMenuPosition, setBlockMenuPosition] = useState({ x: 0, y: 0 });
 
+  // 添加翻译显示状态
+  const [showInlineTranslation, setShowInlineTranslation] = useState(false);
+
   // 同步contentEditable的内容，但避免在用户输入时重复更新
   useEffect(() => {
     // 检查是否是可编辑的块类型（文本块或标题块）
@@ -2901,29 +2904,100 @@ export function ContextBlocks({
     };
 
     const handleKeyboardNext = () => {
-      if (activeBlockId !== block.id) return; // 只在当前活动块中响应
-      
-      const sentenceIds = getSentenceIdsFromContent();
-      if (activeIndex !== null && activeIndex < sentenceIds.length - 1) {
+      if (activeIndex !== null && sentences.length > 0) {
         const nextIndex = activeIndex + 1;
-        const sentenceId = sentenceIds[nextIndex];
-        const sentence = embeddedSentences.get(sentenceId);
-        
-        if (sentence) {
-          console.log('键盘触发：播放下一句', { nextIndex, sentenceId });
-          playSentence(sentence, nextIndex);
+        if (nextIndex < sentences.length) {
+          const nextSentence = sentences[nextIndex];
+          if (nextSentence) {
+            playWord(nextSentence, new MouseEvent('click') as any);
+          }
         }
       }
     };
 
-    window.addEventListener('keyboard-previous-sentence', handleKeyboardPrevious);
+    // 添加键盘翻译显隐事件监听
+    const handleKeyboardToggleTranslation = () => {
+      // 只有当前块是活动块时才响应
+      if (activeBlockId === block.id) {
+        const newState = !showInlineTranslation;
+        
+        // 更新全局状态
+        (window as any).globalTranslationState = newState;
+        
+        // 发送全局翻译切换事件
+        window.dispatchEvent(new CustomEvent('global-translation-toggle', {
+          detail: { show: newState, activeBlockId: block.id }
+        }));
+        
+        toast.success(newState ? '显示翻译' : '隐藏翻译', {
+          position: 'bottom-right',
+          duration: 1000,
+        });
+      }
+    };
+
     window.addEventListener('keyboard-next-sentence', handleKeyboardNext);
+    window.addEventListener('keyboard-previous-sentence', handleKeyboardPrevious);
+    window.addEventListener('keyboard-toggle-translation', handleKeyboardToggleTranslation);
     
     return () => {
-      window.removeEventListener('keyboard-previous-sentence', handleKeyboardPrevious);
       window.removeEventListener('keyboard-next-sentence', handleKeyboardNext);
+      window.removeEventListener('keyboard-previous-sentence', handleKeyboardPrevious);
+      window.removeEventListener('keyboard-toggle-translation', handleKeyboardToggleTranslation);
     };
-  }, [activeBlockId, block.id, activeIndex, getSentenceIdsFromContent, embeddedSentences, playSentence]);
+  }, [activeIndex, sentences, activeBlockId, block.id, showInlineTranslation]);
+
+  // 监听全局翻译显示状态
+  useEffect(() => {
+    const handleGlobalTranslationToggle = (e: CustomEvent) => {
+      const { show, activeBlockId } = e.detail;
+      // 只有当前块是活动块时才显示翻译
+      if (activeBlockId === block.id) {
+        setShowInlineTranslation(show);
+      } else {
+        setShowInlineTranslation(false);
+      }
+    };
+
+    window.addEventListener('global-translation-toggle', handleGlobalTranslationToggle as EventListener);
+    
+    return () => {
+      window.removeEventListener('global-translation-toggle', handleGlobalTranslationToggle as EventListener);
+    };
+  }, [block.id]);
+
+  // 当活动块变化时，根据全局翻译状态决定是否显示翻译
+  useEffect(() => {
+    if (activeBlockId === block.id) {
+      // 检查全局翻译状态
+      const globalTranslationState = (window as any).globalTranslationState || false;
+      setShowInlineTranslation(globalTranslationState);
+    } else {
+      setShowInlineTranslation(false);
+    }
+  }, [activeBlockId, block.id]);
+
+  // 监听活动块变化事件，同步翻译状态
+  useEffect(() => {
+    const handleActiveBlockChange = (e: CustomEvent) => {
+      const { activeBlockId: newActiveBlockId } = e.detail;
+      const globalTranslationState = (window as any).globalTranslationState || false;
+      
+      if (newActiveBlockId === block.id && globalTranslationState) {
+        // 当前块成为活动块且全局翻译状态为开启时，显示翻译
+        setShowInlineTranslation(true);
+      } else {
+        // 其他情况隐藏翻译
+        setShowInlineTranslation(false);
+      }
+    };
+
+    window.addEventListener('active-block-changed', handleActiveBlockChange as EventListener);
+    
+    return () => {
+      window.removeEventListener('active-block-changed', handleActiveBlockChange as EventListener);
+    };
+  }, [block.id]);
 
   return (
     <div
@@ -2982,6 +3056,30 @@ export function ContextBlocks({
       )}>
         {renderContent()}
       </div>
+      
+      {/* 内联翻译显示 */}
+      <AnimatePresence>
+        {showInlineTranslation && block.translation_content && (
+          <motion.div
+            className={cn(
+              "mt-2 p-3 rounded-lg border-l-4 border-blue-500/30 bg-blue-50/30 dark:bg-blue-950/20 overflow-hidden",
+              isInAnchorMode ? 'ml-0' : 'ml-6'
+            )}
+            initial={{ opacity: 0, scaleY: 0 }}
+            animate={{ opacity: 1, scaleY: 1 }}
+            exit={{ opacity: 0, scaleY: 0 }}
+            transition={{ 
+              duration: 0.2, 
+              ease: [0.25, 0.46, 0.45, 0.94]
+            }}
+            style={{ transformOrigin: 'top' }}
+          >
+            <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+              {block.translation_content}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       {/* 对齐中状态指示器 */}
       {localAligning && (

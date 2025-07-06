@@ -796,7 +796,7 @@ export function AudioAnchorRenderer({
         position,
         isExpanded: false
       });
-    }, 300);
+    }, 0);
   };
 
   const handleAnchorLeave = () => {
