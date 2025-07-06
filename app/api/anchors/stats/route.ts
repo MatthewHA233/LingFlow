@@ -48,11 +48,11 @@ async function createUserSupabaseClient(authHeader: string | null) {
   return { supabase, userId: user.id };
 }
 
-// 获取时间域统计
-async function getTimeDomainStats(supabase: any, startDate?: string, endDate?: string, groupBy: 'day' | 'week' | 'month' = 'day') {
-  console.log('开始获取时间域数据，参数:', { startDate, endDate, groupBy });
+// 获取时间域统计 - 修复用户权限问题
+async function getTimeDomainStats(supabase: any, userId: string, startDate?: string, endDate?: string, groupBy: 'day' | 'week' | 'month' = 'day') {
+  console.log('开始获取时间域数据，参数:', { userId, startDate, endDate, groupBy });
 
-  // 使用 meaning_blocks_formatted 视图简化查询
+  // 使用 meaning_blocks_formatted 视图并添加用户过滤
   let query = supabase
     .from('meaning_blocks_formatted')
     .select(`
@@ -76,8 +76,10 @@ async function getTimeDomainStats(supabase: any, startDate?: string, endDate?: s
       start_position,
       end_position,
       confidence_score,
-      example_index
+      example_index,
+      user_id
     `)
+    .eq('user_id', userId) // 关键：添加用户过滤
     .order('created_at', { ascending: false });
 
   // 添加日期过滤
@@ -93,7 +95,8 @@ async function getTimeDomainStats(supabase: any, startDate?: string, endDate?: s
   console.log('视图查询结果:', { 
     count: formattedData?.length, 
     error,
-    sample: formattedData?.slice(0, 2)
+    sample: formattedData?.slice(0, 2),
+    userId // 添加用户ID到日志
   });
 
   if (error) {
@@ -321,9 +324,10 @@ async function getTimeDomainStats(supabase: any, startDate?: string, endDate?: s
   return { timeDomains };
 }
 
-// 获取空间域统计
-async function getSpaceDomainStats(supabase: any, bookId?: string, chapterId?: string) {
-  // 空间域功能暂时返回空数组
+// 获取空间域统计 - 修复用户权限问题
+async function getSpaceDomainStats(supabase: any, userId: string, bookId?: string, chapterId?: string) {
+  // 空间域功能暂时返回空数组，但保留用户参数
+  console.log('获取空间域数据，用户ID:', userId);
   return { spaceDomains: [] };
 }
 
@@ -337,10 +341,11 @@ export async function GET(req: NextRequest) {
     // 简单测试：直接查询用户的锚点数量
     const { data: testAnchors, error: testError } = await supabase
       .from('anchors')
-      .select('id, text, created_at')
+      .select('id, text, created_at, user_id')
+      .eq('user_id', userId) // 添加用户过滤
       .limit(5);
 
-    console.log('测试查询结果:', { testAnchors, testError }); // 调试日志
+    console.log('测试查询结果:', { testAnchors, testError, userId }); // 调试日志
 
     // 2. 速率限制检查
     await limiter.check(req, 20, userId);
@@ -362,24 +367,31 @@ export async function GET(req: NextRequest) {
 
     switch (type) {
       case 'time':
-        result = await getTimeDomainStats(supabase, startDate || undefined, endDate || undefined, groupBy);
+        result = await getTimeDomainStats(supabase, userId, startDate || undefined, endDate || undefined, groupBy);
         break;
         
       case 'space':
-        result = await getSpaceDomainStats(supabase, bookId || undefined, chapterId || undefined);
+        result = await getSpaceDomainStats(supabase, userId, bookId || undefined, chapterId || undefined);
         break;
         
       case 'overview':
       default:
         // 获取综合统计
         const [timeStats, spaceStats] = await Promise.all([
-          getTimeDomainStats(supabase, startDate || undefined, endDate || undefined, 'day').catch(() => ({ timeDomains: [] })),
-          getSpaceDomainStats(supabase).catch(() => ({ spaceDomains: [] }))
+          getTimeDomainStats(supabase, userId, startDate || undefined, endDate || undefined, 'day').catch(() => ({ timeDomains: [] })),
+          getSpaceDomainStats(supabase, userId).catch(() => ({ spaceDomains: [] }))
         ]);
 
-        // 基础统计（使用新的数据结构）
-        const { data: anchors } = await supabase.from('anchors').select('id, total_meaning_blocks');
-        const { data: meaningBlocks } = await supabase.from('meaning_blocks').select('current_proficiency');
+        // 基础统计（使用新的数据结构并添加用户过滤）
+        const { data: anchors } = await supabase
+          .from('anchors')
+          .select('id, total_meaning_blocks, user_id')
+          .eq('user_id', userId);
+        
+        const { data: meaningBlocks } = await supabase
+          .from('meaning_blocks')
+          .select('current_proficiency, user_id')
+          .eq('user_id', userId);
         
         const totalAnchors = anchors?.length || 0;
         const totalMeaningBlocks = anchors?.reduce((sum, a) => sum + (a.total_meaning_blocks || 0), 0) || 0;
@@ -401,7 +413,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       type,
-      data: result
+      data: result,
+      userId // 添加用户ID到响应中以便调试
     });
 
   } catch (error) {

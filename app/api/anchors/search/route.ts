@@ -7,43 +7,47 @@ import { headers } from 'next/headers';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
-
 // 设置速率限制器
 const limiter = rateLimit({
   interval: 60 * 1000,
   uniqueTokenPerInterval: 500
 });
 
-// 验证用户身份的辅助函数
-async function authenticateUser(authHeader: string | null) {
+// 验证用户身份并创建用户客户端
+async function createUserSupabaseClient(authHeader: string | null) {
   if (!authHeader) {
     throw new Error('未授权访问');
   }
 
   const token = authHeader.split(' ')[1];
+  
+  // 创建用户客户端，使用用户的访问令牌
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    }
+  );
+
+  // 验证用户身份
   const { data: { user }, error } = await supabase.auth.getUser(token);
   
   if (error || !user) {
     throw new Error('用户验证失败');
   }
   
-  return user.id;
+  return { supabase, userId: user.id };
 }
 
 export async function GET(req: NextRequest) {
   try {
-    // 1. 验证用户身份
-    const userId = await authenticateUser(req.headers.get('Authorization'));
+    // 1. 验证用户身份并创建用户客户端
+    const { supabase, userId } = await createUserSupabaseClient(req.headers.get('Authorization'));
 
     // 2. 速率限制检查
     await limiter.check(req, 20, userId);
@@ -81,15 +85,15 @@ export async function GET(req: NextRequest) {
         )
       `)
       .eq('language', language)
+      .eq('user_id', userId) // 关键：添加用户过滤
       .range(offset, offset + limit - 1);
 
     if (anchorId) {
       // 按锚点ID精确查询
       query = query.eq('id', anchorId);
     } else if (word) {
-      // 按词汇模糊搜索
-      const normalizedWord = word.toLowerCase().trim();
-      query = query.or(`normalized_text.eq.${normalizedWord},text.ilike.%${word}%`);
+      // 按词汇模糊搜索（移除已废弃的normalized_text字段）
+      query = query.ilike('text', `%${word}%`);
     }
 
     const { data: anchors, error } = await query;
@@ -110,7 +114,8 @@ export async function GET(req: NextRequest) {
         includeContexts,
         limit,
         offset
-      }
+      },
+      userId // 添加用户ID到响应中以便调试
     });
 
   } catch (error) {
