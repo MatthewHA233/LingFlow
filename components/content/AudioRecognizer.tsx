@@ -95,14 +95,17 @@ export function AudioRecognizer({
           });
         });
         
-        // 如果有记录，自动选择最新的一条
-        if (data && data.length > 0) {
-          const latestResult = data[0];
-          setAudioUrl(latestResult.audio_url);
-          onAudioUrlChange?.(latestResult.audio_url);
-          setSpeechId(latestResult.id);
-          setStatus('completed');
-        }
+        // 不再自动选择最新的音频记录，让用户手动选择
+        // if (data && data.length > 0) {
+        //   const latestResult = data[0];
+        //   setAudioUrl(latestResult.audio_url);
+        //   onAudioUrlChange?.(latestResult.audio_url);
+        //   setSpeechId(latestResult.id);
+        //   setStatus('completed');
+        // }
+        
+        console.log(`加载了 ${data?.length || 0} 条音频记录，但不自动选择`);
+        setStatus('idle');
       } catch (err) {
         console.error('加载音频记录失败:', err);
         setErrorMessage('加载音频记录失败');
@@ -114,45 +117,12 @@ export function AudioRecognizer({
     }
   }, [bookId, onAudioUrlChange]);
 
-  // 监听 audioUrl 变化
-  useEffect(() => {
-    if (audioUrl) {
-      onAudioUrlChange?.(audioUrl);
-    }
-  }, [audioUrl, onAudioUrlChange]);
-
   // 监听 currentTime 变化
   useEffect(() => {
     if (currentTime !== undefined) {
       onTimeChange?.(currentTime);
     }
   }, [currentTime, onTimeChange]);
-
-  // 监听 speech_id 变化
-  useEffect(() => {
-    const handleSpeechIdChange = (e: CustomEvent) => {
-      console.log('收到 speech-id-changed 事件:', e.detail);
-      const { speechId, audioUrl } = e.detail;
-      
-      // 更新状态
-      setSpeechId(speechId);
-      setAudioUrl(audioUrl);
-      
-      // 查找对应的记录
-      const result = speechResults.find(r => r.id === speechId);
-      if (result) {
-        console.log('找到对应的历史记录:', result);
-        // 更新选中的历史记录
-        setStatus('completed');
-      }
-    };
-
-    window.addEventListener('speech-id-changed', handleSpeechIdChange as EventListener);
-    
-    return () => {
-      window.removeEventListener('speech-id-changed', handleSpeechIdChange as EventListener);
-    };
-  }, [speechResults]);
 
   // 修改事件处理器，区分不同类型的对齐事件
   useEffect(() => {
@@ -220,32 +190,32 @@ export function AudioRecognizer({
   const handleAudioChange = (resultId: string) => {
     const selectedResult = speechResults.find(r => r.id === resultId);
     if (selectedResult) {
-      // 先重置状态
-      setCurrentTime(0);
-      setSpeechId('');  // 先清空 speechId 触发重置
-      
-      // 然后设置新的音频
-      setTimeout(() => {
+      // 不再强制切换音频，只更新当前组件的状态用于显示
+      setSpeechId(selectedResult.id);
         setAudioUrl(selectedResult.audio_url);
-        onAudioUrlChange?.(selectedResult.audio_url);
-        setSpeechId(selectedResult.id);
         setStatus('completed');
         
-        // 触发自定义事件告知音频已加载
-        window.dispatchEvent(new CustomEvent('audio-metadata-loaded', { 
-          detail: { url: selectedResult.audio_url } 
-        }));
-      }, 0);
+      // 不再调用 onAudioUrlChange，避免强制控制全局音频
+      // onAudioUrlChange?.(selectedResult.audio_url);
+      
+      // 也不再触发音频元数据加载事件
+      // window.dispatchEvent(new CustomEvent('audio-metadata-loaded', { 
+      //   detail: { url: selectedResult.audio_url } 
+      // }));
+      
+      console.log('选择了历史记录，但不切换全局音频:', selectedResult.id);
     }
   };
 
   const handleUploadSuccess = async (newAudioUrl: string, newSpeechId: string) => {
     try {
-      // 先更新状态
+      // 更新本地状态
       setAudioUrl(newAudioUrl);
-      onAudioUrlChange?.(newAudioUrl);
       setSpeechId(newSpeechId);
       setStatus('processing');
+      
+      // 只有在这种情况下才通知父组件，因为这是用户主动上传的新音频
+      onAudioUrlChange?.(newAudioUrl);
       
       // 等待识别完成
       let attempts = 0;
@@ -392,19 +362,18 @@ export function AudioRecognizer({
         />
 
         {/* 句子播放器和历史记录 */}
-        {speechId && (
+        {speechResults.length > 0 && (
           <div className="flex-1">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-muted-foreground">
-                历史记录
+                历史记录 ({speechResults.length} 条)
               </h3>
-              {status === 'completed' && (
                 <Select
-                  value={speechId}
+                value={speechId || ''}
                   onValueChange={handleAudioChange}
                 >
                   <SelectTrigger className="w-32 h-6 text-xs border-muted-foreground/50">
-                    <SelectValue placeholder="选择记录" />
+                  <SelectValue placeholder="查看记录" />
                   </SelectTrigger>
                   <SelectContent>
                     {speechResults.map((result) => (
@@ -418,8 +387,10 @@ export function AudioRecognizer({
                     ))}
                   </SelectContent>
                 </Select>
-              )}
             </div>
+            
+            {/* 只有选择了某个记录时才显示播放器 */}
+            {speechId && (
             <div className="bg-background/50 rounded-md border border-border/50">
               <SentencePlayer
                 key={`player-${speechId}`}
@@ -429,6 +400,7 @@ export function AudioRecognizer({
                 disabled={status === 'processing'}
               />
             </div>
+            )}
           </div>
         )}
       </div>

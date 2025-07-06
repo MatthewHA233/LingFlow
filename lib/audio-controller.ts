@@ -52,7 +52,7 @@ class AudioControllerClass {
     isPlaying: false,
     currentTime: 0,
     duration: 0,
-    volume: 1,
+    volume: 0.7,
     playbackRate: 1,
     context: 'main',
     mode: 'continuous',
@@ -70,8 +70,12 @@ class AudioControllerClass {
   private playbackTimeout: any = null;
   private isInitialized = false;
   
-  // 添加缓存存储
+  // 添加语音缓存
   private speechCache: Map<string, SpeechResult> = new Map();
+  
+  // 添加播放请求队列管理
+  private currentPlayPromise: Promise<void> | null = null;
+  private isPlayRequested = false;
   
   constructor() {
     // 检查是否在浏览器环境
@@ -353,6 +357,8 @@ class AudioControllerClass {
       return;
     }
 
+    console.log('[AudioController] 设置音频源', { url, speechId });
+
     // 先暂停当前播放
     this.audio.pause();
     
@@ -367,25 +373,51 @@ class AudioControllerClass {
     
     // 设置新源
     this.audio.src = url;
-    this.audio.load();
     
     // 广播源变更事件
     window.dispatchEvent(new CustomEvent(AUDIO_EVENTS.SOURCE_CHANGE, {
       detail: { url }
     }));
     
-    // 加载完成后解析Promise
-    const handleCanPlay = () => {
-      this.audio?.removeEventListener('canplay', handleCanPlay);
-    };
-    
-    const handleError = (e: ErrorEvent) => {
-      this.audio?.removeEventListener('error', handleError);
-      throw new Error('加载音频失败');
-    };
-    
-    this.audio.addEventListener('canplay', handleCanPlay);
-    this.audio.addEventListener('error', handleError);
+    // 使用 Promise 来处理加载
+    return new Promise((resolve, reject) => {
+      const handleCanPlay = () => {
+        if (!this.audio) return;
+        this.audio.removeEventListener('canplay', handleCanPlay);
+        this.audio.removeEventListener('error', handleError);
+        console.log('[AudioController] 音频加载完成');
+        resolve();
+      };
+      
+      const handleError = (e: Event) => {
+        if (!this.audio) return;
+        this.audio.removeEventListener('canplay', handleCanPlay);
+        this.audio.removeEventListener('error', handleError);
+        console.error('[AudioController] 音频加载失败:', e);
+        // 不抛出错误，而是静默处理
+        resolve();
+      };
+      
+      if (!this.audio) {
+        resolve();
+        return;
+      }
+      
+      this.audio.addEventListener('canplay', handleCanPlay);
+      this.audio.addEventListener('error', handleError);
+      
+      // 开始加载
+      this.audio.load();
+      
+      // 设置超时，避免无限等待
+      setTimeout(() => {
+        if (!this.audio) return;
+        this.audio.removeEventListener('canplay', handleCanPlay);
+        this.audio.removeEventListener('error', handleError);
+        console.log('[AudioController] 音频加载超时，继续执行');
+        resolve();
+      }, 5000);
+    });
   }
   
   // 修改 setPlayMode 方法
@@ -482,6 +514,35 @@ class AudioControllerClass {
       }
     });
 
+    // 如果有正在进行的播放请求，等待它完成
+    if (this.currentPlayPromise) {
+      try {
+        await this.currentPlayPromise;
+      } catch (error) {
+        // 忽略之前请求的错误
+        console.log('[AudioController] 忽略之前播放请求的错误:', error);
+      }
+    }
+
+    // 创建新的播放请求
+    this.currentPlayPromise = this.executePlay(options);
+    
+    try {
+      await this.currentPlayPromise;
+    } finally {
+      this.currentPlayPromise = null;
+    }
+  }
+
+  private async executePlay(options: {
+    url?: string;
+    startTime?: number;
+    endTime?: number;
+    context?: PlayContext;
+    loop?: boolean;
+    speechId?: string;
+    onEnd?: () => void;
+  }): Promise<void> {
     try {
       // 如果提供了新的URL，设置新的音频源
       if (options.url && options.url !== this.state.url) {
@@ -532,9 +593,22 @@ class AudioControllerClass {
         this.audio.addEventListener('ended', handleEnd);
       }
 
-      // 开始播放
+      // 开始播放 - 添加重试逻辑
       console.log('[AudioController] 开始播放');
-      await this.audio.play();
+      this.isPlayRequested = true;
+      
+      try {
+        await this.audio.play();
+      } catch (error) {
+        // 如果是AbortError且音频仍在播放状态，忽略错误
+        if (error instanceof DOMException && 
+            error.name === 'AbortError' && 
+            !this.audio.paused) {
+          console.log('[AudioController] 忽略AbortError，音频正在播放');
+        } else {
+          throw error;
+        }
+      }
 
       // 更新状态
       this.updateState({
@@ -544,7 +618,10 @@ class AudioControllerClass {
 
     } catch (error) {
       console.error('[AudioController] 播放失败:', error);
+      this.isPlayRequested = false;
       throw error;
+    } finally {
+      this.isPlayRequested = false;
     }
   }
   
@@ -552,6 +629,8 @@ class AudioControllerClass {
   pause(): void {
     if (!this.audio) return;
     
+    console.log('[AudioController] 暂停播放');
+    this.isPlayRequested = false;
     this.audio.pause();
     this.updateState({ isPlaying: false });
   }

@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useLoginDialog } from '@/hooks/use-login-dialog';
 import { AuthDialog } from '@/components/auth/AuthDialog';
 import { Toaster } from '@/components/ui/sonner';
+import '@/lib/keyboard-controller';
 
 interface ClientLayoutProps {
   children: React.ReactNode;

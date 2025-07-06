@@ -131,6 +131,11 @@ export function DraggableAudioPlayer({
   const [loopAnimation, setLoopAnimation] = useState<'none' | 'green' | 'orange' | 'scale'>('none');
   const loopAnimationTimerRef = useRef<NodeJS.Timeout | null>(null);
   
+  // 添加快捷键弹窗状态
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const keyboardHelpTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
   // 动画函数
   const animate = useCallback((time: number) => {
     // 第一帧初始化
@@ -531,6 +536,20 @@ export function DraggableAudioPlayer({
     });
   }, [playbackRate]);
 
+  // 监听键盘控制器倍速设置事件 - 移到handlePlaybackRateChange定义之后
+  useEffect(() => {
+    const handleKeyboardPlaybackRate = (e: CustomEvent) => {
+      const { rate } = e.detail;
+      // 直接调用handlePlaybackRateChange来触发动画效果
+      handlePlaybackRateChange(rate);
+    };
+
+    window.addEventListener('keyboard-playback-rate-change', handleKeyboardPlaybackRate as EventListener);
+    return () => {
+      window.removeEventListener('keyboard-playback-rate-change', handleKeyboardPlaybackRate as EventListener);
+    };
+  }, [handlePlaybackRateChange]);
+
   // 清理定时器 - 添加到组件卸载时
   useEffect(() => {
     return () => {
@@ -582,8 +601,70 @@ export function DraggableAudioPlayer({
       if (loopAnimationTimerRef.current) {
         clearTimeout(loopAnimationTimerRef.current);
       }
+      if (keyboardHelpTimerRef.current) {
+        clearTimeout(keyboardHelpTimerRef.current);
+      }
     };
   }, []);
+
+  // 处理快捷键弹窗显示
+  const handleKeyboardHelpMouseEnter = (e: React.MouseEvent) => {
+    const buttonRect = e.currentTarget.getBoundingClientRect();
+    // 找到控制面板容器
+    const controlPanel = e.currentTarget.closest('.progress-area');
+    const panelRect = controlPanel?.getBoundingClientRect();
+    
+    // 如果找到了控制面板，相对于面板居中；否则相对于按钮居中
+    const centerX = panelRect ? 
+      panelRect.left + panelRect.width / 2 - 15 : // 稍微靠左15px
+      buttonRect.left + buttonRect.width / 2 - 15;
+    
+    setMousePosition({
+      x: centerX,
+      y: buttonRect.bottom + 8
+    });
+    
+    console.log('Button rect:', buttonRect);
+    console.log('Panel rect:', panelRect);
+    console.log('Popup position:', { x: centerX, y: buttonRect.bottom + 8 });
+    
+    // 清除之前的定时器
+    if (keyboardHelpTimerRef.current) {
+      clearTimeout(keyboardHelpTimerRef.current);
+    }
+    
+    // 延迟显示弹窗
+    keyboardHelpTimerRef.current = setTimeout(() => {
+      setShowKeyboardHelp(true);
+    }, 300);
+  };
+
+  const handleKeyboardHelpMouseLeave = () => {
+    // 清除定时器
+    if (keyboardHelpTimerRef.current) {
+      clearTimeout(keyboardHelpTimerRef.current);
+    }
+    
+    // 延迟隐藏弹窗
+    keyboardHelpTimerRef.current = setTimeout(() => {
+      setShowKeyboardHelp(false);
+    }, 100);
+  };
+
+  // 处理弹窗鼠标事件
+  const handlePopupMouseEnter = () => {
+    // 鼠标进入弹窗时，清除隐藏定时器
+    if (keyboardHelpTimerRef.current) {
+      clearTimeout(keyboardHelpTimerRef.current);
+    }
+  };
+
+  const handlePopupMouseLeave = () => {
+    // 鼠标离开弹窗时，延迟隐藏
+    keyboardHelpTimerRef.current = setTimeout(() => {
+      setShowKeyboardHelp(false);
+    }, 100);
+  };
 
   // 格式化时间函数
   const formatTime = (ms: number): string => {
@@ -691,6 +772,8 @@ export function DraggableAudioPlayer({
           touchAction: 'none',
           WebkitTapHighlightColor: 'transparent',
           WebkitTouchCallout: 'none',
+          WebkitUserSelect: 'none',
+          userSelect: 'none',
           transform: 'none',
           transformOrigin: 'center center',
           pointerEvents: isVisible ? 'auto' : 'none'
@@ -1017,10 +1100,10 @@ export function DraggableAudioPlayer({
             <div 
               className="mx-auto overflow-hidden"
               style={{
-                width: (isMobile ? isControlExpanded : isProgressHovered) ? '164px' : '120px',
-                borderBottomLeftRadius: (isMobile ? isControlExpanded : isProgressHovered) ? '12px' : '60px',
-                borderBottomRightRadius: (isMobile ? isControlExpanded : isProgressHovered) ? '12px' : '60px',
-                boxShadow: (isMobile ? isControlExpanded : isProgressHovered) ? 
+                width: (isMobile ? isControlExpanded : (isProgressHovered || showKeyboardHelp)) ? '164px' : '120px',
+                borderBottomLeftRadius: (isMobile ? isControlExpanded : (isProgressHovered || showKeyboardHelp)) ? '12px' : '60px',
+                borderBottomRightRadius: (isMobile ? isControlExpanded : (isProgressHovered || showKeyboardHelp)) ? '12px' : '60px',
+                boxShadow: (isMobile ? isControlExpanded : (isProgressHovered || showKeyboardHelp)) ? 
                   '0 0 0 1px rgba(56, 182, 255, 0.6), 0 4px 8px rgba(0, 0, 0, 0.3)' : 
                   '0 0 0 1px rgba(56, 182, 255, 0.3)',
                 transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
@@ -1035,12 +1118,12 @@ export function DraggableAudioPlayer({
                 style={{
                   position: 'relative',
                   top: 0,
-                  height: (isMobile ? isControlExpanded : isProgressHovered) ? '55px' : '24px',
+                  height: (isMobile ? isControlExpanded : (isProgressHovered || showKeyboardHelp)) ? '55px' : '24px',
                   transition: 'height 0.4s cubic-bezier(0.21, 1, 0.36, 1)'
                 }}
               >
                 {/* 科技感边框 */}
-                {(isMobile ? isControlExpanded : isProgressHovered) && (
+                {(isMobile ? isControlExpanded : (isProgressHovered || showKeyboardHelp)) && (
                   <div className="absolute inset-0 opacity-30 pointer-events-none">
                     <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
                     <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
@@ -1053,7 +1136,7 @@ export function DraggableAudioPlayer({
                 <div className="progress-area">
                   {/* 时间和音量显示 */}
                   <div className="text-center text-white text-xs font-medium mb-0.5 flex justify-center items-center gap-2">
-                    {(isMobile ? isControlExpanded : isProgressHovered) ? (
+                    {(isMobile ? isControlExpanded : (isProgressHovered || showKeyboardHelp)) ? (
                       <>
                         <div className="flex items-center">
                           <span className="text-blue-300/90">{formatTime(currentTime1)}</span>
@@ -1084,7 +1167,7 @@ export function DraggableAudioPlayer({
                   
                   {/* 控制区底部 */}
                   <AnimatePresence>
-                    {(isMobile ? isControlExpanded : isProgressHovered) && (
+                    {(isMobile ? isControlExpanded : (isProgressHovered || showKeyboardHelp)) && (
                       <motion.div 
                         className="mt-1"
                         initial={{ opacity: 0, y: -5 }}
@@ -1255,7 +1338,9 @@ export function DraggableAudioPlayer({
                             
                             {/* 详情按钮 */}
                             <button 
-                              className="w-5 h-5 rounded-full bg-blue-900/30 flex items-center justify-center"
+                              className="w-5 h-5 rounded-full bg-blue-900/30 flex items-center justify-center relative"
+                              onMouseEnter={handleKeyboardHelpMouseEnter}
+                              onMouseLeave={handleKeyboardHelpMouseLeave}
                             >
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
                                 className="text-blue-300" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1362,6 +1447,226 @@ export function DraggableAudioPlayer({
           </svg>
         </div>
       </motion.div>
+      
+      {/* 快捷键弹窗 */}
+      <AnimatePresence>
+        {showKeyboardHelp && (
+          <motion.div
+            className="fixed z-[10000] pointer-events-auto"
+            style={{
+              left: mousePosition.x,
+              top: mousePosition.y,
+              transform: 'translateX(-50%)'
+            }}
+            initial={{ opacity: 0, scale: 0.8, y: -10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8, y: -10 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            onMouseEnter={handlePopupMouseEnter}
+            onMouseLeave={handlePopupMouseLeave}
+          >
+            <div className="bg-black/90 backdrop-blur-lg rounded-lg p-3 shadow-2xl border border-blue-400/30"
+                 style={{
+                   boxShadow: `
+                     0 0 20px 2px rgba(56, 182, 255, 0.2),
+                     0 0 10px 1px rgba(147, 51, 234, 0.15),
+                     0 4px 20px rgba(0, 0, 0, 0.5)
+                   `
+                 }}>
+              {/* 弹窗标题 */}
+              <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-blue-400/20">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+                  className="text-blue-300" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                  <path d="M6 8h.01"></path>
+                  <path d="M10 8h.01"></path>
+                  <path d="M14 8h.01"></path>
+                  <path d="M18 8h.01"></path>
+                  <path d="M8 12h.01"></path>
+                  <path d="M12 12h.01"></path>
+                  <path d="M16 12h.01"></path>
+                  <path d="M7 16h10"></path>
+                </svg>
+                <span className="text-xs font-medium text-blue-300">快捷键控制</span>
+              </div>
+              
+              {/* 快捷键列表 */}
+              <div className="space-y-1.5 text-[11px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-white/80">开关快捷控制</span>
+                  <kbd 
+                    className="px-1.5 py-0.5 bg-blue-900/50 rounded text-blue-300 font-mono text-[10px] cursor-pointer hover:bg-blue-800/60 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // 模拟 Ctrl+Alt+A 按键
+                      const event = new KeyboardEvent('keydown', {
+                        key: 'a',
+                        ctrlKey: true,
+                        altKey: true,
+                        bubbles: true
+                      });
+                      window.dispatchEvent(event);
+                    }}
+                  >
+                    Ctrl+Alt+A
+                  </kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/80">播放/暂停</span>
+                  <kbd 
+                    className="px-1.5 py-0.5 bg-blue-900/50 rounded text-blue-300 font-mono text-[10px] cursor-pointer hover:bg-blue-800/60 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const event = new KeyboardEvent('keydown', {
+                        key: ' ',
+                        bubbles: true
+                      });
+                      window.dispatchEvent(event);
+                    }}
+                  >
+                    Space
+                  </kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/80">上一句/下一句</span>
+                  <div className="flex gap-1">
+                    <kbd 
+                      className="px-1.5 py-0.5 bg-blue-900/50 rounded text-blue-300 font-mono text-[10px] cursor-pointer hover:bg-blue-800/60 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const event = new KeyboardEvent('keydown', {
+                          key: 'w',
+                          bubbles: true
+                        });
+                        window.dispatchEvent(event);
+                      }}
+                    >
+                      W
+                    </kbd>
+                    <kbd 
+                      className="px-1.5 py-0.5 bg-blue-900/50 rounded text-blue-300 font-mono text-[10px] cursor-pointer hover:bg-blue-800/60 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const event = new KeyboardEvent('keydown', {
+                          key: 's',
+                          bubbles: true
+                        });
+                        window.dispatchEvent(event);
+                      }}
+                    >
+                      S
+                    </kbd>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/80">快退/快进</span>
+                  <div className="flex gap-1">
+                    <kbd 
+                      className="px-1.5 py-0.5 bg-blue-900/50 rounded text-blue-300 font-mono text-[10px] cursor-pointer hover:bg-blue-800/60 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const event = new KeyboardEvent('keydown', {
+                          key: 'a',
+                          bubbles: true
+                        });
+                        window.dispatchEvent(event);
+                      }}
+                    >
+                      A
+                    </kbd>
+                    <kbd 
+                      className="px-1.5 py-0.5 bg-blue-900/50 rounded text-blue-300 font-mono text-[10px] cursor-pointer hover:bg-blue-800/60 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const event = new KeyboardEvent('keydown', {
+                          key: 'd',
+                          bubbles: true
+                        });
+                        window.dispatchEvent(event);
+                      }}
+                    >
+                      D
+                    </kbd>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/80">播放倍速</span>
+                  <div className="flex gap-1">
+                    <kbd 
+                      className="px-1.5 py-0.5 bg-blue-900/50 rounded text-blue-300 font-mono text-[10px] cursor-pointer hover:bg-blue-800/60 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // 循环触发1-6按键
+                        const keys = ['1', '2', '3', '4', '5', '6'];
+                        let currentIndex = 0;
+                        const triggerNext = () => {
+                          const event = new KeyboardEvent('keydown', {
+                            key: keys[currentIndex],
+                            bubbles: true
+                          });
+                          window.dispatchEvent(event);
+                          currentIndex = (currentIndex + 1) % keys.length;
+                        };
+                        triggerNext();
+                      }}
+                    >
+                      1-6
+                    </kbd>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/80">循环模式</span>
+                  <kbd 
+                    className="px-1.5 py-0.5 bg-blue-900/50 rounded text-blue-300 font-mono text-[10px] cursor-pointer hover:bg-blue-800/60 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const event = new KeyboardEvent('keydown', {
+                        key: 'q',
+                        bubbles: true
+                      });
+                      window.dispatchEvent(event);
+                    }}
+                  >
+                    Q
+                  </kbd>
+                </div>
+              </div>
+              
+              {/* 底部提示 */}
+              <div className="mt-2 pt-1.5 border-t border-blue-400/20">
+                <p className="text-[9px] text-white/60 text-center">
+                  先按 <kbd 
+                    className="px-1 py-0.5 bg-blue-900/30 rounded text-blue-300 font-mono text-[9px] cursor-pointer hover:bg-blue-800/40 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const event = new KeyboardEvent('keydown', {
+                        key: 'a',
+                        ctrlKey: true,
+                        altKey: true,
+                        bubbles: true
+                      });
+                      window.dispatchEvent(event);
+                    }}
+                  >
+                    Ctrl+Alt+A
+                  </kbd> 开启控制模式
+                </p>
+              </div>
+            </div>
+            
+            {/* 弹窗箭头 */}
+            <div className="absolute -top-2 left-1/2 transform -translate-x-1/2">
+              <div className="w-4 h-4 bg-black/90 border-l border-t border-blue-400/30 transform rotate-45"
+                   style={{
+                     boxShadow: `
+                       0 0 10px 1px rgba(56, 182, 255, 0.1),
+                       0 0 5px 0 rgba(147, 51, 234, 0.1)
+                     `
+                   }}></div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 } 

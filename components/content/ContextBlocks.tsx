@@ -2882,6 +2882,49 @@ export function ContextBlocks({
     onShowSplitView?.(block.id, 'translation');
   }, [block.id, onShowSplitView]);
 
+  // 监听键盘快捷键事件
+  useEffect(() => {
+    const handleKeyboardPrevious = () => {
+      if (activeBlockId !== block.id) return; // 只在当前活动块中响应
+      
+      const sentenceIds = getSentenceIdsFromContent();
+      if (activeIndex !== null && activeIndex > 0) {
+        const prevIndex = activeIndex - 1;
+        const sentenceId = sentenceIds[prevIndex];
+        const sentence = embeddedSentences.get(sentenceId);
+        
+        if (sentence) {
+          console.log('键盘触发：播放上一句', { prevIndex, sentenceId });
+          playSentence(sentence, prevIndex);
+        }
+      }
+    };
+
+    const handleKeyboardNext = () => {
+      if (activeBlockId !== block.id) return; // 只在当前活动块中响应
+      
+      const sentenceIds = getSentenceIdsFromContent();
+      if (activeIndex !== null && activeIndex < sentenceIds.length - 1) {
+        const nextIndex = activeIndex + 1;
+        const sentenceId = sentenceIds[nextIndex];
+        const sentence = embeddedSentences.get(sentenceId);
+        
+        if (sentence) {
+          console.log('键盘触发：播放下一句', { nextIndex, sentenceId });
+          playSentence(sentence, nextIndex);
+        }
+      }
+    };
+
+    window.addEventListener('keyboard-previous-sentence', handleKeyboardPrevious);
+    window.addEventListener('keyboard-next-sentence', handleKeyboardNext);
+    
+    return () => {
+      window.removeEventListener('keyboard-previous-sentence', handleKeyboardPrevious);
+      window.removeEventListener('keyboard-next-sentence', handleKeyboardNext);
+    };
+  }, [activeBlockId, block.id, activeIndex, getSentenceIdsFromContent, embeddedSentences, playSentence]);
+
   return (
     <div
       ref={blockRef}
