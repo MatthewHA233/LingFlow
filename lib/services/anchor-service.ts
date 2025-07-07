@@ -257,7 +257,7 @@ export class DirectAnchorQueries {
   }
 
   // 根据文本查找锚点（使用新的表结构）
-  async getAnchorByText(text: string, language: string = 'en'): Promise<Anchor | null> {
+  async getAnchorByText(text: string, userId: string, language: string = 'en'): Promise<Anchor | null> {
     const { data, error } = await this.supabase
       .from('anchors')
       .select(`
@@ -271,6 +271,7 @@ export class DirectAnchorQueries {
       `)
       .eq('text', text.trim()) // 使用 text 字段而不是 normalized_text
       .eq('language', language)
+      .eq('user_id', userId) // 添加用户过滤
       .single();
 
     if (error) {
@@ -284,12 +285,13 @@ export class DirectAnchorQueries {
   }
 
   // 使用格式化视图查询锚点
-  async getFormattedAnchorByText(text: string, language: string = 'en') {
+  async getFormattedAnchorByText(text: string, userId: string, language: string = 'en') {
     const { data, error } = await this.supabase
       .from('meaning_blocks_formatted')
       .select('*')
       .eq('anchor_text', text.trim())
-      .eq('language', language);
+      .eq('language', language)
+      .eq('user_id', userId); // 添加用户过滤
 
     if (error) {
       throw error;
@@ -299,10 +301,11 @@ export class DirectAnchorQueries {
   }
 
   // 根据音标搜索
-  async searchByPhonetic(phoneticPattern: string) {
+  async searchByPhonetic(phoneticPattern: string, userId: string) {
     const { data, error } = await this.supabase
       .from('meaning_blocks_formatted')
       .select('*')
+      .eq('user_id', userId) // 添加用户过滤
       .ilike('phonetic', `%${phoneticPattern}%`);
 
     if (error) {
@@ -313,10 +316,11 @@ export class DirectAnchorQueries {
   }
 
   // 根据词性搜索
-  async searchByPartOfSpeech(partOfSpeech: string) {
+  async searchByPartOfSpeech(partOfSpeech: string, userId: string) {
     const { data, error } = await this.supabase
       .from('meaning_blocks_formatted')
       .select('*')
+      .eq('user_id', userId) // 添加用户过滤
       .contains('tags', [partOfSpeech]);
 
     if (error) {
@@ -360,11 +364,12 @@ export class DirectAnchorQueries {
   }
 
   // 获取含义块的统计信息
-  async getMeaningBlockStats() {
+  async getMeaningBlockStats(userId: string) {
     // 获取词性分布
     const { data: posDistribution, error: posError } = await this.supabase
       .from('meaning_blocks_formatted')
-      .select('tags');
+      .select('tags')
+      .eq('user_id', userId); // 添加用户过滤
 
     if (posError) {
       throw posError;
@@ -381,11 +386,13 @@ export class DirectAnchorQueries {
     // 获取总体统计
     const { count: totalMeaningBlocks } = await this.supabase
       .from('meaning_blocks')
-      .select('*', { count: 'exact', head: true });
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId); // 添加用户过滤
 
     const { count: totalAnchors } = await this.supabase
       .from('anchors')
-      .select('*', { count: 'exact', head: true });
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId); // 添加用户过滤
 
     return {
       totalAnchors: totalAnchors || 0,

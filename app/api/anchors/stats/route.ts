@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
 
 // 强制动态渲染
 export const dynamic = 'force-dynamic';
@@ -17,42 +15,39 @@ const limiter = rateLimit({
   uniqueTokenPerInterval: 500
 });
 
-// 验证用户身份并创建用户客户端
-async function createUserSupabaseClient(authHeader: string | null) {
+// 创建服务客户端（用于绕过RLS策略，但仍需手动过滤用户数据）
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
+
+// 验证用户身份的辅助函数
+async function authenticateUser(authHeader: string | null) {
   if (!authHeader) {
     throw new Error('未授权访问');
   }
 
   const token = authHeader.split(' ')[1];
-  
-  // 创建用户客户端，使用用户的访问令牌
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      }
-    }
-  );
-
-  // 验证用户身份
   const { data: { user }, error } = await supabase.auth.getUser(token);
   
   if (error || !user) {
     throw new Error('用户验证失败');
   }
   
-  return { supabase, userId: user.id };
+  return user.id;
 }
 
-// 获取时间域统计 - 修复用户权限问题
-async function getTimeDomainStats(supabase: any, userId: string, startDate?: string, endDate?: string, groupBy: 'day' | 'week' | 'month' = 'day') {
+// 获取时间域统计 - 使用服务密钥但显式过滤用户数据
+async function getTimeDomainStats(userId: string, startDate?: string, endDate?: string, groupBy: 'day' | 'week' | 'month' = 'day') {
   console.log('开始获取时间域数据，参数:', { userId, startDate, endDate, groupBy });
 
-  // 使用 meaning_blocks_formatted 视图并添加用户过滤
+  // 使用服务密钥查询，但显式添加用户过滤
   let query = supabase
     .from('meaning_blocks_formatted')
     .select(`
@@ -79,7 +74,7 @@ async function getTimeDomainStats(supabase: any, userId: string, startDate?: str
       example_index,
       user_id
     `)
-    .eq('user_id', userId) // 关键：添加用户过滤
+    .eq('user_id', userId) // 关键：显式添加用户过滤
     .order('created_at', { ascending: false });
 
   // 添加日期过滤
@@ -324,8 +319,8 @@ async function getTimeDomainStats(supabase: any, userId: string, startDate?: str
   return { timeDomains };
 }
 
-// 获取空间域统计 - 修复用户权限问题
-async function getSpaceDomainStats(supabase: any, userId: string, bookId?: string, chapterId?: string) {
+// 获取空间域统计 - 使用服务密钥但显式过滤用户数据
+async function getSpaceDomainStats(userId: string, bookId?: string, chapterId?: string) {
   // 空间域功能暂时返回空数组，但保留用户参数
   console.log('获取空间域数据，用户ID:', userId);
   return { spaceDomains: [] };
@@ -334,7 +329,7 @@ async function getSpaceDomainStats(supabase: any, userId: string, bookId?: strin
 export async function GET(req: NextRequest) {
   try {
     // 1. 验证用户身份
-    const { supabase, userId } = await createUserSupabaseClient(req.headers.get('Authorization'));
+    const userId = await authenticateUser(req.headers.get('Authorization'));
 
     console.log('用户ID:', userId); // 调试日志
 
@@ -342,7 +337,7 @@ export async function GET(req: NextRequest) {
     const { data: testAnchors, error: testError } = await supabase
       .from('anchors')
       .select('id, text, created_at, user_id')
-      .eq('user_id', userId) // 添加用户过滤
+      .eq('user_id', userId) // 显式添加用户过滤
       .limit(5);
 
     console.log('测试查询结果:', { testAnchors, testError, userId }); // 调试日志
@@ -367,22 +362,22 @@ export async function GET(req: NextRequest) {
 
     switch (type) {
       case 'time':
-        result = await getTimeDomainStats(supabase, userId, startDate || undefined, endDate || undefined, groupBy);
+        result = await getTimeDomainStats(userId, startDate || undefined, endDate || undefined, groupBy);
         break;
         
       case 'space':
-        result = await getSpaceDomainStats(supabase, userId, bookId || undefined, chapterId || undefined);
+        result = await getSpaceDomainStats(userId, bookId || undefined, chapterId || undefined);
         break;
         
       case 'overview':
       default:
         // 获取综合统计
         const [timeStats, spaceStats] = await Promise.all([
-          getTimeDomainStats(supabase, userId, startDate || undefined, endDate || undefined, 'day').catch(() => ({ timeDomains: [] })),
-          getSpaceDomainStats(supabase, userId).catch(() => ({ spaceDomains: [] }))
+          getTimeDomainStats(userId, startDate || undefined, endDate || undefined, 'day').catch(() => ({ timeDomains: [] })),
+          getSpaceDomainStats(userId).catch(() => ({ spaceDomains: [] }))
         ]);
 
-        // 基础统计（使用新的数据结构并添加用户过滤）
+        // 基础统计（使用服务密钥但显式添加用户过滤）
         const { data: anchors } = await supabase
           .from('anchors')
           .select('id, total_meaning_blocks, user_id')

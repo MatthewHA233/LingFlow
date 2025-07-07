@@ -33,6 +33,7 @@ export interface MeaningBlocksCache {
   data: MeaningBlockFormatted[];
   timestamp: number;
   contextBlockId: string;
+  userId: string;
 }
 
 // 缓存管理
@@ -44,7 +45,7 @@ class MeaningBlocksCacheManager {
     return `${this.CACHE_KEY_PREFIX}${contextBlockId}`;
   }
 
-  get(contextBlockId: string): MeaningBlockFormatted[] | null {
+  get(contextBlockId: string, userId: string): MeaningBlockFormatted[] | null {
     try {
       const cached = localStorage.getItem(this.getCacheKey(contextBlockId));
       if (!cached) return null;
@@ -58,6 +59,13 @@ class MeaningBlocksCacheManager {
         return null;
       }
 
+      // 检查用户ID是否匹配（安全性）
+      if (data.userId !== userId) {
+        console.warn('缓存用户ID不匹配，清除缓存');
+        this.clear(contextBlockId);
+        return null;
+      }
+
       return data.data;
     } catch (error) {
       console.warn('读取含义块缓存失败:', error);
@@ -66,12 +74,13 @@ class MeaningBlocksCacheManager {
     }
   }
 
-  set(contextBlockId: string, data: MeaningBlockFormatted[]): void {
+  set(contextBlockId: string, data: MeaningBlockFormatted[], userId: string): void {
     try {
       const cacheData: MeaningBlocksCache = {
         data,
         timestamp: Date.now(),
-        contextBlockId
+        contextBlockId,
+        userId
       };
 
       localStorage.setItem(
@@ -107,7 +116,7 @@ class MeaningBlocksCacheManager {
   }
 
   // 新增：检查缓存是否存在
-  has(contextBlockId: string): boolean {
+  has(contextBlockId: string, userId: string): boolean {
     try {
       const cached = localStorage.getItem(this.getCacheKey(contextBlockId));
       if (!cached) return false;
@@ -115,7 +124,7 @@ class MeaningBlocksCacheManager {
       const data: MeaningBlocksCache = JSON.parse(cached);
       const now = Date.now();
 
-      return (now - data.timestamp) <= this.MAX_AGE;
+      return (now - data.timestamp) <= this.MAX_AGE && data.userId === userId;
     } catch (error) {
       return false;
     }
@@ -128,27 +137,52 @@ const cacheManager = new MeaningBlocksCacheManager();
 // 含义块服务类
 export class MeaningBlocksService {
   /**
+   * 获取当前用户ID
+   */
+  private static async getCurrentUserId(): Promise<string> {
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      
+      if (error || !user) {
+        throw new Error('用户未登录或验证失败');
+      }
+      
+      return user.id;
+    } catch (error) {
+      console.error('获取用户ID失败:', error);
+      throw new Error('无法获取用户身份信息');
+    }
+  }
+
+  /**
    * 根据语境块ID获取相关的含义块数据
    */
   static async getMeaningBlocksByContextId(
     contextBlockId: string,
     useCache: boolean = true
   ): Promise<MeaningBlockFormatted[]> {
-    // 如果不使用缓存，直接从数据库获取
-    if (!useCache) {
-      console.log(`🔄 强制从数据库获取语境块 ${contextBlockId} 的含义块数据（跳过缓存）`);
-      return this.fetchFromDatabase(contextBlockId, true);
-    }
+    try {
+      const userId = await this.getCurrentUserId();
 
-    // 先尝试从缓存获取
-    const cached = cacheManager.get(contextBlockId);
-    if (cached) {
-      console.log(`📦 从缓存获取语境块 ${contextBlockId} 的含义块数据 (${cached.length} 个)`);
-      return cached;
-    }
+      // 如果不使用缓存，直接从数据库获取
+      if (!useCache) {
+        console.log(`🔄 强制从数据库获取语境块 ${contextBlockId} 的含义块数据（跳过缓存）`);
+        return this.fetchFromDatabase(contextBlockId, userId, true);
+      }
 
-    console.log(`🔍 缓存未命中，从数据库获取语境块 ${contextBlockId} 的含义块数据`);
-    return this.fetchFromDatabase(contextBlockId, true);
+      // 先尝试从缓存获取
+      const cached = cacheManager.get(contextBlockId, userId);
+      if (cached) {
+        console.log(`📦 从缓存获取语境块 ${contextBlockId} 的含义块数据 (${cached.length} 个)`);
+        return cached;
+      }
+
+      console.log(`🔍 缓存未命中，从数据库获取语境块 ${contextBlockId} 的含义块数据`);
+      return this.fetchFromDatabase(contextBlockId, userId, true);
+    } catch (error) {
+      console.error('获取含义块数据失败:', error);
+      return [];
+    }
   }
 
   /**
@@ -156,6 +190,7 @@ export class MeaningBlocksService {
    */
   private static async fetchFromDatabase(
     contextBlockId: string, 
+    userId: string,
     saveToCache: boolean = true
   ): Promise<MeaningBlockFormatted[]> {
     try {
@@ -163,6 +198,7 @@ export class MeaningBlocksService {
         .from('meaning_blocks_formatted')
         .select('*')
         .eq('source_context_id', contextBlockId)
+        .eq('user_id', userId)
         .order('example_index');
 
       if (error) {
@@ -171,11 +207,11 @@ export class MeaningBlocksService {
       }
 
       const meaningBlocks = data || [];
-      console.log(`✅ 从数据库获取到 ${meaningBlocks.length} 个含义块 (语境块: ${contextBlockId})`);
+      console.log(`✅ 从数据库获取到 ${meaningBlocks.length} 个含义块 (语境块: ${contextBlockId}, 用户: ${userId})`);
       
       // 保存到缓存
       if (saveToCache) {
-        cacheManager.set(contextBlockId, meaningBlocks);
+        cacheManager.set(contextBlockId, meaningBlocks, userId);
         console.log(`💾 已缓存语境块 ${contextBlockId} 的含义块数据`);
       }
 
@@ -193,70 +229,82 @@ export class MeaningBlocksService {
     contextBlockIds: string[],
     useCache: boolean = true
   ): Promise<Record<string, MeaningBlockFormatted[]>> {
-    const result: Record<string, MeaningBlockFormatted[]> = {};
-    const uncachedIds: string[] = [];
+    try {
+      const userId = await this.getCurrentUserId();
+      const result: Record<string, MeaningBlockFormatted[]> = {};
+      const uncachedIds: string[] = [];
 
-    // 先从缓存获取
-    if (useCache) {
-      for (const id of contextBlockIds) {
-        const cached = cacheManager.get(id);
-        if (cached) {
-          result[id] = cached;
-        } else {
-          uncachedIds.push(id);
-        }
-      }
-    } else {
-      uncachedIds.push(...contextBlockIds);
-    }
-
-    // 批量获取未缓存的数据
-    if (uncachedIds.length > 0) {
-      try {
-        console.log(`批量获取 ${uncachedIds.length} 个语境块的含义块数据`);
-        
-        const { data, error } = await supabase
-          .from('meaning_blocks_formatted')
-          .select('*')
-          .in('source_context_id', uncachedIds)
-          .order('source_context_id, example_index');
-
-        if (error) {
-          console.error('批量获取含义块数据失败:', error);
-          throw error;
-        }
-
-        // 按语境块ID分组
-        const groupedData: Record<string, MeaningBlockFormatted[]> = {};
-        (data || []).forEach(item => {
-          const contextId = item.source_context_id;
-          if (contextId) {
-            if (!groupedData[contextId]) {
-              groupedData[contextId] = [];
-            }
-            groupedData[contextId].push(item);
+      // 先从缓存获取
+      if (useCache) {
+        for (const id of contextBlockIds) {
+          const cached = cacheManager.get(id, userId);
+          if (cached) {
+            result[id] = cached;
+          } else {
+            uncachedIds.push(id);
           }
-        });
+        }
+      } else {
+        uncachedIds.push(...contextBlockIds);
+      }
 
-        // 更新结果和缓存
-        for (const id of uncachedIds) {
-          const blocks = groupedData[id] || [];
-          result[id] = blocks;
+      // 批量获取未缓存的数据
+      if (uncachedIds.length > 0) {
+        try {
+          console.log(`批量获取 ${uncachedIds.length} 个语境块的含义块数据`);
           
-          if (useCache) {
-            cacheManager.set(id, blocks);
+          const { data, error } = await supabase
+            .from('meaning_blocks_formatted')
+            .select('*')
+            .in('source_context_id', uncachedIds)
+            .eq('user_id', userId)
+            .order('source_context_id, example_index');
+
+          if (error) {
+            console.error('批量获取含义块数据失败:', error);
+            throw error;
+          }
+
+          // 按语境块ID分组
+          const groupedData: Record<string, MeaningBlockFormatted[]> = {};
+          (data || []).forEach(item => {
+            const contextId = item.source_context_id;
+            if (contextId) {
+              if (!groupedData[contextId]) {
+                groupedData[contextId] = [];
+              }
+              groupedData[contextId].push(item);
+            }
+          });
+
+          // 更新结果和缓存
+          for (const id of uncachedIds) {
+            const blocks = groupedData[id] || [];
+            result[id] = blocks;
+            
+            if (useCache) {
+              cacheManager.set(id, blocks, userId);
+            }
+          }
+        } catch (error) {
+          console.error('批量获取含义块数据失败:', error);
+          // 为失败的ID设置空数组
+          for (const id of uncachedIds) {
+            result[id] = [];
           }
         }
-      } catch (error) {
-        console.error('批量获取含义块数据失败:', error);
-        // 为失败的ID设置空数组
-        for (const id of uncachedIds) {
-          result[id] = [];
-        }
       }
-    }
 
-    return result;
+      return result;
+    } catch (error) {
+      console.error('批量获取含义块数据失败:', error);
+      // 返回空结果
+      const result: Record<string, MeaningBlockFormatted[]> = {};
+      for (const id of contextBlockIds) {
+        result[id] = [];
+      }
+      return result;
+    }
   }
 
   /**
@@ -264,10 +312,13 @@ export class MeaningBlocksService {
    */
   static async getMeaningBlocksByAnchorId(anchorId: string): Promise<MeaningBlockFormatted[]> {
     try {
+      const userId = await this.getCurrentUserId();
+      
       const { data, error } = await supabase
         .from('meaning_blocks_formatted')
         .select('*')
         .eq('anchor_id', anchorId)
+        .eq('user_id', userId)
         .order('example_index');
 
       if (error) {
@@ -290,9 +341,12 @@ export class MeaningBlocksService {
     limit: number = 50
   ): Promise<MeaningBlockFormatted[]> {
     try {
+      const userId = await this.getCurrentUserId();
+      
       const { data, error } = await supabase
         .from('meaning_blocks_formatted')
         .select('*')
+        .eq('user_id', userId)
         .or(`anchor_text.ilike.%${query}%,meaning.ilike.%${query}%,context_explanation.ilike.%${query}%`)
         .limit(limit)
         .order('created_at', { ascending: false });
@@ -319,11 +373,14 @@ export class MeaningBlocksService {
     reviewsDue: number;
   }> {
     try {
+      const userId = await this.getCurrentUserId();
+      
       // 获取基础统计
       const { data: statsData, error: statsError } = await supabase
         .from('meaning_blocks_formatted')
         .select('current_proficiency, next_review_date, anchor_id')
-        .not('source_context_id', 'is', null); // 只统计有语境的含义块
+        .eq('user_id', userId)
+        .not('source_context_id', 'is', null);
 
       if (statsError) throw statsError;
 
@@ -370,15 +427,14 @@ export class MeaningBlocksService {
   }
 
   /**
-   * 预加载含义块数据（用于性能优化）
+   * 预加载含义块数据
    */
   static async preloadMeaningBlocks(contextBlockIds: string[]): Promise<void> {
-    // 静默预加载，不抛出错误
     try {
       await this.getMeaningBlocksByContextIds(contextBlockIds, true);
-      console.log(`预加载 ${contextBlockIds.length} 个语境块的含义块数据完成`);
+      console.log(`✅ 预加载完成: ${contextBlockIds.length} 个语境块的含义块数据`);
     } catch (error) {
-      console.warn('预加载含义块数据失败:', error);
+      console.error('预加载含义块数据失败:', error);
     }
   }
 }
