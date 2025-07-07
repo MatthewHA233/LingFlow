@@ -36,6 +36,7 @@ import {
 import { ModelSelector } from './ModelSelector';
 import { ChatOptions } from './ChatOptions';
 import { ChatSidebar } from './ChatSidebar';
+import { ImageGenerationSettingsDialog, ImageGenerationSettings } from './ImageGenerationSettings';
 
 // 类型定义
 interface Message {
@@ -46,6 +47,8 @@ interface Message {
   model?: string;
   isLoading?: boolean;
   reasoningContent?: string;
+  imageUrl?: string;
+  isGeneratingImage?: boolean;
 }
 
 interface Conversation {
@@ -77,9 +80,9 @@ interface ChatSettings {
 // 更新默认模型列表
 const DEFAULT_MODELS: LLMModel[] = [
   {
-    id: process.env.DEEPSEEK_MODEL || 'deepseek-v3',
+    id: 'deepseek-v3',
     provider: 'mnapi',
-    name: process.env.DEEPSEEK_MODEL || 'deepseek-v3',
+    name: 'deepseek-v3',
     displayName: 'DeepSeek V3',
     description: '性能强大的多语言模型，支持中英文对话',
     iconSrc: '/icons/deepseek-logo.svg',
@@ -87,19 +90,9 @@ const DEFAULT_MODELS: LLMModel[] = [
     temperature: 0.7
   },
   {
-    id: process.env.DEEPSEEK_MODEL || 'deepseek-v3-0324',
+    id:  'deepseek-r1',
     provider: 'mnapi',
-    name: process.env.DEEPSEEK_MODELE || 'deepseek-v3-0324',
-    displayName: 'DeepSeek V3 (3月更新)',
-    description: 'DeepSeek最新版本，2024年3月更新，性能更优',
-    iconSrc: '/icons/deepseek-logo.svg',
-    maxTokens: 4096,
-    temperature: 0.7
-  },
-  {
-    id: process.env.DEEPSEEK_MODEL2 || 'deepseek-r1',
-    provider: 'mnapi',
-    name: process.env.DEEPSEEK_MODEL2 || 'deepseek-r1',
+    name:  'deepseek-r1',
     displayName: 'DeepSeek R1',
     description: '极佳的开源推理模型，支持中英文对话',
     iconSrc: '/icons/deepseek-logo.svg',
@@ -127,82 +120,82 @@ const DEFAULT_MODELS: LLMModel[] = [
     temperature: 0.7
   },
   {
-    id: 'claude-3.5-sonnet',
+    id: 'gpt-image-1',
     provider: 'mnapi',
-    name: 'claude-3.5-sonnet',
-    displayName: 'Claude 3.5 Sonnet',
-    description: 'Anthropic高性能模型',
-    iconSrc: '/icons/anthropic-logo.svg',
-    maxTokens: 4096,
+    name: 'gpt-image-1',
+    displayName: 'GPT Image',
+    description: 'OpenAI最新图片生成模型，支持高质量图片创作',
+    iconSrc: '/icons/openai-logo.svg',
+    maxTokens: 1000,
     temperature: 0.7
   },
   {
-    id: 'claude-3.7-sonnet',
+    id: 'gpt-image-1-vip',
     provider: 'mnapi',
-    name: 'claude-3.7-sonnet',
-    displayName: 'Claude 3.7 Sonnet',
+    name: 'gpt-image-1-vip',
+    displayName: 'GPT Image VIP',
+    description: 'OpenAI高级图片生成模型，支持更高质量和更多功能',
+    iconSrc: '/icons/openai-logo.svg',
+    maxTokens: 1000,
+    temperature: 0.7
+  },
+  {
+    id: 'claude-sonnet-4',
+    provider: 'mnapi',
+    name: 'claude-sonnet-4',
+    displayName: 'Claude Sonnet 4',
     description: 'Anthropic最新一代高性能模型',
     iconSrc: '/icons/anthropic-logo.svg',
     maxTokens: 4096,
     temperature: 0.7
   },
   {
-    id: 'claude-3.7-thinking',
+    id: 'claude-opus-4',
     provider: 'mnapi',
-    name: 'claude-3.7-thinking',
-    displayName: 'Claude 3.7 Thinking',
+    name: 'claude-opus-4',
+    displayName: 'Claude Opus 4',
+    description: 'Anthropic最新一代深度集成模型',
+    iconSrc: '/icons/anthropic-logo.svg',
+    maxTokens: 4096,
+    temperature: 0.7
+  },
+  {
+    id: 'claude-sonnet-4-thinking',
+    provider: 'mnapi',
+    name: 'claude-sonnet-4-thinking',
+    displayName: 'Claude Sonnet 4 Thinking',
     description: 'Anthropic带思考链模型，提供更详细推理过程',
     iconSrc: '/icons/anthropic-logo.svg',
     maxTokens: 4096,
     temperature: 0.7
   },
   {
-    id: 'gemini-2.0-flash',
+    id: 'gemini-2.5-flash',
     provider: 'mnapi',
-    name: 'gemini-2.0-flash',
-    displayName: 'Gemini 2.0 Flash',
+    name: 'gemini-2.5-flash',
+    displayName: 'Gemini 2.5 Flash',
     description: 'Google快速响应模型，速度与质量兼顾',
     iconSrc: '/icons/gemini-logo.svg',
     maxTokens: 4096,
     temperature: 0.7
   },
   {
-    id: 'gemini-2.0-flash-thinking',
+    id: 'gemini-2.5-flash-thinking',
     provider: 'mnapi',
-    name: 'gemini-2.0-flash-thinking',
-    displayName: 'Gemini 2.0 Flash Thinking',
+    name: 'gemini-2.5-flash-thinking',
+    displayName: 'Gemini 2.5 Flash Thinking',
     description: 'Google带思考模式的快速响应模型',
     iconSrc: '/icons/gemini-logo.svg',
     maxTokens: 4096,
     temperature: 0.7
   },
   {
-    id: 'gemini-2.0-pro',
+    id: 'gemini-2.5-pro',
     provider: 'mnapi',
-    name: 'gemini-2.0-pro',
-    displayName: 'Gemini 2.0 Pro',
-    description: 'Google最强大的大语言模型',
-    iconSrc: '/icons/gemini-logo.svg',
-    maxTokens: 4096,
-    temperature: 0.7
-  },
-  {
-    id: 'gemini-2.5-pro-exp-03-25',
-    provider: 'mnapi',
-    name: 'gemini-2.5-pro-exp-03-25',
+    name: 'gemini-2.5-pro',
     displayName: 'Gemini 2.5 Pro',
     description: 'Google最新一代性能提升的大语言模型',
     iconSrc: '/icons/gemini-logo.svg',
-    maxTokens: 4096,
-    temperature: 0.7
-  },
-  {
-    id: 'command-r',
-    provider: 'mnapi',
-    name: 'command-r',
-    displayName: 'command R',
-    description: '响应速度极快，非常适合沉浸式翻译的模型',
-    iconSrc: '/icons/cohere-logo.svg',
     maxTokens: 4096,
     temperature: 0.7
   },
@@ -278,11 +271,21 @@ export default function ChatWindow() {
   const [showSettings, setShowSettings] = useState(false);
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [showImageSettings, setShowImageSettings] = useState(false);
   
   // LLM模型和设置
   const [availableModels] = useState<LLMModel[]>(DEFAULT_MODELS);
   const [selectedModel, setSelectedModel] = useState<LLMModel>(DEFAULT_MODELS[0]);
   const [settings, setSettings] = useState<ChatSettings>(DEFAULT_SETTINGS);
+  
+  // 图片生成设置
+  const [imageGenerationSettings, setImageGenerationSettings] = useState<ImageGenerationSettings>({
+    size: '1024x1024',
+    quality: 'auto',
+    style: 'natural',
+    outputFormat: 'png',
+    compression: 80
+  });
   
   // 引用
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -801,6 +804,76 @@ export default function ChatWindow() {
       // 使用缓存的令牌或当前会话令牌
       const tokenToUse = cachedToken || session?.access_token;
       
+      // 检查是否是图片生成模型
+      if (selectedModel.name === 'gpt-image-1' || selectedModel.name === 'gpt-image-1-vip') {
+        // 直接调用图片生成API
+        setMessages(prev => {
+          const updated = [...prev];
+          const assistant = updated[updated.length - 1];
+          assistant.isGeneratingImage = true;
+          assistant.content = '正在生成图片，请稍候...';
+          return updated;
+        });
+        
+        const imageResponse = await fetch('/api/llm/image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${tokenToUse}`
+          },
+          body: JSON.stringify({
+            prompt: originalInput,
+            size: imageGenerationSettings.size,
+            quality: imageGenerationSettings.quality,
+            style: imageGenerationSettings.style,
+            outputFormat: imageGenerationSettings.outputFormat,
+            compression: imageGenerationSettings.compression,
+            isVipModel: selectedModel.name === 'gpt-image-1-vip'
+          })
+        });
+        
+        if (!imageResponse.ok) {
+          const errorData = await imageResponse.json();
+          throw new Error(errorData.error || '图片生成失败');
+        }
+        
+        const imageData = await imageResponse.json();
+        
+        // 更新消息，显示生成的图片
+        setMessages(prev => {
+          const updated = [...prev];
+          const assistant = updated[updated.length - 1];
+          assistant.isLoading = false;
+          assistant.isGeneratingImage = false;
+          assistant.content = '图片生成成功！';
+          assistant.imageUrl = `data:image/png;base64,${imageData.image}`;
+          return updated;
+        });
+        
+        // 重置加载状态
+        setIsLoading(false);
+        
+        // 保存到对话历史
+        const finalConversation: Conversation = {
+          ...updatedConversation,
+          messages: messages.map((msg, idx) => {
+            if (idx === messages.length - 1) {
+              return {
+                ...msg,
+                isLoading: false,
+                isGeneratingImage: false,
+                content: '图片生成成功！',
+                imageUrl: `data:image/png;base64,${imageData.image}`
+              };
+            }
+            return msg;
+          })
+        };
+        
+        saveConversation(finalConversation);
+        return;
+      }
+      
       const response = await fetch('/api/llm', {
         method: 'POST',
         headers: { 
@@ -834,6 +907,22 @@ export default function ChatWindow() {
       setMessages(prev => prev.slice(0, -2)); // 移除最后两条消息(用户消息和助手消息)
       setInputText(originalInput); // 恢复输入框内容
       setIsLoading(false);
+      
+      // 检查是否是图片生成模型的错误
+      if (selectedModel.name === 'gpt-image-1' || selectedModel.name === 'gpt-image-1-vip') {
+        // 确保清除图片生成状态
+        setMessages(prev => {
+          const updated = [...prev];
+          if (updated.length > 0) {
+            const lastMessage = updated[updated.length - 1];
+            if (lastMessage) {
+              lastMessage.isGeneratingImage = false;
+              lastMessage.isLoading = false;
+            }
+          }
+          return updated;
+        });
+      }
       
       // 从对话历史中也移除这两条消息
       const revertedConversation = {
@@ -958,6 +1047,17 @@ export default function ChatWindow() {
         console.error('加载设置失败:', error);
       }
     }
+    
+    // 加载图片生成设置
+    const savedImageSettings = localStorage.getItem('image_generation_settings');
+    if (savedImageSettings) {
+      try {
+        const parsedImageSettings = JSON.parse(savedImageSettings);
+        setImageGenerationSettings(parsedImageSettings);
+      } catch (error) {
+        console.error('加载图片生成设置失败:', error);
+      }
+    }
   }, [availableModels]); // 依赖 availableModels 确保模型数据已加载
 
   return (
@@ -1056,10 +1156,10 @@ export default function ChatWindow() {
                     介绍一下你自己，你能做什么？
                   </button>
                   <button
-                    onClick={() => setInputText("写一篇短文，描述人工智能的未来发展")}
+                    onClick={() => setInputText("生成一幅日落海滩的美丽图片")}
                     className="p-3 rounded-lg border border-white/10 hover:bg-white/5 text-left text-sm text-gray-300 transition-colors"
                   >
-                    写一篇短文，描述人工智能的未来发展
+                    生成一幅日落海滩的美丽图片
                   </button>
                   <button
                     onClick={() => setInputText("如何提高自己的编程能力？")}
@@ -1155,6 +1255,43 @@ export default function ChatWindow() {
                             {message.isLoading && (
                               <span className="inline-block w-1 md:w-1.5 h-3 md:h-4 bg-blue-400 ml-0.5 animate-pulse"></span>
                             )}
+                            {message.isGeneratingImage && (
+                              <div className="mt-3 flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
+                                <span className="text-xs text-gray-400">正在生成图片...</span>
+                              </div>
+                            )}
+                            {message.imageUrl && (
+                              <div className="mt-3">
+                                <img 
+                                  src={message.imageUrl} 
+                                  alt="生成的图片" 
+                                  className="rounded-lg max-w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
+                                  onClick={() => {
+                                    // 在新窗口中打开图片
+                                    const newWindow = window.open();
+                                    if (newWindow) {
+                                      newWindow.document.write(`<img src="${message.imageUrl}" style="max-width: 100%; height: auto;" />`);
+                                    }
+                                  }}
+                                />
+                                <div className="mt-2 flex gap-2">
+                                  <button
+                                    onClick={() => {
+                                      // 下载图片
+                                      const link = document.createElement('a');
+                                      link.href = message.imageUrl!;
+                                      link.download = `generated-image-${message.id}.png`;
+                                      link.click();
+                                    }}
+                                    className="text-xs text-gray-400 hover:text-white flex items-center gap-1"
+                                  >
+                                    <ChevronDown className="h-3 w-3" />
+                                    下载图片
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
@@ -1183,6 +1320,17 @@ export default function ChatWindow() {
                   <span className="text-[10px] md:text-xs text-gray-300">{selectedModel.displayName}</span>
                   <ChevronDown className="h-2.5 w-2.5 md:h-3 md:w-3 text-gray-400" />
                 </div>
+                
+                {/* 图片生成设置按钮 */}
+                {(selectedModel.name === 'gpt-image-1' || selectedModel.name === 'gpt-image-1-vip') && (
+                  <button
+                    onClick={() => setShowImageSettings(true)}
+                    className="bg-[#111520]/70 border border-white/10 hover:bg-[#111520] hover:border-blue-500/30 text-gray-300 text-[10px] md:text-xs px-1.5 md:px-2 py-0.5 md:py-1 h-6 md:h-7 rounded flex items-center"
+                  >
+                    <Settings className="h-3 w-3 md:h-3.5 md:w-3.5 mr-0.5 md:mr-1" />
+                    图片设置
+                  </button>
+                )}
                 
                 <button
                   onClick={createNewConversation}
@@ -1282,23 +1430,61 @@ export default function ChatWindow() {
                 exit={{ opacity: 0, scale: 0.95, y: -20 }}
                 transition={{ duration: 0.2 }}
                 className="fixed bottom-20 left-8 z-[1100] bg-[#0a0e14]/95 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl overflow-hidden"
-            >
-              <ModelSelector
-                models={availableModels}
-                selectedModel={selectedModel}
-                onSelect={(model) => {
-                  setSelectedModel(model);
-                  // 标记用户刚刚手动选择了模型
-                  setJustManuallySelected(true);
-                  setShowModelSelector(false);
-                  localStorage.setItem('selectedModel', JSON.stringify(model));
-                  
-                  // 添加计时器，5秒后重置手动选择标志
-                  setTimeout(() => setJustManuallySelected(false), 5000);
-                }}
-                onClose={() => setShowModelSelector(false)}
+              >
+                <ModelSelector
+                  models={availableModels}
+                  selectedModel={selectedModel}
+                  onSelect={(model) => {
+                    setSelectedModel(model);
+                    // 标记用户刚刚手动选择了模型
+                    setJustManuallySelected(true);
+                    setShowModelSelector(false);
+                    localStorage.setItem('selectedModel', JSON.stringify(model));
+                    
+                    // 添加计时器，5秒后重置手动选择标志
+                    setTimeout(() => setJustManuallySelected(false), 5000);
+                  }}
+                  onClose={() => setShowModelSelector(false)}
+                />
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+        
+        <AnimatePresence>
+          {showImageSettings && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.7 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[1000]"
+                onClick={() => setShowImageSettings(false)}
               />
-            </motion.div>
+              
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: -20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: -20 }}
+                transition={{ duration: 0.2 }}
+                className="fixed top-16 left-4 z-[1100] w-[90%] max-w-md bg-[#0a0e14]/95 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+                style={{ 
+                  maxHeight: 'min(600px, calc(100vh - 100px))',
+                  maxWidth: 'min(400px, calc(100vw - 32px))'
+                }}
+              >
+                <ImageGenerationSettingsDialog
+                  settings={imageGenerationSettings}
+                  onChange={(newSettings) => {
+                    setImageGenerationSettings(newSettings);
+                    // 保存到localStorage
+                    localStorage.setItem('image_generation_settings', JSON.stringify(newSettings));
+                  }}
+                  onClose={() => setShowImageSettings(false)}
+                  isVipModel={selectedModel.name === 'gpt-image-1-vip'}
+                />
+              </motion.div>
             </>
           )}
         </AnimatePresence>

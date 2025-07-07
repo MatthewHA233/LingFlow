@@ -23,10 +23,10 @@ interface LLMModel {
 // 默认可用模型列表
 const DEFAULT_MODELS: LLMModel[] = [
   {
-    id: 'claude-3.7-sonnet',
+    id: 'claude-sonnet-4',
     provider: 'mnapi',
-    name: 'claude-3.7-sonnet',
-    displayName: 'Claude 3.7 Sonnet',
+    name: 'claude-sonnet-4',
+    displayName: 'Claude Sonnet 4',
     description: 'Anthropic最新一代高性能模型',
     iconSrc: '/icons/anthropic-logo.svg',
     maxTokens: 4096,
@@ -53,10 +53,10 @@ const DEFAULT_MODELS: LLMModel[] = [
     temperature: 0.7
   },
   {
-    id: 'gemini-2.0-flash',
+    id: 'gemini-2.5-flash',
     provider: 'mnapi',
-    name: 'gemini-2.0-flash',
-    displayName: 'Gemini 2.0 Flash',
+    name: 'gemini-2.5-flash',
+    displayName: 'Gemini 2.5 Flash',
     description: 'Google快速响应模型',
     iconSrc: '/icons/gemini-logo.svg',
     maxTokens: 4096,

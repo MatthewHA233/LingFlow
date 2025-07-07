@@ -269,7 +269,7 @@ async function checkMeaningDuplicate(
   // 使用传递的模型配置或默认配置
   const defaultModelConfig = {
     provider: 'mnapi',
-    modelName: 'claude-3.7-sonnet'
+    modelName: 'claude-sonnet-4'
   };
   const finalModelConfig = modelConfig || defaultModelConfig;
 

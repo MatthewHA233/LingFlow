@@ -8,85 +8,89 @@ interface ModelAPIConfig {
   modelId: string;
 }
 
+// 从环境变量获取API密钥的函数
+const getAPIKey = (envVarName: string): string => {
+  const key = process.env[envVarName];
+  if (!key) {
+    throw new Error(`环境变量 ${envVarName} 未设置。请在 .env.local 文件中设置此变量。`);
+  }
+  return key;
+};
+
 // 模型API配置映射
 const MODEL_CONFIGS: Record<string, ModelAPIConfig> = {
   'deepseek-v3': {
-    key: process.env.DEEPSEEK_API_KEY || 'sk-MZIjyym9OIvdrKOIXfH0dr9CVWafmgbZ6R8yCvMGnPkvtMO2',
-    baseURL: process.env.DEEPSEEK_API_BASE || 'https://api.mnapi.com/v1',
-    modelId:  'deepseek-v3'
-  },
-  'deepseek-v3-0324': {
-    key: process.env.DEEPSEEK_API_KEY || 'sk-MZIjyym9OIvdrKOIXfH0dr9CVWafmgbZ6R8yCvMGnPkvtMO2',
-    baseURL: process.env.DEEPSEEK_API_BASE || 'https://api.mnapi.com/v1',
-    modelId: process.env.DEEPSEEK_MODEL ||'deepseek-v3-0324'
+    key: getAPIKey('DEEPSEEK_API_KEY'),
+    baseURL:  'https://api.mnapi.com/v1',
+    modelId: 'deepseek-v3'
   },
   'deepseek-r1': {
-    key: process.env.DEEPSEEK_API_KEY || 'sk-MZIjyym9OIvdrKOIXfH0dr9CVWafmgbZ6R8yCvMGnPkvtMO2',
-    baseURL: process.env.DEEPSEEK_API_BASE || 'https://api.mnapi.com/v1',
-    modelId: process.env.DEEPSEEK_MODEL2 || 'deepseek-r1'
+    key: getAPIKey('DEEPSEEK_API_KEY'),
+    baseURL:  'https://api.mnapi.com/v1',
+    modelId:  'deepseek-r1'
   },
   'gpt-4o': {
-    key: 'sk-B5TaU88ciVTIUw7kQ4HxpwUcxMeFptPYBP2fcn4aZu7J0epG',
+    key: getAPIKey('OPENAI_API_KEY'),
     baseURL: 'https://api.mnapi.com/v1',
     modelId: 'gpt-4o'
   },
   'gpt-4o-mini': {
-    key: 'sk-B5TaU88ciVTIUw7kQ4HxpwUcxMeFptPYBP2fcn4aZu7J0epG',
+    key: getAPIKey('OPENAI_API_KEY'),
     baseURL: 'https://api.mnapi.com/v1',
     modelId: 'gpt-4o-mini'
   },
-  'claude-3.5-sonnet': {
-    key: 'sk-A10lXF9TftfDcp2KKeiZMnOjAoeYBlHbjjqDLxlr7KabqTlH',
+  'gpt-image-1': {
+    key: getAPIKey('OPENAI_IMAGE_API_KEY'),
     baseURL: 'https://api.mnapi.com/v1',
-    modelId: 'claude-3-5-sonnet-20241022'
+    modelId: 'gpt-image-1'
   },
-  'claude-3.7-sonnet': {
-    key: 'sk-A10lXF9TftfDcp2KKeiZMnOjAoeYBlHbjjqDLxlr7KabqTlH',
+  'gpt-image-1-vip': {
+    key: getAPIKey('OPENAI_IMAGE_API_KEY'),
     baseURL: 'https://api.mnapi.com/v1',
-    modelId: 'claude-3-7-sonnet-20250219'
+    modelId: 'gpt-image-1-vip'
   },
-  'claude-3.7-thinking': {
-    key: 'sk-A10lXF9TftfDcp2KKeiZMnOjAoeYBlHbjjqDLxlr7KabqTlH',
+  'claude-sonnet-4': {
+    key: getAPIKey('CLAUDE_API_KEY'),
     baseURL: 'https://api.mnapi.com/v1',
-    modelId: 'claude-3-7-sonnet-20250219-thinking'
+    modelId: 'claude-sonnet-4-20250514'
   },
-  'gemini-2.0-flash': {
-    key: 'sk-rJBYjRrDbySViSs8MbXF0raV4HeqHq4adVUZaEth4ggHctVY',
+  'claude-opus-4': {
+    key: getAPIKey('CLAUDE_API_KEY'),
     baseURL: 'https://api.mnapi.com/v1',
-    modelId: 'gemini-2.0-flash'
+    modelId: 'claude-opus-4-20250514'
   },
-  'gemini-2.0-flash-thinking': {
-    key: 'sk-rJBYjRrDbySViSs8MbXF0raV4HeqHq4adVUZaEth4ggHctVY',
+  'claude-sonnet-4-thinking': {
+    key: getAPIKey('CLAUDE_API_KEY'),
     baseURL: 'https://api.mnapi.com/v1',
-    modelId: 'gemini-2.0-flash-thinking-exp'
+    modelId: 'claude-sonnet-4-20250514-thinking'
   },
-  'gemini-2.0-pro': {
-    key: 'sk-rJBYjRrDbySViSs8MbXF0raV4HeqHq4adVUZaEth4ggHctVY',
+  'gemini-2.5-flash': {
+    key: getAPIKey('GEMINI_API_KEY'),
     baseURL: 'https://api.mnapi.com/v1',
-    modelId: 'gemini-2.0-pro-exp-02-05'
+    modelId: 'gemini-2.5-flash'
   },
-  'gemini-2.5-pro-exp-03-25': {
-    key: 'sk-rJBYjRrDbySViSs8MbXF0raV4HeqHq4adVUZaEth4ggHctVY',
+  'gemini-2.5-flash-thinking': {
+    key: getAPIKey('GEMINI_API_KEY'),
     baseURL: 'https://api.mnapi.com/v1',
-    modelId: 'gemini-2.5-pro-exp-03-25'
+    modelId: 'gemini-2.5-flash-thinking'
   },
-  'command-r': {
-    key: 'sk-JLQZx7fOViLpdwoWE2wdTf69waiOq5kmmIqFGDBYs4SuPBf7',
+  'gemini-2.5-pro': {
+    key: getAPIKey('GEMINI_API_KEY'),
     baseURL: 'https://api.mnapi.com/v1',
-    modelId: 'command-r7b-12-2024'
+    modelId: 'gemini-2.5-pro'
   },
   'grok-3': {
-    key: 'sk-GYxV5rjVngL08g9QjSmrpg4b4qvCQyHcG28iwNJxGOsxyRrN',
+    key: getAPIKey('GROK_API_KEY'),
     baseURL: 'https://api.mnapi.com/v1',
     modelId: 'grok-3'
   },
   'grok-3-deepsearch': {
-    key: 'sk-GYxV5rjVngL08g9QjSmrpg4b4qvCQyHcG28iwNJxGOsxyRrN',
+    key: getAPIKey('GROK_API_KEY'),
     baseURL: 'https://api.mnapi.com/v1',
     modelId: 'grok-3-deepsearch'
   },
   'grok-3-reasoner': {
-    key: 'sk-GYxV5rjVngL08g9QjSmrpg4b4qvCQyHcG28iwNJxGOsxyRrN',
+    key: getAPIKey('GROK_API_KEY'),
     baseURL: 'https://api.mnapi.com/v1',
     modelId: 'grok-3-reasoner'
   }
@@ -99,7 +103,7 @@ export class MNAPILLM extends BaseLLM {
 
   constructor(options: any) {
     super(options);
-    this.currentModel = options?.modelName || process.env.DEEPSEEK_MODEL || 'deepseek-v3';
+    this.currentModel = options?.modelName || 'deepseek-v3';
     this.apiKey = '';
     
     ChatLogger.log('初始化MNAPI客户端, 当前模型:', { model: this.currentModel });
@@ -149,6 +153,33 @@ export class MNAPILLM extends BaseLLM {
         
         if (!modelConfig) {
           throw new Error(`未找到模型配置: ${requestedModel}`);
+        }
+        
+        // 特殊处理图片生成模型
+        if (requestedModel === 'gpt-image-1' || requestedModel === 'gpt-image-1-vip') {
+          // 从消息中提取图片生成提示
+          const lastUserMessage = messages.filter(m => m.role === 'user').pop();
+          if (!lastUserMessage) {
+            throw new Error('没有找到用户消息');
+          }
+          
+          const prompt = lastUserMessage.content as string;
+          
+          // 检测是否是图片生成请求
+          const imageKeywords = ['生成图片', '画一个', '创建图像', '制作图片', 'generate image', 'create image', 'draw'];
+          const isImageRequest = imageKeywords.some(keyword => prompt.toLowerCase().includes(keyword));
+          
+          if (isImageRequest) {
+            // 返回特殊的响应，前端会识别并调用图片生成API
+            return {
+              text: `[IMAGE_GENERATION_REQUEST]${prompt}`,
+              reasoning: '',
+              tokens: { prompt: 0, completion: 0, total: 0 },
+              model: requestedModel,
+              provider: 'mnapi',
+              cost: 0,
+            };
+          }
         }
         
         ChatLogger.log('发送MNAPI聊天请求', { 

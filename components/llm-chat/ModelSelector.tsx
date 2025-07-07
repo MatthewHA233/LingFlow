@@ -26,26 +26,24 @@ export function ModelSelector({ models, selectedModel, onSelect, onClose }: Mode
   const getModelDateLabel = (modelId: string): { date: string, color: string } | null => {
     const dateMapping: Record<string, { date: string, color: string }> = {
       // 2025年3月及以后 - 绿色
-      'deepseek-v3-0324': { date: '03/24', color: 'bg-green-500/30 text-green-300' },
-      'gemini-2.5-pro-exp-03-25': { date: '03/25', color: 'bg-green-500/30 text-green-300' },
-      
+      'deepseek-v3': { date: '03/24', color: 'bg-green-500/30 text-green-300' },
+      'deepseek-r1': { date: '05/28', color: 'bg-green-500/30 text-green-300' },
+      'claude-sonnet-4': { date: '05/14', color: 'bg-green-500/30 text-green-300' },
+      'claude-opus-4': { date: '05/14', color: 'bg-green-500/30 text-green-300' },
+      'claude-sonnet-4-thinking': { date: '05/14', color: 'bg-green-500/30 text-green-300' },
+      'gemini-2.5-flash': { date: '05/20', color: 'bg-green-500/30 text-green-300' },
+      'gemini-2.5-flash-thinking': { date: '05/20', color: 'bg-green-500/30 text-green-300' },
+      'gemini-2.5-pro': { date: '06/05', color: 'bg-blue-500/30 text-green-300' },
+
       // 2025年2月 - 蓝绿色
-      'claude-3.7-thinking': { date: '02/25', color: 'bg-teal-500/30 text-teal-300' },
-      'claude-3.7-sonnet': { date: '02/25', color: 'bg-teal-500/30 text-teal-300' },
       'grok-3': { date: '02/25', color: 'bg-teal-500/30 text-teal-300' },
       'grok-3-deepsearch': { date: '02/25', color: 'bg-teal-500/30 text-teal-300' },
       'grok-3-reasoner': { date: '02/25', color: 'bg-teal-500/30 text-teal-300' },
       
-      // 2025年1月到2月初 - 蓝色
-      'deepseek-v3': { date: '01/25', color: 'bg-blue-500/30 text-blue-300' },
-      'deepseek-r1': { date: '01/25', color: 'bg-blue-500/30 text-blue-300' },
-      'gemini-2.0-pro': { date: '02/05', color: 'bg-blue-500/30 text-blue-300' },
-      'gemini-2.0-flash': { date: '02/05', color: 'bg-blue-500/30 text-blue-300' },
-      'gemini-2.0-flash-thinking': { date: '02/05', color: 'bg-blue-500/30 text-blue-300' },
+      // 2025年1月到2月初 - 蓝色 text-blue-300
+
       
       // 2024年的模型 - 灰色
-      'command-r': { date: '24.12', color: 'bg-gray-500/30 text-gray-300' },
-      'claude-3.5-sonnet': { date: '24.10', color: 'bg-gray-500/30 text-gray-300' },
       'gpt-4o': { date: '24.08', color: 'bg-gray-500/30 text-gray-300' },
       'gpt-4o-mini': { date: '24.08', color: 'bg-gray-500/30 text-gray-300' }
     };
