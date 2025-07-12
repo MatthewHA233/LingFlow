@@ -5,7 +5,7 @@ import { ReaderContent } from '@/components/content/ReaderContent';
 import { Book } from '@/types/book';
 import { supabase } from '@/lib/supabase-client';
 import { useAuthStore } from '@/stores/auth';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useLoginDialog } from '@/hooks/use-login-dialog';
 
 interface ReaderPageProps {
@@ -21,7 +21,11 @@ export default function ReaderPage({ params }: ReaderPageProps) {
   const [bookDataFetched, setBookDataFetched] = useState(false);
   const { user, loading: authLoading, checkRole } = useAuthStore();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { openLoginDialog } = useLoginDialog();
+
+  // 获取URL中的blockId参数
+  const targetBlockId = searchParams.get('blockId');
 
   useEffect(() => {
     if (bookDataFetched) return;
@@ -133,5 +137,5 @@ export default function ReaderPage({ params }: ReaderPageProps) {
     );
   }
 
-  return <ReaderContent book={book} />;
+  return <ReaderContent book={book} targetBlockId={targetBlockId} />;
 } 

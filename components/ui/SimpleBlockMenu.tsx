@@ -10,7 +10,8 @@ import {
   Hash,
   Trash2,
   Check,
-  X
+  X,
+  Share2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -61,6 +62,7 @@ interface SimpleBlockMenuProps {
   currentBlockType: string;
   onTypeChange: (newType: BlockType) => void;
   onDelete: () => void;
+  onShare?: () => void;
   blockId: string;
   blockData?: {
     content: string;
@@ -76,6 +78,7 @@ export function SimpleBlockMenu({
   currentBlockType,
   onTypeChange,
   onDelete,
+  onShare,
   blockId,
   blockData
 }: SimpleBlockMenuProps) {
@@ -158,6 +161,14 @@ export function SimpleBlockMenu({
     }
     onClose();
   }, [currentBlockType, onTypeChange, onClose]);
+
+  // 处理分享链接
+  const handleShare = useCallback(() => {
+    if (onShare) {
+      onShare();
+    }
+    onClose();
+  }, [onShare, onClose]);
 
   // 处理删除 - 使用ContextBlocksService和事件机制
   const handleDelete = useCallback(async () => {
@@ -304,6 +315,22 @@ export function SimpleBlockMenu({
 
             {/* 删除操作 - 悬浮时变红色 */}
             <div className="px-1">
+              {/* 分享链接按钮 */}
+              {onShare && (
+                <button
+                  onClick={handleShare}
+                  className={cn(
+                    "w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm transition-colors text-left",
+                    "hover:bg-green-50 dark:hover:bg-green-950/20 hover:text-green-600 dark:hover:text-green-400"
+                  )}
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span className="text-xs font-medium">
+                    复制块链接
+                  </span>
+                </button>
+              )}
+
               <button
                 onClick={handleDelete}
                 disabled={isDeleting}

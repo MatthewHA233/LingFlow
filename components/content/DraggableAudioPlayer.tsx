@@ -1498,9 +1498,9 @@ export function DraggableAudioPlayer({
                     className="px-1.5 py-0.5 bg-blue-900/50 rounded text-blue-300 font-mono text-[10px] cursor-pointer hover:bg-blue-800/60 transition-colors"
                     onClick={(e) => {
                       e.stopPropagation();
-                      // 模拟 Ctrl+Alt+A 按键
+                      // 模拟 Ctrl+Alt+S 按键
                       const event = new KeyboardEvent('keydown', {
-                        key: 'a',
+                        key: 's',
                         ctrlKey: true,
                         altKey: true,
                         bubbles: true
@@ -1508,7 +1508,7 @@ export function DraggableAudioPlayer({
                       window.dispatchEvent(event);
                     }}
                   >
-                    Ctrl+Alt+A
+                    Ctrl+Alt+S
                   </kbd>
                 </div>
                 <div className="flex items-center justify-between">
@@ -1656,7 +1656,7 @@ export function DraggableAudioPlayer({
                     onClick={(e) => {
                       e.stopPropagation();
                       const event = new KeyboardEvent('keydown', {
-                        key: 'a',
+                        key: 's',
                         ctrlKey: true,
                         altKey: true,
                         bubbles: true
@@ -1664,7 +1664,7 @@ export function DraggableAudioPlayer({
                       window.dispatchEvent(event);
                     }}
                   >
-                    Ctrl+Alt+A
+                    Ctrl+Alt+S
                   </kbd> 开启控制模式
                 </p>
               </div>

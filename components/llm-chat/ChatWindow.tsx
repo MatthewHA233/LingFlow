@@ -1430,23 +1430,23 @@ export default function ChatWindow() {
                 exit={{ opacity: 0, scale: 0.95, y: -20 }}
                 transition={{ duration: 0.2 }}
                 className="fixed bottom-20 left-8 z-[1100] bg-[#0a0e14]/95 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl overflow-hidden"
-              >
-                <ModelSelector
-                  models={availableModels}
-                  selectedModel={selectedModel}
-                  onSelect={(model) => {
-                    setSelectedModel(model);
-                    // 标记用户刚刚手动选择了模型
-                    setJustManuallySelected(true);
-                    setShowModelSelector(false);
-                    localStorage.setItem('selectedModel', JSON.stringify(model));
-                    
-                    // 添加计时器，5秒后重置手动选择标志
-                    setTimeout(() => setJustManuallySelected(false), 5000);
-                  }}
-                  onClose={() => setShowModelSelector(false)}
-                />
-              </motion.div>
+            >
+              <ModelSelector
+                models={availableModels}
+                selectedModel={selectedModel}
+                onSelect={(model) => {
+                  setSelectedModel(model);
+                  // 标记用户刚刚手动选择了模型
+                  setJustManuallySelected(true);
+                  setShowModelSelector(false);
+                  localStorage.setItem('selectedModel', JSON.stringify(model));
+                  
+                  // 添加计时器，5秒后重置手动选择标志
+                  setTimeout(() => setJustManuallySelected(false), 5000);
+                }}
+                onClose={() => setShowModelSelector(false)}
+              />
+            </motion.div>
             </>
           )}
         </AnimatePresence>

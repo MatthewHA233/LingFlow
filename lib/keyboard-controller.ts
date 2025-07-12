@@ -24,8 +24,8 @@ class KeyboardControllerClass {
   }
 
   private handleKeyDown = (e: KeyboardEvent) => {
-    // 检查是否按下 Ctrl+Alt+A 来切换键盘控制模式
-    if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'a') {
+    // 检查是否按下 Ctrl+Alt+S 来切换键盘控制模式
+    if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 's') {
       e.preventDefault();
       this.toggleKeyboardControlMode();
       return;

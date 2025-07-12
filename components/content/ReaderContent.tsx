@@ -36,6 +36,7 @@ import { TranslationPanel } from './TranslationPanel';
 
 interface ReaderContentProps {
   book: Book;
+  targetBlockId?: string | null;
 }
 
 interface WordHistoryItem {
@@ -45,7 +46,7 @@ interface WordHistoryItem {
   original_word?: string;
 }
 
-export function ReaderContent({ book }: ReaderContentProps) {
+export function ReaderContent({ book, targetBlockId }: ReaderContentProps) {
   // 基础状态
   const [currentChapter, setCurrentChapter] = useState(0);
   const [resources, setResources] = useState<Array<{ original_path: string; oss_path: string }>>([]);
@@ -96,6 +97,56 @@ export function ReaderContent({ book }: ReaderContentProps) {
   // 添加含义块数据状态
   const [meaningBlocks, setMeaningBlocks] = useState<Record<string, MeaningBlockFormatted[]>>({});
   const [loadingMeaningBlocks, setLoadingMeaningBlocks] = useState(false);
+
+  // 添加跟踪是否已处理过跳转的状态
+  const [hasProcessedTargetBlock, setHasProcessedTargetBlock] = useState(false);
+
+  // 获取上次查看的章节
+  const getLastViewedChapter = useCallback(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const key = `lastChapter_${book.id}`;
+        const saved = localStorage.getItem(key);
+        if (saved !== null) {
+          const chapterIndex = parseInt(saved);
+          // 确保章节索引在有效范围内
+          if (!isNaN(chapterIndex) && chapterIndex >= 0 && chapterIndex < (book.chapters?.length || 0)) {
+            console.log(`恢复上次查看的章节: ${chapterIndex}`);
+            return chapterIndex;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('读取上次查看章节失败:', error);
+    }
+    return 0; // 默认返回第一章
+  }, [book.id, book.chapters?.length]);
+
+  // 保存当前查看的章节
+  const saveLastViewedChapter = useCallback((chapterIndex: number) => {
+    try {
+      if (typeof window !== 'undefined') {
+        const key = `lastChapter_${book.id}`;
+        localStorage.setItem(key, chapterIndex.toString());
+        console.log(`保存当前查看章节: ${chapterIndex}`);
+      }
+    } catch (error) {
+      console.error('保存当前查看章节失败:', error);
+    }
+  }, [book.id]);
+
+  // 清除上次查看的章节记录（可选功能）
+  const clearLastViewedChapter = useCallback(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const key = `lastChapter_${book.id}`;
+        localStorage.removeItem(key);
+        console.log('已清除上次查看章节记录');
+      }
+    } catch (error) {
+      console.error('清除上次查看章节记录失败:', error);
+    }
+  }, [book.id]);
 
   // 添加块更新处理函数
   const handleBlockUpdate = async (blockId: string, newType: string, content: string) => {
@@ -739,29 +790,36 @@ export function ReaderContent({ book }: ReaderContentProps) {
           setParentIds(idMap);
         setInitializationStep('loading_first_chapter');
         
-        // 加载第一章内容，简化查询
-        const firstChapterParentId = idMap[0];
-        if (firstChapterParentId) {
+        // 获取上次查看的章节索引，如果没有targetBlockId的话
+        const initialChapter = targetBlockId ? 0 : getLastViewedChapter();
+        console.log('初始化章节:', initialChapter, '原因:', targetBlockId ? '有目标块' : '恢复上次查看');
+        
+        // 设置当前章节（但不触发保存，因为这是初始化）
+        setCurrentChapter(initialChapter);
+        
+        // 加载初始章节内容
+        const initialChapterParentId = idMap[initialChapter];
+        if (initialChapterParentId) {
           const { data: blocks, error: blocksError } = await supabase
             .from('context_blocks')
             .select('*')
-            .eq('parent_id', firstChapterParentId)
+            .eq('parent_id', initialChapterParentId)
             .order('order_index');
 
           if (!isMounted) return;
 
           if (blocksError) {
-            console.error('加载第一章内容失败:', blocksError);
+            console.error('加载初始章节内容失败:', blocksError);
             // 不抛出错误，设置空数组
-            setContextBlocks({ 0: [] });
+            setContextBlocks({ [initialChapter]: [] });
           } else {
-            setContextBlocks({ 0: blocks || [] });
+            setContextBlocks({ [initialChapter]: blocks || [] });
             
-            // 异步加载第一章的含义块数据，不阻塞主流程
+            // 异步加载初始章节的含义块数据，不阻塞主流程
             if (blocks && blocks.length > 0) {
               // 使用 setTimeout 确保不阻塞主要渲染
               setTimeout(() => {
-                loadMeaningBlocksForChapter(0, blocks);
+                loadMeaningBlocksForChapter(initialChapter, blocks);
               }, 0);
             }
             
@@ -797,7 +855,7 @@ export function ReaderContent({ book }: ReaderContentProps) {
           }
         } else {
           if (isMounted) {
-            setContextBlocks({ 0: [] });
+            setContextBlocks({ [initialChapter]: [] });
           }
         }
         
@@ -841,7 +899,7 @@ export function ReaderContent({ book }: ReaderContentProps) {
       // 清理音频控制器
       AudioController.stop();
     };
-  }, [book.id]); // 只依赖book.id
+  }, [book.id, targetBlockId, getLastViewedChapter]); // 添加getLastViewedChapter依赖
 
   // 简化资源加载逻辑
   useEffect(() => {
@@ -969,9 +1027,117 @@ export function ReaderContent({ book }: ReaderContentProps) {
     // 设置当前章节
     setCurrentChapter(newChapter);
     
+    // 保存当前查看的章节到localStorage
+    saveLastViewedChapter(newChapter);
+    
     // 预加载相邻章节
     preloadAdjacentChapters(newChapter);
   };
+
+  // 处理targetBlockId跳转逻辑 - 移动到handleChapterChange定义之后
+  useEffect(() => {
+    // 只有在初始化完成且有targetBlockId且未处理过时才执行
+    if (!targetBlockId || initialLoading || initializationError || hasProcessedTargetBlock) {
+      return;
+    }
+
+    // 查找目标块所在的章节
+    const findBlockChapter = async () => {
+      try {
+        console.log('查找目标块所在章节:', targetBlockId);
+        
+        // 查询目标块的信息
+        const { data: blockData, error } = await supabase
+          .from('context_blocks')
+          .select('parent_id')
+          .eq('id', targetBlockId)
+          .single();
+
+        if (error || !blockData) {
+          console.error('未找到目标块:', error);
+          toast.error('未找到指定的语境块');
+          setHasProcessedTargetBlock(true); // 标记为已处理
+          return;
+        }
+
+        // 找到对应的章节索引
+        const targetChapterIndex = Object.entries(parentIds).find(
+          ([_, parentId]) => parentId === blockData.parent_id
+        )?.[0];
+
+        if (targetChapterIndex === undefined) {
+          console.error('未找到对应的章节');
+          toast.error('未找到对应的章节');
+          setHasProcessedTargetBlock(true); // 标记为已处理
+          return;
+        }
+
+        const chapterIndex = parseInt(targetChapterIndex);
+        console.log('找到目标章节:', chapterIndex);
+
+        // 如果不是当前章节，先切换章节
+        if (chapterIndex !== currentChapter) {
+          console.log('切换到目标章节:', chapterIndex);
+          await handleChapterChange(chapterIndex);
+          
+          // 等待章节切换完成后再跳转到块
+          setTimeout(() => {
+            jumpToBlock(targetBlockId);
+            setHasProcessedTargetBlock(true); // 标记为已处理
+          }, 1000);
+        } else {
+          // 如果已经是当前章节，直接跳转
+          jumpToBlock(targetBlockId);
+          setHasProcessedTargetBlock(true); // 标记为已处理
+        }
+      } catch (error) {
+        console.error('查找目标块失败:', error);
+        toast.error('跳转到指定块失败');
+        setHasProcessedTargetBlock(true); // 标记为已处理
+      }
+    };
+
+    // 跳转到指定块的函数
+    const jumpToBlock = (blockId: string) => {
+      console.log('跳转到语境块:', blockId);
+      
+      // 设置为活跃块
+      setActiveBlockId(blockId);
+      
+      // 滚动到目标块
+      setTimeout(() => {
+        const blockElement = blockRefs.current[blockId];
+        if (blockElement) {
+          blockElement.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center' 
+          });
+          
+          // 显示成功提示
+          toast.success('已跳转到指定的语境块', {
+            duration: 2000
+          });
+        } else {
+          console.error('未找到块元素:', blockId);
+          toast.error('未找到指定的语境块元素');
+        }
+      }, 200);
+    };
+
+    // 延迟执行，确保parentIds已经加载完成
+    const timeout = setTimeout(() => {
+      if (Object.keys(parentIds).length > 0) {
+        findBlockChapter();
+      }
+    }, 500);
+
+    return () => clearTimeout(timeout);
+  }, [targetBlockId, initialLoading, initializationError, parentIds, currentChapter, handleChapterChange, blockRefs, hasProcessedTargetBlock]);
+
+  // 当targetBlockId变化时重置处理状态
+  useEffect(() => {
+    setHasProcessedTargetBlock(false);
+  }, [targetBlockId]);
 
   // 添加处理对齐开始的函数
   const handleAlignmentStart = (blockId: string) => {

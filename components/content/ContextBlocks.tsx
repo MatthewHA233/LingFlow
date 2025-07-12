@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { DragHandleDots2Icon } from '@radix-ui/react-icons';
-import { Play, Pause, Loader2, FileText, FileEdit, Music2, Globe, Network, Hash } from 'lucide-react';
+import { Play, Pause, Loader2, FileText, FileEdit, Music2, Globe, Network, Hash, Share2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TextAlignmentService } from '@/lib/services/text-alignment';
 import { supabase } from '@/lib/supabase-client';
@@ -2885,6 +2885,24 @@ export function ContextBlocks({
     onShowSplitView?.(block.id, 'translation');
   }, [block.id, onShowSplitView]);
 
+  // 添加分享链接处理函数
+  const handleShareBlock = useCallback(async () => {
+    try {
+      // 获取当前页面URL并添加blockId参数
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set('blockId', block.id);
+      
+      // 复制到剪贴板
+      await navigator.clipboard.writeText(currentUrl.toString());
+      
+      // 显示成功提示
+      toast.success('块链接已复制到剪贴板');
+    } catch (error) {
+      console.error('复制块链接失败:', error);
+      toast.error('复制块链接失败');
+    }
+  }, [block.id]);
+
   // 监听键盘快捷键事件
   useEffect(() => {
     const handleKeyboardPrevious = () => {
@@ -3100,6 +3118,7 @@ export function ContextBlocks({
         currentBlockType={block.block_type}
         onTypeChange={handleBlockTypeChange}
         onDelete={() => {}} // 空函数，SimpleBlockMenu内部自己处理删除
+        onShare={handleShareBlock}
         blockId={block.id}
         blockData={{
           content: block.content || '',
