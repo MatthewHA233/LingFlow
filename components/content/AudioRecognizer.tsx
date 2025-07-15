@@ -339,7 +339,7 @@ export function AudioRecognizer({
               <>
                 <Wand2 className="h-4 w-4 animate-pulse" />
                 <span className="relative">
-                  正在智慧识别
+                  正在处理中
                   <span className="absolute -right-4 animate-bounce-dots">...</span>
                 </span>
               </>

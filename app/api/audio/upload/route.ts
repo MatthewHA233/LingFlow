@@ -32,10 +32,14 @@ export async function POST(req: Request) {
     const formData = await req.formData()
     const file = formData.get('file') as File
     const bookId = formData.get('bookId') as string
+    const durationStr = formData.get('duration') as string
     
     if (!file || !bookId) {
       return NextResponse.json({ error: '缺少必要参数' }, { status: 400 })
     }
+    
+    // 解析音频时长
+    const duration = durationStr ? parseInt(durationStr, 10) : null
     
     // 3. 使用原来的路径格式
     const filename = `audio/${bookId}/${Date.now()}_${file.name}`
@@ -52,6 +56,9 @@ export async function POST(req: Request) {
         task_id: `task_${Date.now()}`,
         audio_url: audioUrl,
         user_id: user.id,
+        book_id: bookId,
+        name: file.name.replace(/\.[^/.]+$/, ""), // 去掉文件扩展名，只保留文件名主体
+        duration: duration, // 音频时长（秒）
         status: 'uploaded',
         error_message: null
       })

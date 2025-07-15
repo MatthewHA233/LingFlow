@@ -24,7 +24,28 @@ export interface AudioUploaderProps {
 export function AudioUploader({ bookId, onUploadSuccess, onUploadError, isOpen, onOpenChange }: AudioUploaderProps) {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'completed'>('idle');
+  const [error, setError] = useState<string>('');
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // 获取音频时长的辅助函数
+  const getAudioDuration = (file: File): Promise<number> => {
+    return new Promise((resolve, reject) => {
+      const audio = new Audio();
+      const url = URL.createObjectURL(file);
+      
+      audio.onloadedmetadata = () => {
+        URL.revokeObjectURL(url);
+        resolve(Math.floor(audio.duration));
+      };
+      
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('无法获取音频时长'));
+      };
+      
+      audio.src = url;
+    });
+  };
 
   // 处理对话框关闭
   const handleOpenChange = (open: boolean) => {
@@ -48,17 +69,20 @@ export function AudioUploader({ bookId, onUploadSuccess, onUploadError, isOpen, 
   };
 
   const handleUpload = async () => {
-    if (!audioFile || !bookId) return;
+    if (!audioFile) return;
+    
+    setStatus('uploading');
+    setError('');
     
     try {
-      // 创建新的 AbortController
-      abortControllerRef.current = new AbortController();
-      
-      setStatus('uploading');
+      // 获取音频时长
+      const duration = await getAudioDuration(audioFile);
+      console.log('音频时长:', duration, '秒');
       
       const uploadForm = new FormData();
       uploadForm.append('file', audioFile);
       uploadForm.append('bookId', bookId);
+      uploadForm.append('duration', duration.toString()); // 添加时长信息
       
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
@@ -83,6 +107,29 @@ export function AudioUploader({ bookId, onUploadSuccess, onUploadError, isOpen, 
       
       const uploadData = await uploadRes.json();
       
+      // 直接完成上传，不进行智慧识别
+      setStatus('completed');
+      
+      // 触发音频上传完成事件，通知AudioProcessingPanel重新加载
+      window.dispatchEvent(new CustomEvent('audio-uploaded', {
+        detail: { 
+          audioUrl: uploadData.fileLink, 
+          speechId: uploadData.speechId,
+          bookId: bookId
+        }
+      }))
+      
+      await onUploadSuccess(uploadData.fileLink, uploadData.speechId);
+      setAudioFile(null);
+      
+      // 延迟关闭对话框，显示完成动画
+      setTimeout(() => {
+        setStatus('idle');
+        onOpenChange?.(false);
+      }, 1500);
+
+      /* 
+      // === 智慧识别功能（已禁用）===
       // 2. 创建 speech_results 记录
       const { data: speechResult, error: speechError } = await supabase
         .from('speech_results')
@@ -121,28 +168,21 @@ export function AudioUploader({ bookId, onUploadSuccess, onUploadError, isOpen, 
           // 先设置为已完成状态，显示动画
           setStatus('completed');
           
-          // 暂时禁用对话框关闭
-          const originalOnOpenChange = onOpenChange;
-          onOpenChange = () => {}; // 临时替换为空函数，阻止关闭
+          // 触发音频上传完成事件，通知AudioProcessingPanel重新加载
+          window.dispatchEvent(new CustomEvent('audio-uploaded', {
+            detail: { 
+              audioUrl: uploadData.fileLink, 
+              speechId: speechResult.id,
+              bookId: bookId
+            }
+          }))
           
-          try {
-            // 等待完成动画显示完（至少2秒）
-            await new Promise(resolve => setTimeout(resolve, 2500));
-            
-            // 动画显示完毕后，再通知父组件
-      onUploadSuccess(uploadData.fileLink, speechResult.id);
+          await onUploadSuccess(uploadData.fileLink, speechResult.id);
       setAudioFile(null);
             
             // 恢复原来的关闭处理函数
-            onOpenChange = originalOnOpenChange;
             setStatus('idle');
             onOpenChange?.(false);
-          } catch (e) {
-            // 恢复原来的关闭处理函数
-            onOpenChange = originalOnOpenChange;
-            throw e;
-          }
-          
           return;
         } else if (result.status === 'error') {
           throw new Error(result.error_message || '识别失败');
@@ -154,6 +194,7 @@ export function AudioUploader({ bookId, onUploadSuccess, onUploadError, isOpen, 
       }
       
       throw new Error('识别超时');
+      */
       
     } catch (error: any) {
       console.error('上传失败:', error);
@@ -196,7 +237,7 @@ export function AudioUploader({ bookId, onUploadSuccess, onUploadError, isOpen, 
             >
               <Wand2 className="h-8 w-8 animate-pulse text-primary" />
               <div className="text-sm flex items-center gap-1">
-                <span>正在智慧识别</span>
+                <span>正在处理中</span>
                 <span className="relative w-4">
                   <span className="absolute animate-bounce-dots">...</span>
                 </span>
@@ -214,7 +255,7 @@ export function AudioUploader({ bookId, onUploadSuccess, onUploadError, isOpen, 
             <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
               <Check className="w-6 h-6 text-primary animate-in zoom-in duration-300" />
             </div>
-            <p className="text-sm text-muted-foreground animate-in fade-in-50 duration-500">识别完成</p>
+            <p className="text-sm text-muted-foreground animate-in fade-in-50 duration-500">上传完成</p>
           </HoverBorderGradient>
         ) : (
           !audioFile ? (

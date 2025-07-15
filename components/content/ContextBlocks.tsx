@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { DragHandleDots2Icon } from '@radix-ui/react-icons';
-import { Play, Pause, Loader2, FileText, FileEdit, Music2, Globe, Network, Hash, Share2 } from 'lucide-react';
+import { Play, Pause, Loader2, FileText, FileEdit, Music2, Globe, Network, Hash, Share2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TextAlignmentService } from '@/lib/services/text-alignment';
 import { supabase } from '@/lib/supabase-client';
@@ -14,6 +14,7 @@ import { AudioAnchorRenderer } from './AudioAnchorRenderer';
 import { type MeaningBlockFormatted } from '@/lib/services/meaning-blocks-service';
 import { ContextBlocksService } from '@/lib/services/context-blocks-service';
 import { SimpleBlockMenu, type BlockType } from '@/components/ui/SimpleBlockMenu';
+import styles from './ContextBlocks.module.css';
 
 interface ContextBlocksProps {
   block: {
@@ -854,15 +855,221 @@ export function ContextBlocks({
     loadContextBlock();
   }, [block.id, block.block_type]);
 
-  // 处理块点击事件
-  const handleClick = (e: React.MouseEvent) => {
-    if (onSelect && !e.defaultPrevented) {
-      onSelect(block.id, e);
+  // 添加对齐处理状态管理
+  const [isAlignmentProcessing, setIsAlignmentProcessing] = useState(false);
+
+  // 添加语境块选择相关状态
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectionType, setSelectionType] = useState<'start' | 'end' | null>(null);
+  const [isBlockSelectable, setIsBlockSelectable] = useState(false);
+  const [isSelectedAsStart, setIsSelectedAsStart] = useState(false);
+  const [isSelectedAsEnd, setIsSelectedAsEnd] = useState(false);
+  const [isProcessingAlignment, setIsProcessingAlignment] = useState(false);
+  // 新增：记录选择范围信息
+  const [selectedRange, setSelectedRange] = useState<{startBlockId: string, endBlockId: string} | null>(null);
+
+  // 监听对齐处理开始和完成事件
+  useEffect(() => {
+    const handleAlignmentProcessingStart = (event: CustomEvent) => {
+      console.log('🚀 ContextBlocks: 对齐处理开始，禁用拖拽功能');
+      setIsAlignmentProcessing(true);
+    };
+
+    const handleAlignmentProcessingComplete = (event: CustomEvent) => {
+      console.log('✅ ContextBlocks: 对齐处理完成，启用拖拽功能');
+      setIsAlignmentProcessing(false);
+    };
+
+    window.addEventListener('alignment-processing-start', handleAlignmentProcessingStart as EventListener);
+    window.addEventListener('alignment-processing-complete', handleAlignmentProcessingComplete as EventListener);
+
+    return () => {
+      window.removeEventListener('alignment-processing-start', handleAlignmentProcessingStart as EventListener);
+      window.removeEventListener('alignment-processing-complete', handleAlignmentProcessingComplete as EventListener);
+    };
+  }, []);
+
+  // 监听语境块选择事件
+  useEffect(() => {
+    const handleEnableSelection = (event: CustomEvent) => {
+      const { mode } = event.detail;
+      setIsSelectionMode(true);
+      setSelectionType(mode);
+      setIsBlockSelectable(true);
+      
+      // 只在开始选择起始块时重置状态，切换到选择结束块时保持起始块状态
+      if (mode === 'start') {
+        // 重置所有选中状态
+        setIsSelectedAsStart(false);
+        setIsSelectedAsEnd(false);
+        setIsProcessingAlignment(false);
+        setSelectedRange(null);
+      } else if (mode === 'end') {
+        // 切换到选择结束块时，只重置结束块状态，保持起始块状态
+        setIsSelectedAsEnd(false);
+        setIsProcessingAlignment(false);
+        // 不重置 isSelectedAsStart 和 selectedRange
+      }
+    };
+
+    const handleDisableSelection = () => {
+      setIsSelectionMode(false);
+      setSelectionType(null);
+      setIsBlockSelectable(false);
+      // 注释掉这两行，不在禁用选择时重置状态
+      // setIsSelectedAsStart(false);
+      // setIsSelectedAsEnd(false);
+      setIsProcessingAlignment(false);
+      // selectedRange 也不重置，保持选择范围信息
+      // setSelectedRange(null); 
+    };
+
+    // 监听选择确认事件
+    const handleSelectionConfirmed = (event: CustomEvent) => {
+      const { startBlockId, endBlockId } = event.detail;
+      
+      // 保存选择范围
+      setSelectedRange({ startBlockId, endBlockId });
+      
+      if (block.id === startBlockId) {
+        setIsSelectedAsStart(true);
+        setIsSelectedAsEnd(false);
+      } else if (block.id === endBlockId) {
+        setIsSelectedAsEnd(true);
+        setIsSelectedAsStart(false);
+      } else {
+        setIsSelectedAsStart(false);
+        setIsSelectedAsEnd(false);
+      }
+    };
+
+    // 监听标记起始块为已选择的事件
+    const handleMarkStartBlockSelected = (event: CustomEvent) => {
+      const { startBlockId } = event.detail;
+      
+      if (block.id === startBlockId) {
+        setIsSelectedAsStart(true);
+        setIsSelectedAsEnd(false);
+        // 同时更新选择范围（部分）
+        setSelectedRange(prev => ({
+          startBlockId: startBlockId,
+          endBlockId: prev?.endBlockId || ''
+        }));
+      }
+    };
+
+    // 监听处理开始事件 - 改进逻辑
+    const handleProcessingStart = (event: CustomEvent) => {
+      // 使用传递的精确信息判断当前块是否在选择范围内
+      const { selectedBlockIds, startBlockId, endBlockId, rangeBlocks } = event.detail || {};
+      
+      if (selectedBlockIds && Array.isArray(selectedBlockIds)) {
+        // 检查当前块是否在选择范围内
+        const isInRange = selectedBlockIds.includes(block.id);
+        
+        if (isInRange) {
+          console.log(`🎯 语境块 ${block.id} 开始处理中动画`);
+          setIsProcessingAlignment(true);
+        } else {
+          console.log(`⚪ 语境块 ${block.id} 不在处理范围内`);
+          setIsProcessingAlignment(false);
+        }
+      } else {
+        // 兼容旧的逻辑（如果没有传递详细信息）
+        if (selectedRange) {
+          const { startBlockId, endBlockId } = selectedRange;
+          const isInRange = block.id === startBlockId || block.id === endBlockId;
+          
+          if (isInRange) {
+            setIsProcessingAlignment(true);
+          }
+        }
+      }
+    };
+
+    // 监听处理完成事件 - 在这里重置选择状态
+    const handleProcessingComplete = () => {
+      setIsProcessingAlignment(false);
+      // 处理完成后才重置选择状态
+      setIsSelectedAsStart(false);
+      setIsSelectedAsEnd(false);
+      setSelectedRange(null);
+      console.log(`✅ 语境块 ${block.id} 处理完成，清除动画和选择状态`);
+    };
+
+    window.addEventListener('enable-block-selection', handleEnableSelection as EventListener);
+    window.addEventListener('disable-block-selection', handleDisableSelection as EventListener);
+    window.addEventListener('selection-confirmed', handleSelectionConfirmed as EventListener);
+    window.addEventListener('alignment-processing-start', handleProcessingStart as EventListener);
+    window.addEventListener('alignment-processing-complete', handleProcessingComplete as EventListener);
+    window.addEventListener('mark-start-block-selected', handleMarkStartBlockSelected as EventListener);
+
+    return () => {
+      window.removeEventListener('enable-block-selection', handleEnableSelection as EventListener);
+      window.removeEventListener('disable-block-selection', handleDisableSelection as EventListener);
+      window.removeEventListener('selection-confirmed', handleSelectionConfirmed as EventListener);
+      window.removeEventListener('alignment-processing-start', handleProcessingStart as EventListener);
+      window.removeEventListener('alignment-processing-complete', handleProcessingComplete as EventListener);
+      window.removeEventListener('mark-start-block-selected', handleMarkStartBlockSelected as EventListener);
+    };
+  }, [block.id, selectedRange]);
+
+  // 处理语境块选择点击
+  const handleBlockSelection = useCallback((e: React.MouseEvent) => {
+    if (!isSelectionMode) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // 发送选择事件
+    window.dispatchEvent(new CustomEvent('context-block-selected', {
+      detail: {
+        blockId: block.id,
+        blockContent: block.content
+      }
+    }));
+    
+    // 立即标记当前块为已选择
+    if (selectionType === 'start') {
+      setIsSelectedAsStart(true);
+      setIsSelectedAsEnd(false);
+    } else if (selectionType === 'end') {
+      setIsSelectedAsEnd(true);
+      setIsSelectedAsStart(false);
     }
+    
+    // 提供用户反馈
+    toast.success(selectionType === 'start' ? '起始语境块已选择' : '结束语境块已选择');
+  }, [isSelectionMode, selectionType, block.id, block.content]);
+
+  // 修改handleClick函数，添加语境块选择逻辑
+  const handleClick = (e: React.MouseEvent) => {
+    // 如果是选择模式，处理选择逻辑
+    if (isSelectionMode) {
+      handleBlockSelection(e);
+      return;
+    }
+    
+    // 原有的点击逻辑
+    if (isClicking.current) return;
+    
+    isClicking.current = true;
+    setTimeout(() => {
+      isClicking.current = false;
+    }, 200);
+
+    onSelect?.(block.id, e);
   };
 
   // 处理拖拽开始
   const handleDragStart = (e: React.DragEvent) => {
+    // 如果正在进行对齐处理，禁止拖拽
+    if (isAlignmentProcessing) {
+      console.log('🚫 对齐处理中，禁用拖拽功能');
+      e.preventDefault();
+      return;
+    }
+
     // 如果正在对齐，禁止拖拽
     if (localAligning) {
       e.preventDefault();
@@ -3028,13 +3235,24 @@ export function ContextBlocks({
         dropPosition === 'after' ? 'border-b-2 border-b-primary' : '',
         localAligning ? 'bg-primary/5 border border-primary/30 shadow-md' : '',
         showCompleteAnimation ? 'alignment-complete' : '',
-        isInAnchorMode ? 'bg-gradient-to-r from-blue-50/50 to-purple-50/50 dark:from-blue-950/20 dark:to-purple-950/20 border-blue-200 dark:border-blue-800' : ''
+        isInAnchorMode ? 'bg-gradient-to-r from-blue-50/50 to-purple-50/50 dark:from-blue-950/20 dark:to-purple-950/20 border-blue-200 dark:border-blue-800' : '',
+        // 选择模式的预选择状态（悬浮高亮）
+        isSelectionMode && isBlockSelectable && !isSelectedAsStart && !isSelectedAsEnd ? (
+          selectionType === 'start' 
+            ? 'hover:bg-gradient-to-r hover:from-orange-50 hover:to-red-50 dark:hover:from-orange-900/10 dark:hover:to-red-900/10 hover:border-orange-200 dark:hover:border-orange-800 cursor-pointer' 
+            : 'hover:bg-gradient-to-r hover:from-green-50 hover:to-teal-50 dark:hover:from-green-900/10 dark:hover:to-teal-900/10 hover:border-green-200 dark:hover:border-green-800 cursor-pointer'
+        ) : '',
+        // 选择模式的已选择状态
+        isSelectedAsStart ? cn('bg-gradient-to-r from-orange-100 to-red-100 dark:from-orange-900/30 dark:to-red-900/30 border-orange-400 dark:border-orange-600 shadow-lg ring-2 ring-orange-300 dark:ring-orange-700', styles.selectionStartAnimated) : '',
+        isSelectedAsEnd ? cn('bg-gradient-to-r from-green-100 to-teal-100 dark:from-green-900/30 dark:to-teal-900/30 border-green-400 dark:border-green-600 shadow-lg ring-2 ring-green-300 dark:ring-green-700', styles.selectionEndAnimated) : '',
+        // 处理中状态
+        isProcessingAlignment ? 'bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 border-purple-400 dark:border-purple-600 shadow-lg' : ''
       )}
       onClick={handleClick}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      draggable={!isInAnchorMode} // 锚定模式下禁用拖拽
+      draggable={!isInAnchorMode && !isSelectionMode && !isAlignmentProcessing} // 锚定模式、选择模式和对齐处理中时禁用拖拽
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onMouseEnter={handleMouseEnter}
@@ -3043,8 +3261,54 @@ export function ContextBlocks({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
     >
-      {/* 拖拽手柄 - 对不同块类型使用不同位置，锚定模式下隐藏 */}
-      {!isInAnchorMode && (
+      {/* 选择模式指示器 - 只在真正选中时显示 */}
+      {(isSelectedAsStart || isSelectedAsEnd) && (
+        <div className={cn(
+          styles.selectionIndicator,
+          isSelectedAsStart ? styles.selectionIndicatorStart : styles.selectionIndicatorEnd
+        )}>
+          {isSelectedAsStart ? '始' : '终'}
+        </div>
+      )}
+
+      {/* 处理中动画指示器 - 无闪烁版本 */}
+      {isProcessingAlignment && (
+        <div className={styles.processingOverlay}>
+          {/* 流畅的边框效果 */}
+          <div className={styles.processingAnimatedBorder} />
+          
+          {/* 静态背景 */}
+          <div className={styles.processingBackground} />
+          
+          {/* 中心内容 */}
+          <div className={styles.processingCenter}>
+            <div className={styles.processingCard}>
+              <div className={styles.processingContent}>
+                {/* 静态处理图标 */}
+                <div className={styles.processingIcon}>
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                
+                {/* 文字和静态点点 */}
+                <div className={styles.processingText}>
+                  <span className={styles.processingLabel}>
+                    AI对齐处理中
+                  </span>
+                  {/* 静态点点 */}
+                  <div className={styles.processingDots}>
+                    <div className={styles.processingDot} />
+                    <div className={styles.processingDot} />
+                    <div className={styles.processingDot} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* 拖拽手柄 - 对不同块类型使用不同位置，锚定模式、选择模式和对齐处理中时隐藏 */}
+      {!isInAnchorMode && !isSelectionMode && !isAlignmentProcessing && (
       <div
         className={cn(
           "absolute flex items-center justify-center opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity cursor-grab hover:cursor-pointer",
@@ -3070,7 +3334,11 @@ export function ContextBlocks({
       
       {/* 块内容 */}
       <div className={cn(
-        isInAnchorMode ? 'pl-0' : 'pl-6' // 锚定模式下不需要左内边距
+        isInAnchorMode || isSelectionMode ? 'pl-0' : 'pl-6', // 锚定模式和选择模式下不需要左内边距
+        // 确保选中状态下文本颜色正确
+        isSelectedAsStart ? 'text-orange-900 dark:text-orange-100' : '',
+        isSelectedAsEnd ? 'text-green-900 dark:text-green-100' : '',
+        isProcessingAlignment ? 'text-purple-900 dark:text-purple-100' : ''
       )}>
         {renderContent()}
       </div>

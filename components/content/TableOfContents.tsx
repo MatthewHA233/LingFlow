@@ -52,6 +52,9 @@ export function TableOfContents({
   const [newChapterTitle, setNewChapterTitle] = useState('');
   const [insertPosition, setInsertPosition] = useState<number | null>(null);
 
+  // 添加对齐处理状态管理
+  const [isAlignmentProcessing, setIsAlignmentProcessing] = useState(false);
+
   // 右键菜单相关状态
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
@@ -63,8 +66,36 @@ export function TableOfContents({
   const [editingChapterTitle, setEditingChapterTitle] = useState('');
   const [isRenamingChapter, setIsRenamingChapter] = useState(false);
 
+  // 监听对齐处理开始和完成事件
+  useEffect(() => {
+    const handleAlignmentProcessingStart = (event: CustomEvent) => {
+      console.log('🚀 TableOfContents: 对齐处理开始，禁用章节拖拽排序');
+      setIsAlignmentProcessing(true);
+    };
+
+    const handleAlignmentProcessingComplete = (event: CustomEvent) => {
+      console.log('✅ TableOfContents: 对齐处理完成，启用章节拖拽排序');
+      setIsAlignmentProcessing(false);
+    };
+
+    window.addEventListener('alignment-processing-start', handleAlignmentProcessingStart as EventListener);
+    window.addEventListener('alignment-processing-complete', handleAlignmentProcessingComplete as EventListener);
+
+    return () => {
+      window.removeEventListener('alignment-processing-start', handleAlignmentProcessingStart as EventListener);
+      window.removeEventListener('alignment-processing-complete', handleAlignmentProcessingComplete as EventListener);
+    };
+  }, []);
+
   // 章节拖拽排序处理函数
   const handleChapterDragStart = (e: React.DragEvent, index: number) => {
+    // 如果正在进行对齐处理，禁用拖拽
+    if (isAlignmentProcessing) {
+      console.log('🚫 对齐处理中，禁用章节拖拽排序');
+      e.preventDefault();
+      return;
+    }
+
     setDraggedChapter(index);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', index.toString());
@@ -74,6 +105,11 @@ export function TableOfContents({
   };
 
   const handleChapterDragOver = (e: React.DragEvent, index: number) => {
+    // 如果正在进行对齐处理，禁用拖拽
+    if (isAlignmentProcessing) {
+      return;
+    }
+
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     
@@ -84,6 +120,11 @@ export function TableOfContents({
   };
 
   const handleChapterDragLeave = (e: React.DragEvent) => {
+    // 如果正在进行对齐处理，禁用拖拽
+    if (isAlignmentProcessing) {
+      return;
+    }
+
     // 只有当鼠标真正离开目标区域时才清除指示
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const x = e.clientX;
@@ -95,6 +136,13 @@ export function TableOfContents({
   };
 
   const handleChapterDrop = async (e: React.DragEvent, dropIndex: number) => {
+    // 如果正在进行对齐处理，禁用拖拽
+    if (isAlignmentProcessing) {
+      console.log('🚫 对齐处理中，禁用章节拖拽排序');
+      e.preventDefault();
+      return;
+    }
+
     e.preventDefault();
     
     console.log(`拖拽放置: draggedChapter=${draggedChapter}, dropIndex=${dropIndex}`);
@@ -129,6 +177,11 @@ export function TableOfContents({
   };
 
   const handleChapterListDragOver = (e: React.DragEvent) => {
+    // 如果正在进行对齐处理，禁用拖拽
+    if (isAlignmentProcessing) {
+      return;
+    }
+
     e.preventDefault();
     
     if (draggedChapter === null) return;
@@ -731,7 +784,7 @@ export function TableOfContents({
                       draggedChapter === index && "opacity-30 scale-95",
                       dragOverIndex === index && draggedChapter !== null && draggedChapter !== index && "scale-105"
                     )}
-                    draggable
+                    draggable={!isAlignmentProcessing} // 对齐处理中时禁用拖拽
                     onDragStart={(e) => handleChapterDragStart(e, index)}
                     onDragOver={(e) => handleChapterDragOver(e, index)}
                     onDragLeave={handleChapterDragLeave}
@@ -741,7 +794,8 @@ export function TableOfContents({
                       {/* 拖拽手柄 */}
                       <div className={cn(
                         "transition-opacity cursor-grab active:cursor-grabbing flex-shrink-0",
-                        draggedChapter !== null ? "opacity-100" : "opacity-0 group-hover:opacity-60"
+                        draggedChapter !== null ? "opacity-100" : "opacity-0 group-hover:opacity-60",
+                        isAlignmentProcessing && "opacity-30 cursor-not-allowed" // 对齐处理中时显示禁用状态
                       )}>
                         <GripVertical className="w-3 h-3 text-muted-foreground" />
                       </div>

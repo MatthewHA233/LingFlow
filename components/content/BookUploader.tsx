@@ -656,7 +656,11 @@ export function BookUploader({ onBookLoaded }: BookUploaderProps) {
           created_at: book.created_at,
           updated_at: book.updated_at,
           metadata: book.metadata || {},
-          chapters: stage4Data.chapters || []
+          chapters: stage4Data.chapters || [],
+          // 添加缺少的必需属性
+          type: 'book' as const,
+          status: book.status || 'ready',
+          note_count: stage4Data.chapters?.length || 0
         };
 
         onBookLoaded(mergedBook, arrayBuffer);

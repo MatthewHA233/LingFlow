@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { AudioRecognizer } from './AudioRecognizer';
+import { AudioProcessingPanel } from './AudioProcessingPanel';
 import { DraggableAudioPlayer } from './DraggableAudioPlayer';
 import { TableOfContents } from './TableOfContents';
 import { Book } from '@/types/book';
@@ -33,6 +34,7 @@ import { AudioUploader } from './AudioUploader';
 import { createPortal } from 'react-dom';
 import { MeaningBlocksService, type MeaningBlockFormatted } from '@/lib/services/meaning-blocks-service';
 import { TranslationPanel } from './TranslationPanel';
+import { IconUpload } from "@tabler/icons-react";
 
 interface ReaderContentProps {
   book: Book;
@@ -93,6 +95,9 @@ export function ReaderContent({ book, targetBlockId }: ReaderContentProps) {
   const [allSelectedWords, setAllSelectedWords] = useState<SelectedWord[]>([]);
   const [isInAnchorMode, setIsInAnchorMode] = useState(false);
   const [anchorModeBlocks, setAnchorModeBlocks] = useState<Set<string>>(new Set()); // 跟踪所有锚定模式的块
+
+  // 添加对齐处理状态
+  const [isAlignmentProcessing, setIsAlignmentProcessing] = useState(false);
 
   // 添加含义块数据状态
   const [meaningBlocks, setMeaningBlocks] = useState<Record<string, MeaningBlockFormatted[]>>({});
@@ -470,6 +475,13 @@ export function ReaderContent({ book, targetBlockId }: ReaderContentProps) {
 
   // 更新块排序处理函数
   const handleBlockOrderChange = async (draggedId: string, droppedId: string, position: 'before' | 'after') => {
+    // 如果正在进行对齐处理，禁用拖拽排序
+    if (isAlignmentProcessing) {
+      console.log('🚫 对齐处理中，禁用拖拽排序交互');
+      toast.warning('对齐处理中，请稍后再试');
+      return;
+    }
+
     const blocks = contextBlocks[currentChapter];
     try {
       const draggedIndex = blocks.findIndex(b => b.id === draggedId);
@@ -2308,6 +2320,27 @@ export function ReaderContent({ book, targetBlockId }: ReaderContentProps) {
     };
   }, [updateBlockTranslationInCache, updateMultipleBlockTranslationsInCache]);
 
+  // 监听对齐处理开始和完成事件
+  useEffect(() => {
+    const handleAlignmentProcessingStart = (event: CustomEvent) => {
+      console.log('🚀 对齐处理开始，禁用拖拽排序交互');
+      setIsAlignmentProcessing(true);
+    };
+
+    const handleAlignmentProcessingComplete = (event: CustomEvent) => {
+      console.log('✅ 对齐处理完成，启用拖拽排序交互');
+      setIsAlignmentProcessing(false);
+    };
+
+    window.addEventListener('alignment-processing-start', handleAlignmentProcessingStart as EventListener);
+    window.addEventListener('alignment-processing-complete', handleAlignmentProcessingComplete as EventListener);
+
+    return () => {
+      window.removeEventListener('alignment-processing-start', handleAlignmentProcessingStart as EventListener);
+      window.removeEventListener('alignment-processing-complete', handleAlignmentProcessingComplete as EventListener);
+    };
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* 阅读器导航栏 */}
@@ -2487,38 +2520,38 @@ export function ReaderContent({ book, targetBlockId }: ReaderContentProps) {
               </button>
             )}
 
-            {/* 上传按钮 - 只在有历史记录时显示 */}
-            {audioUrl && (
-              <>
-                <HoverBorderGradient
-                  containerClassName="rounded-md"
-                  className="flex items-center gap-1.5 text-xs"
-                  onClick={() => setIsUploadDialogOpen(true)}
-                >
-                  <span className="text-sm">+</span>
-                  <span>上传音频</span>
-                </HoverBorderGradient>
+            {/* 上传按钮 - 始终显示 */}
+            <HoverBorderGradient
+              containerClassName="rounded-md"
+              className="flex items-center gap-1.5 text-xs"
+              onClick={() => setIsUploadDialogOpen(true)}
+            >
+              <IconUpload className="w-4 h-4" />
+              <span>上传音频</span>
+            </HoverBorderGradient>
 
-                <AudioUploader
-                  bookId={book.id}
-                  onUploadSuccess={handleUploadSuccess}
-                  onUploadError={handleUploadError}
-                  isOpen={isUploadDialogOpen}
-                  onOpenChange={setIsUploadDialogOpen}
-                  isProcessing={false}
-                />
-              </>
-            )}
+            <AudioUploader
+              bookId={book.id}
+              onUploadSuccess={handleUploadSuccess}
+              onUploadError={handleUploadError}
+              isOpen={isUploadDialogOpen}
+              onOpenChange={setIsUploadDialogOpen}
+              isProcessing={false}
+            />
           </div>
         </div>
 
         {/* 为移动设备调整内容区域的样式 */}
         <div className={`${isMobile ? 'h-[calc(100%-40px)]' : 'flex-1'} overflow-y-auto p-2`}>
-          <AudioRecognizer
-            bookContent={book.chapters?.[currentChapter]?.content || ''}
+          <AudioProcessingPanel
             bookId={book.id}
-            onAudioUrlChange={setAudioUrl}
-            onTimeChange={setCurrentTime}
+            contextBlocks={contextBlocks[currentChapter] || []}
+            onProcessingComplete={() => {
+              // 处理完成后刷新语境块
+              if (parentIds[currentChapter]) {
+                loadContextBlocksForChapter(currentChapter, parentIds[currentChapter]);
+              }
+            }}
           />
         </div>
 
