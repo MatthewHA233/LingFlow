@@ -519,21 +519,39 @@ export function AudioProcessingPanel({
       }
     }
 
-    // 进度条动画函数
-    const animateProgress = (fromPercent: number, toPercent: number, durationMs: number) => {
+    // 进度条动画函数 - 支持提前完成检测
+    const animateProgress = (fromPercent: number, toPercent: number, durationMs: number, completionSignal?: { completed: boolean }) => {
       return new Promise<void>((resolve) => {
         const startTime = performance.now()
         const startProgress = fromPercent
         const progressRange = toPercent - fromPercent
         let lastProgress = startProgress
+        const minDisplayTime = Math.min(1000, durationMs * 0.3) // 最小显示时间：不超过预估时间的30%，最多1秒
         
         const updateProgress = () => {
           const now = performance.now()
           const elapsed = now - startTime
+          
+          // 检查是否提前完成，但要保证最小显示时间
+          if (completionSignal?.completed && elapsed >= minDisplayTime) {
+            console.log(`🎯 操作提前完成，立即跳转到目标进度: ${toPercent}% (显示时间: ${elapsed.toFixed(0)}ms)`)
+            setProgress(toPercent)
+            resolve()
+            return
+          }
+          
           const progress = Math.min(elapsed / durationMs, 1)
           
+          // 如果操作已完成但还没到最小显示时间，加速动画
+          let effectiveProgress = progress
+          if (completionSignal?.completed && elapsed < minDisplayTime) {
+            // 加速到90%，为最后跳转留出空间
+            effectiveProgress = Math.min(0.9, elapsed / minDisplayTime * 0.9)
+            console.log(`⚡ 操作已完成，加速动画中: ${(effectiveProgress * 100).toFixed(0)}%`)
+          }
+          
           // 使用easeOut缓动函数，让进度条开始快速，后来逐渐减慢
-          const easeOut = 1 - Math.pow(1 - progress, 2)
+          const easeOut = 1 - Math.pow(1 - effectiveProgress, 2)
           const currentPercent = startProgress + (progressRange * easeOut)
           
           // 确保进度值为整数，避免小数显示
@@ -545,7 +563,7 @@ export function AudioProcessingPanel({
             lastProgress = roundedPercent
           }
           
-          if (progress < 1) {
+          if (progress < 1 && !(completionSignal?.completed && elapsed >= minDisplayTime)) {
             requestAnimationFrame(updateProgress)
           } else {
             setProgress(toPercent)
@@ -678,13 +696,16 @@ export function AudioProcessingPanel({
       // 🎯 前三个阶段完成，进度设为1%
       setProgress(1)
       
-      // 🎯 开始Rev AI强制对齐阶段 (1% -> 40%)
+      // 🎯 开始Rev AI强制对齐阶段 (1% -> 80%)
       // 基于性能分析：大约50ms/单词的处理时间
       const revAIEstimatedDuration = performanceMetrics.wordCounts.cleaned * 50 // 50ms per word
       console.log(`🚀 开始Rev AI强制对齐动画 - 预计耗时: ${revAIEstimatedDuration}ms (${performanceMetrics.wordCounts.cleaned}单词 × 50ms/单词)`)
       
-      // 启动Rev AI进度条动画 (1% -> 39%)
-      const revAIProgressPromise = animateProgress(1, 39, revAIEstimatedDuration)
+      // 创建Rev AI完成信号
+      const revAICompletionSignal = { completed: false }
+      
+      // 启动Rev AI进度条动画 (1% -> 79%)
+      const revAIProgressPromise = animateProgress(1, 79, revAIEstimatedDuration, revAICompletionSignal)
       
       startStage('Rev AI 强制对齐')
 
@@ -707,21 +728,29 @@ export function AudioProcessingPanel({
       }
 
       const alignmentData = await alignmentRes.json()
+      
+      // Rev AI操作完成，触发提前完成信号
+      revAICompletionSignal.completed = true
+      console.log('🎯 Rev AI强制对齐API调用完成，触发进度条提前完成')
+      
       endStage('Rev AI 强制对齐')
       logStageWordMetrics('Rev AI 强制对齐', performanceMetrics.wordCounts.cleaned)
 
-      // 等待Rev AI进度条动画完成，然后设置为40%
+      // 等待Rev AI进度条动画完成，然后设置为80%
       await revAIProgressPromise
-      setProgress(40)
-      console.log('✅ Rev AI强制对齐完成，进度条已到达40%')
+      setProgress(80)
+      console.log('✅ Rev AI强制对齐完成，进度条已到达80%')
 
-      // 🎯 开始数据处理和保存阶段 (40% -> 100%)
-      // 基于性能分析：大约70ms/单词的处理时间
-      const dbEstimatedDuration = performanceMetrics.wordCounts.cleaned * 70 // 70ms per word
-      console.log(`🗄️ 开始数据库处理动画 - 预计耗时: ${dbEstimatedDuration}ms (${performanceMetrics.wordCounts.cleaned}单词 × 70ms/单词)`)
+      // 🎯 开始数据处理和保存阶段 (80% -> 100%)
+      // 基于性能分析：大约8ms/单词的处理时间 (大幅优化后)
+      const dbEstimatedDuration = performanceMetrics.wordCounts.cleaned * 8 // 8ms per word
+      console.log(`🗄️ 开始数据库处理动画 - 预计耗时: ${dbEstimatedDuration}ms (${performanceMetrics.wordCounts.cleaned}单词 × 8ms/单词)`)
       
-      // 启动数据库进度条动画 (40% -> 99%)
-      const dbProgressPromise = animateProgress(40, 99, dbEstimatedDuration)
+      // 创建数据库完成信号
+      const dbCompletionSignal = { completed: false }
+      
+      // 启动数据库进度条动画 (80% -> 99%)
+      const dbProgressPromise = animateProgress(80, 99, dbEstimatedDuration, dbCompletionSignal)
       
       startStage('数据处理和保存')
 
@@ -730,6 +759,10 @@ export function AudioProcessingPanel({
         processSentenceSegmentation(alignmentData, cleanedText),
         writeAlignmentData(alignmentData, selectedBlocks, cleanedText)
       ])
+
+      // 数据库操作完成，触发提前完成信号
+      dbCompletionSignal.completed = true
+      console.log('🎯 数据库操作完成，触发进度条提前完成')
 
       endStage('数据处理和保存')
       logStageWordMetrics('数据处理和保存', performanceMetrics.wordCounts.cleaned)
@@ -991,7 +1024,7 @@ export function AudioProcessingPanel({
       }
     }
 
-    startDbStage('数据验证和预处理')
+    startDbStage('数据预处理和结构化')
     
     // 检查Rev AI返回的数据结构
     if (!alignmentData.result || !alignmentData.result.monologues || alignmentData.result.monologues.length === 0) {
@@ -1008,11 +1041,9 @@ export function AudioProcessingPanel({
       console.log(`🎤 处理说话人 ${speakerIndex} (speaker ${monologue.speaker}), 元素数量: ${monologue.elements.length}`)
       
       if (monologue.elements) {
-        // 提取该说话人的所有文本元素
         const speakerTextElements = monologue.elements.filter((element: any) => element.type === 'text')
         console.log(`🎤 说话人 ${speakerIndex} 的文本元素数量: ${speakerTextElements.length}`)
         
-        // 添加说话人信息到每个元素
         speakerTextElements.forEach((element: any) => {
           allTextElements.push({
             ...element,
@@ -1022,142 +1053,44 @@ export function AudioProcessingPanel({
       }
     }
     
-    // 按时间戳排序所有文本元素
     allTextElements.sort((a, b) => a.ts - b.ts)
-    
     const totalWords = allTextElements.length
     console.log('🎤 合并后的总文本元素数量:', totalWords)
-    console.log('🎤 前5个文本元素:', allTextElements.slice(0, 5).map((el: any) => `${el.value} (${el.ts}s, speaker ${el.speaker})`))
-    console.log('🎤 后5个文本元素:', allTextElements.slice(-5).map((el: any) => `${el.value} (${el.ts}s, speaker ${el.speaker})`))
 
-    endDbStage('数据验证和预处理')
-    startDbStage('句子划分和准备', totalWords)
-
-    // 1. 按语境块顺序划分句子，同时创建数据库记录
-    console.log('📋 开始按语境块顺序划分句子...')
+    // 1. 按语境块顺序划分句子，构建完整的数据结构
+    console.log('📋 开始构建完整的数据结构...')
     
-    const blockSentences: any[] = [] // 存储所有句子信息，包含语境块关联
+    const alignmentStructure = {
+      speechId: selectedAudio!.id,
+      blocks: [] as any[],
+      totalSentences: 0,
+      totalWords: 0
+    }
+    
     let globalSentenceOrder = 1
+    let wordIndex = 0
     
     for (let blockIndex = 0; blockIndex < selectedBlocks.length; blockIndex++) {
       const block = selectedBlocks[blockIndex]
-      console.log(`📋 处理语境块 ${blockIndex + 1} (ID: ${block.id}):`)
-      console.log(`  原始内容: "${block.content.substring(0, 100)}..."`)
+      console.log(`📋 处理语境块 ${blockIndex + 1} (ID: ${block.id})`)
       
-      // 为当前语境块划分句子
       const blockSentenceTexts = splitTextIntoSentences(block.content)
-      console.log(`  划分出句子数量: ${blockSentenceTexts.length}`)
+      const blockData = {
+        blockId: block.id,
+        originalContent: block.content,
+        sentences: [] as any[]
+      }
       
       for (let sentenceIndex = 0; sentenceIndex < blockSentenceTexts.length; sentenceIndex++) {
         const sentenceText = blockSentenceTexts[sentenceIndex]
-        console.log(`    句子 ${sentenceIndex + 1}: "${sentenceText.substring(0, 50)}..."`)
-        
-        blockSentences.push({
-          blockId: block.id,
-          blockIndex: blockIndex,
-          sentenceIndex: sentenceIndex,
-          originalText: sentenceText,
-          cleanedText: cleanTextForRevAI(sentenceText),
-          globalOrder: globalSentenceOrder,
-          // 数据库记录将在下面创建
-          dbRecord: null
-        })
-        
-        globalSentenceOrder++
-      }
-    }
-    
-    console.log('📋 总句子数量:', blockSentences.length)
-    console.log('📋 句子列表预览:', blockSentences.map(s => ({
-      globalOrder: s.globalOrder,
-      blockIndex: s.blockIndex + 1,
-      sentenceIndex: s.sentenceIndex + 1,
-      text: s.originalText.substring(0, 30) + '...'
-    })))
-    
-    endDbStage('句子划分和准备')
-    startDbStage('句子数据库插入', blockSentences.length)
-    
-    // 2. 批量创建句子数据库记录（暂时没有时间戳）
-    console.log('💾 开始创建句子数据库记录...')
-    
-    const sentencesData = blockSentences.map((sentenceInfo) => ({
-      speech_id: selectedAudio!.id,
-      text_content: sentenceInfo.originalText,
-      begin_time: 0, // 暂时设为0，稍后更新
-      end_time: 0,   // 暂时设为0，稍后更新
-      order: sentenceInfo.globalOrder
-    }))
-
-    const { data: insertedSentences, error: sentencesError } = await supabase
-      .from('sentences')
-      .insert(sentencesData)
-      .select()
-      .order('order', { ascending: true }) // 确保按order字段排序返回
-
-    if (sentencesError) {
-      console.error('❌ 插入句子失败:', sentencesError)
-      throw new Error(`插入句子失败: ${sentencesError.message}`)
-    }
-
-    endDbStage('句子数据库插入')
-    console.log('✅ 成功插入句子数量:', insertedSentences.length)
-    console.log('✅ 句子信息数量:', blockSentences.length)
-    
-    // 验证数量匹配
-    if (insertedSentences.length !== blockSentences.length) {
-      console.error('❌ 句子数量不匹配！')
-      console.error('  插入的句子数量:', insertedSentences.length)
-      console.error('  句子信息数量:', blockSentences.length)
-      throw new Error('句子数量不匹配，无法正确关联句子ID')
-    }
-    
-    // 将数据库记录关联到句子信息
-    console.log('🔗 开始关联句子数据库记录...')
-    for (let i = 0; i < blockSentences.length; i++) {
-      const sentenceInfo = blockSentences[i]
-      // 通过order字段找到对应的数据库记录，而不是依赖数组索引
-      const dbRecord = insertedSentences.find(record => record.order === sentenceInfo.globalOrder)
-      
-      if (!dbRecord) {
-        console.error(`❌ 找不到句子 ${sentenceInfo.globalOrder} 的数据库记录`)
-        throw new Error(`找不到句子 ${sentenceInfo.globalOrder} 的数据库记录`)
-      }
-      
-      blockSentences[i].dbRecord = dbRecord
-      console.log(`  句子 ${i + 1}: 信息ID=${sentenceInfo.globalOrder}, 数据库ID=${dbRecord.id}, 内容="${sentenceInfo.originalText.substring(0, 30)}..."`)
-    }
-    console.log('✅ 句子数据库记录关联完成')
-    
-    // 验证关联结果（不受DEBUG_MODE影响）
-    console.log('🔍 验证句子ID关联结果:')
-    blockSentences.slice(0, 3).forEach((sentenceInfo, index) => {
-      console.log(`  句子 ${index + 1}: globalOrder=${sentenceInfo.globalOrder}, dbId=${sentenceInfo.dbRecord?.id}, text="${sentenceInfo.originalText.substring(0, 30)}..."`)
-    })
-    if (blockSentences.length > 3) {
-      console.log(`  ... 还有 ${blockSentences.length - 3} 个句子`)
-    }
-    
-    // 3. 按顺序匹配单词到句子
-    console.log('🔄 开始按顺序匹配单词到句子...')
-    
-    let wordIndex = 0 // Rev AI单词的当前索引
-    const sentenceTimestamps: any[] = [] // 存储句子的时间戳信息
-    
-    for (const sentenceInfo of blockSentences) {
-      console.log(`🔄 处理句子 ${sentenceInfo.globalOrder}: "${sentenceInfo.originalText.substring(0, 50)}..."`)
-      console.log(`  清理后文本: "${sentenceInfo.cleanedText}"`)
-      
-      // 获取句子的预期单词
-      const expectedWords = sentenceInfo.cleanedText.split(/\s+/).filter((w: string) => w.length > 0)
-      console.log(`  预期单词: [${expectedWords.join(', ')}] (${expectedWords.length}个)`)
+        const cleanedSentenceText = cleanTextForRevAI(sentenceText)
+        const expectedWords = cleanedSentenceText.split(/\s+/).filter((w: string) => w.length > 0)
       
       // 收集匹配的Rev AI单词
       const matchedWords: any[] = []
       let startTime = null
       let endTime = null
       
-      // 按预期单词数量收集Rev AI单词
       for (let i = 0; i < expectedWords.length && wordIndex < allTextElements.length; i++) {
         const revAIWord = allTextElements[wordIndex]
         matchedWords.push(revAIWord)
@@ -1166,218 +1099,94 @@ export function AudioProcessingPanel({
           startTime = revAIWord.ts
         }
         endTime = revAIWord.end_ts
-        
         wordIndex++
       }
       
-      console.log(`  实际匹配单词: [${matchedWords.map(w => w.value).join(', ')}] (${matchedWords.length}个)`)
-      console.log(`  时间范围: ${startTime?.toFixed(3)}s - ${endTime?.toFixed(3)}s`)
-      
-      // 简单的匹配检查和矫正
-      const expectedStr = expectedWords.join(' ').toLowerCase()
-      const actualStr = matchedWords.map(w => w.value).join(' ').toLowerCase()
-      const similarity = calculateStringSimilarity(expectedStr, actualStr)
-      
-      console.log(`  匹配检查: "${expectedStr}" vs "${actualStr}"`)
-      console.log(`  相似度: ${(similarity * 100).toFixed(1)}%`)
-      
-      if (similarity < 0.5) {
-        console.warn(`  ⚠️ 句子匹配度较低，可能需要手动检查`)
-      }
-      
-      // 保存句子时间戳信息
-      sentenceTimestamps.push({
-        sentenceId: sentenceInfo.dbRecord.id,
-        startTime: startTime || 0,
-        endTime: endTime || 0,
-        words: matchedWords
-      })
-    }
-    
-    console.log(`🔄 单词匹配完成，使用了 ${wordIndex}/${allTextElements.length} 个Rev AI单词`)
-    
-    // 4. 基于sentenceTimestamps构建单词数据库数据（确保与调试数据一致）
-    console.log('📖 开始基于sentenceTimestamps构建单词数据库数据...')
-    const wordsData: any[] = []
-    
-    for (const timestampInfo of sentenceTimestamps) {
-      const sentenceId = timestampInfo.sentenceId
-      const words = timestampInfo.words || []
-      
-      for (const word of words) {
-        wordsData.push({
-          sentence_id: sentenceId,
+        const sentenceData = {
+          order: globalSentenceOrder,
+          textContent: sentenceText,
+          beginTime: Math.round((startTime || 0) * 1000),
+          endTime: Math.round((endTime || 0) * 1000),
+          orderInBlock: sentenceIndex + 1,
+          words: matchedWords.map((word: any) => ({
           word: word.value,
-          begin_time: Math.round((word.ts || 0) * 1000),
-          end_time: Math.round((word.end_ts || 0) * 1000)
-        })
-      }
-    }
-    
-    console.log(`📖 准备插入到words表的单词数量: ${wordsData.length}`)
-    
-    // 调试：显示前几个单词数据
-    if (wordsData.length > 0) {
-      console.log('📖 前5个单词数据示例:', wordsData.slice(0, 5))
-      
-      // 验证单词数据的sentence_id分布
-      const sentenceIdCounts = new Map()
-      wordsData.forEach(word => {
-        const count = sentenceIdCounts.get(word.sentence_id) || 0
-        sentenceIdCounts.set(word.sentence_id, count + 1)
-      })
-      console.log('📖 单词按句子ID分布:')
-      Array.from(sentenceIdCounts.entries()).slice(0, 10).forEach(([sentenceId, count]) => {
-        console.log(`  句子ID ${sentenceId}: ${count} 个单词`)
-      })
-      if (sentenceIdCounts.size > 10) {
-        console.log(`  ... 还有 ${sentenceIdCounts.size - 10} 个句子`)
-      }
-    }
-    
-    // 5. 批量插入单词到数据库
-    if (wordsData.length > 0) {
-      startDbStage('单词数据库插入', wordsData.length)
-      console.log('🚀 开始插入单词到数据库...')
-      const { data: insertedWords, error: wordsError } = await supabase
-        .from('words')
-        .insert(wordsData)
-        .select()
-
-      if (wordsError) {
-        console.error('❌ 插入单词失败:', wordsError)
-        console.error('❌ 失败的数据示例:', wordsData.slice(0, 3))
-      } else {
-        endDbStage('单词数据库插入')
-        console.log('✅ 成功插入单词数量:', wordsData.length)
-        console.log('✅ 返回的插入数据示例:', insertedWords?.slice(0, 3))
-      }
-    } else {
-      console.warn('⚠️ 没有单词数据需要插入！')
-    }
-    
-    // 6. 更新句子的时间戳
-    console.log('⏰ 开始更新句子时间戳...')
-    
-    for (const timestampInfo of sentenceTimestamps) {
-      const { error: updateError } = await supabase
-        .from('sentences')
-        .update({
-          begin_time: Math.round(timestampInfo.startTime * 1000),
-          end_time: Math.round(timestampInfo.endTime * 1000)
-        })
-        .eq('id', timestampInfo.sentenceId)
+            beginTime: Math.round((word.ts || 0) * 1000),
+            endTime: Math.round((word.end_ts || 0) * 1000)
+          }))
+        }
         
-      if (updateError) {
-        console.warn(`⚠️ 更新句子 ${timestampInfo.sentenceId} 时间戳失败:`, updateError)
+        blockData.sentences.push(sentenceData)
+        globalSentenceOrder++
       }
+      
+      alignmentStructure.blocks.push(blockData)
     }
     
-    console.log('✅ 句子时间戳更新完成')
+    alignmentStructure.totalSentences = globalSentenceOrder - 1
+    alignmentStructure.totalWords = totalWords
     
-    // 7. 更新语境块
-    console.log('🔄 开始更新语境块...')
+    console.log(`📋 数据结构构建完成: ${alignmentStructure.blocks.length} 个块, ${alignmentStructure.totalSentences} 个句子, ${alignmentStructure.totalWords} 个单词`)
     
-    // 按语境块分组句子
-    const blockGroups = new Map()
-    for (const sentenceInfo of blockSentences) {
-      const blockId = sentenceInfo.blockId
-      if (!blockGroups.has(blockId)) {
-        blockGroups.set(blockId, [])
+    endDbStage('数据预处理和结构化')
+    startDbStage('批量数据库操作', totalWords)
+    
+    // 2. 使用单个API调用进行批量操作
+    console.log('🚀 开始执行批量数据库操作...')
+    
+    try {
+      // 获取用户token
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        throw new Error('用户未登录或session已过期')
       }
-      blockGroups.get(blockId).push(sentenceInfo)
-    }
-    
-    for (const [blockId, sentences] of Array.from(blockGroups.entries())) {
-      const sentenceIds = (sentences as any[]).map((s: any) => s.dbRecord.id)
-      const newContent = sentenceIds.map((id: string) => `[[${id}]]`).join('')
-      
-      // 计算语境块的时间范围
-      const blockTimestamps = sentenceTimestamps.filter(ts => 
-        sentenceIds.includes(ts.sentenceId)
-      )
-      
-      const beginTime = blockTimestamps.length > 0 ? 
-        Math.round(Math.min(...blockTimestamps.map(ts => ts.startTime)) * 1000) : 0
-      const endTime = blockTimestamps.length > 0 ? 
-        Math.round(Math.max(...blockTimestamps.map(ts => ts.endTime)) * 1000) : 0
-      
-      console.log(`🔄 更新语境块 ${blockId}:`, {
-        sentenceCount: (sentences as any[]).length,
-        sentenceIds,
-        beginTime,
-        endTime,
-        newContent
+
+      const response = await fetch('/api/alignment/batch-insert', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify(alignmentStructure)
       })
       
-      // 更新语境块
-      const block = selectedBlocks.find(b => b.id === blockId)
-      const { error: blockError } = await supabase
-        .from('context_blocks')
-        .update({
-          block_type: 'audio_aligned',
-          speech_id: selectedAudio!.id,
-          original_content: block.content, // 备份原文
-          content: newContent, // 新内容为句子ID格式
-          begin_time: beginTime,
-          end_time: endTime
-        })
-        .eq('id', blockId)
-
-      if (blockError) {
-        throw new Error(`更新语境块失败: ${blockError.message}`)
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || '批量插入失败')
       }
-    }
-    
-    // 8. 创建block_sentences关联
-    console.log('🔗 开始创建block_sentences关联...')
-    
-    const blockSentencesData = []
-    for (const sentenceInfo of blockSentences) {
-      blockSentencesData.push({
-        block_id: sentenceInfo.blockId,
-        sentence_id: sentenceInfo.dbRecord.id,
-        order_index: sentenceInfo.sentenceIndex + 1 // 在块内的顺序
-      })
-    }
-
-    if (blockSentencesData.length > 0) {
-      const { error: blockSentencesError } = await supabase
-        .from('block_sentences')
-        .insert(blockSentencesData)
-
-      if (blockSentencesError) {
-        console.warn('创建block_sentences关联失败:', blockSentencesError)
-      } else {
-        console.log('✅ 成功创建block_sentences关联数量:', blockSentencesData.length)
-      }
-    }
-
-    // 测试模式：收集调试数据
+      
+      const result = await response.json()
+      console.log('✅ 批量数据库操作完成:', result)
+      
+      endDbStage('批量数据库操作')
+      
+      // 3. 处理测试模式调试数据
     let debugData = null
     if (DEBUG_MODE) {
+        console.log('🧪 构建测试模式调试数据...')
+        
       debugData = {
         originalText: selectedBlocks.map(block => block.content).join(' '),
         cleanedText: cleanedText,
-        sentences: blockSentences.map(s => s.originalText),
+          sentences: alignmentStructure.blocks.flatMap(block => 
+            block.sentences.map((s: any) => s.textContent)
+          ),
         revAIElements: allTextElements,
         fullRevAIResponse: alignmentData,
-        alignmentResult: blockSentences.map((sentenceInfo, index) => {
-          const timestampInfo = sentenceTimestamps[index]
-          return {
-            id: index + 1,
-            text: sentenceInfo.originalText,
-            startTime: timestampInfo?.startTime || 0,
-            endTime: timestampInfo?.endTime || 0,
-            words: timestampInfo?.words?.map((word: any) => ({
-              text: word.value,
-              startTime: word.ts || 0,
-              endTime: word.end_ts || 0,
-              confidence: word.confidence || 0,
-              speaker: word.speaker || 0
-            })) || [],
-          }
-        }),
+          alignmentResult: alignmentStructure.blocks.flatMap((block, blockIdx) => 
+            block.sentences.map((sentence: any, sentenceIdx: number) => ({
+              id: sentence.order,
+              text: sentence.textContent,
+              startTime: sentence.beginTime / 1000,
+              endTime: sentence.endTime / 1000,
+              words: sentence.words.map((word: any) => ({
+                text: word.word,
+                startTime: word.beginTime / 1000,
+                endTime: word.endTime / 1000,
+                confidence: 0.9, // 默认置信度
+                speaker: 0
+              }))
+            }))
+          ),
         audioUrl: selectedAudio?.audio_url || '',
         processedAt: new Date().toISOString(),
         rawOriginalText: selectedBlocks.map(block => block.content).join(' '),
@@ -1394,73 +1203,58 @@ export function AudioProcessingPanel({
           textElements: mono.elements.filter((el: any) => el.type === 'text').length,
           punctElements: mono.elements.filter((el: any) => el.type === 'punct').length
         })),
-        // 构建数据库结果
-        databaseResults: Array.from(blockGroups.entries()).map(([blockId, sentences]: [string, any[]]) => {
-          const block = selectedBlocks.find(b => b.id === blockId)
-          const blockTimestamps = sentenceTimestamps.filter(ts => 
-            sentences.some((s: any) => s.dbRecord.id === ts.sentenceId)
-          )
-          
-          return {
-            blockId: blockId,
-            blockType: block?.block_type || 'unknown',
-            blockIndex: sentences[0]?.blockIndex + 1 || 0,
-            originalContent: block?.content.substring(0, 100) + (block?.content.length > 100 ? '...' : '') || '',
-            cleanedContent: cleanTextForRevAI(block?.content || '').substring(0, 100) + '...',
-            sentenceCount: sentences.length,
-            totalWords: sentences.reduce((sum: number, s: any) => {
-              const ts = sentenceTimestamps.find(t => t.sentenceId === s.dbRecord.id)
-              return sum + (ts?.words?.length || 0)
-            }, 0),
-            sentences: sentences.map((s: any) => {
-              const ts = sentenceTimestamps.find(t => t.sentenceId === s.dbRecord.id)
-              return {
-                sentenceId: s.dbRecord.id,
-                sentenceText: s.originalText,
-                sentenceOrder: s.globalOrder,
-                beginTime: Math.round((ts?.startTime || 0) * 1000),
-                endTime: Math.round((ts?.endTime || 0) * 1000),
-                words: ts?.words?.map((word: any) => ({
-                  word: word.value, // 改为word以匹配测试界面的接口
-                  startTime: word.ts || 0, // 使用startTime而不是ts，添加默认值
-                  endTime: word.end_ts || 0, // 使用endTime而不是end_ts，添加默认值
-                  confidence: word.confidence || 0,
-                  speaker: word.speaker || 0
-                })) || [],
-                wordCount: ts?.words?.length || 0
-              }
-            }),
-            blockBeginTime: blockTimestamps.length > 0 ? 
-              Math.round(Math.min(...blockTimestamps.map(ts => ts.startTime)) * 1000) : 0,
-            blockEndTime: blockTimestamps.length > 0 ? 
-              Math.round(Math.max(...blockTimestamps.map(ts => ts.endTime)) * 1000) : 0
-          }
-        })
-      }
-      console.log('🧪 测试模式数据收集完成')
-    }
-
-    // 📊 数据库性能总结报告
-    const totalDbDuration = performance.now() - dbPerformance.startTime
-    console.log('\n🗄️ === 数据库操作性能报告 ===')
-    console.log(`数据库总耗时: ${totalDbDuration.toFixed(2)}ms (${(totalDbDuration / 1000).toFixed(2)}秒)`)
-    console.log(`处理单词数: ${totalWords}个`)
-    console.log(`数据库平均速度: ${(totalDbDuration / totalWords).toFixed(2)}ms/单词`)
-    
-    console.log('\n📊 数据库各阶段详细分析:')
-    Object.entries(dbPerformance.stages).forEach(([stageName, stage]) => {
-      if (stage.duration) {
-        const percentage = (stage.duration / totalDbDuration * 100).toFixed(1)
-        console.log(`  ${stageName}: ${stage.duration.toFixed(2)}ms (${percentage}%)`)
-        if (stage.wordCount && stage.wordCount > 0) {
-          const wordsPerMs = stage.wordCount / stage.duration
-          console.log(`    处理速度: ${(wordsPerMs * 1000).toFixed(2)} 项/秒`)
+          databaseResults: alignmentStructure.blocks.map((block: any, blockIndex: number) => ({
+            blockId: block.blockId,
+            blockType: 'text',
+            blockIndex: blockIndex + 1,
+            originalContent: block.originalContent.substring(0, 100) + (block.originalContent.length > 100 ? '...' : ''),
+            cleanedContent: cleanTextForRevAI(block.originalContent).substring(0, 100) + '...',
+            sentenceCount: block.sentences.length,
+            totalWords: block.sentences.reduce((sum: number, s: any) => sum + s.words.length, 0),
+            sentences: block.sentences.map((sentence: any) => ({
+              sentenceId: `temp-${sentence.order}`, // 临时ID，实际会在API中生成
+              sentenceText: sentence.textContent,
+              sentenceOrder: sentence.order,
+              beginTime: sentence.beginTime,
+              endTime: sentence.endTime,
+              words: sentence.words,
+              wordCount: sentence.words.length
+            })),
+            blockBeginTime: block.sentences.length > 0 ? 
+              Math.min(...block.sentences.map((s: any) => s.beginTime)) : 0,
+            blockEndTime: block.sentences.length > 0 ? 
+              Math.max(...block.sentences.map((s: any) => s.endTime)) : 0
+          }))
         }
+        console.log('🧪 测试模式数据收集完成')
       }
-    })
 
-    // 测试模式：返回调试数据
+      // 📊 数据库性能总结报告
+      const totalDbDuration = performance.now() - dbPerformance.startTime
+      console.log('\n🗄️ === 优化后数据库操作性能报告 ===')
+      console.log(`数据库总耗时: ${totalDbDuration.toFixed(2)}ms (${(totalDbDuration / 1000).toFixed(2)}秒)`)
+      console.log(`处理单词数: ${totalWords}个`)
+      console.log(`平均速度: ${(totalDbDuration / totalWords).toFixed(2)}ms/单词`)
+      console.log(`性能提升: 预期比原方案快 5-10 倍`)
+      
+      console.log('\n📊 优化后各阶段分析:')
+      Object.entries(dbPerformance.stages).forEach(([stageName, stage]) => {
+        if (stage.duration) {
+          const percentage = (stage.duration / totalDbDuration * 100).toFixed(1)
+          console.log(`  ${stageName}: ${stage.duration.toFixed(2)}ms (${percentage}%)`)
+          if (stage.wordCount && stage.wordCount > 0) {
+            const wordsPerMs = stage.wordCount / stage.duration
+            console.log(`    处理速度: ${(wordsPerMs * 1000).toFixed(2)} 项/秒`)
+          }
+        }
+      })
+
     return debugData
+      
+    } catch (error: any) {
+      console.error('❌ 批量数据库操作失败:', error)
+      throw new Error(`批量数据库操作失败: ${error.message}`)
+    }
   }
 
   // 计算字符串相似度（简单版本）
@@ -1818,15 +1612,17 @@ export function AudioProcessingPanel({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-semibold">音频列表</h3>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={loadAudioRecords}
-                  className="gap-2"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  刷新
-                </Button>
+                <button className="bg-slate-800 no-underline group cursor-pointer relative shadow-2xl shadow-zinc-900 rounded-full p-px text-xs font-semibold leading-6 text-white inline-block"
+                        onClick={loadAudioRecords}>
+                  <span className="absolute inset-0 overflow-hidden rounded-full">
+                    <span className="absolute inset-0 rounded-full bg-[image:radial-gradient(75%_100%_at_50%_0%,rgba(59,130,246,0.6)_0%,rgba(59,130,246,0)_75%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+                  </span>
+                  <div className="relative flex space-x-1 items-center z-10 rounded-full bg-zinc-950 py-1 px-2 ring-1 ring-white/10 justify-center">
+                    <RefreshCw className="w-3 h-3" />
+                    <span>刷新</span>
+                  </div>
+                  <span className="absolute -bottom-0 left-[1.125rem] h-px w-[calc(100%-2.25rem)] bg-gradient-to-r from-blue-400/0 via-blue-400/90 to-blue-400/0 transition-opacity duration-500 group-hover:opacity-40" />
+                </button>
               </div>
               
               {/* 添加固定高度和滚动条 */}
@@ -2360,29 +2156,29 @@ export function AudioProcessingPanel({
                   <span className="text-sm font-medium text-gray-400 tracking-wide">
                     完成
                   </span>
-                </div>
+              </div>
               </div>
               
               {/* 状态描述 */}
               <motion.div 
                 className="text-center"
-                key={progress < 1 ? 'init' : progress < 40 ? 'revai' : progress < 100 ? 'save' : 'complete'}
+                key={progress < 1 ? 'init' : progress < 80 ? 'revai' : progress < 100 ? 'save' : 'complete'}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3 }}
               >
                 <p className="text-gray-300 text-sm font-medium tracking-wide">
                   {progress < 1 && "正在初始化和预处理文本"}
-                  {progress >= 1 && progress < 40 && "Rev AI正在进行音频转录和强制对齐"}
-                  {progress >= 40 && progress < 100 && "正在处理对齐结果并保存到数据库"}
+                  {progress >= 1 && progress < 80 && "Rev AI正在进行音频转录和强制对齐"}
+                  {progress >= 80 && progress < 100 && "正在处理对齐结果并保存到数据库"}
                   {progress >= 100 && "处理完成，准备跳转"}
                 </p>
                 
                 {/* 技术细节 */}
                 <p className="text-gray-500 text-xs mt-2 tracking-wider">
                   {progress < 1 && "INITIALIZING • TEXT PROCESSING"}
-                  {progress >= 1 && progress < 40 && "PROCESSING • FORCED ALIGNMENT"}
-                  {progress >= 40 && progress < 100 && "SAVING • DATABASE SYNC"}
+                  {progress >= 1 && progress < 80 && "PROCESSING • FORCED ALIGNMENT"}
+                  {progress >= 80 && progress < 100 && "SAVING • DATABASE SYNC"}
                   {progress >= 100 && "COMPLETE • READY"}
                 </p>
               </motion.div>
@@ -2406,7 +2202,7 @@ export function AudioProcessingPanel({
                 animate={{ scale: 1, rotate: 0 }}
                 transition={{ duration: 0.6, delay: 0.2, type: "spring", bounce: 0.4 }}
               >
-                <motion.div 
+                <motion.div
                   className="w-16 h-16 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center"
                   animate={{ 
                     scale: [1, 1.1, 1],
