@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion } from "motion/react";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 type Tab = {
@@ -10,51 +10,32 @@ type Tab = {
   content?: string | React.ReactNode | any;
 };
 
+interface TabsProps {
+  tabs: Tab[];
+  containerClassName?: string;
+  activeTabClassName?: string;
+  tabClassName?: string;
+  contentClassName?: string;
+  activeTab?: string;
+  onTabChange?: (tabValue: string) => void;
+  disable3D?: boolean;
+}
+
 export const Tabs = ({
   tabs: propTabs,
   containerClassName,
   activeTabClassName,
   tabClassName,
   contentClassName,
-  disable3D = false,
   activeTab,
   onTabChange,
-}: {
-  tabs: Tab[];
-  containerClassName?: string;
-  activeTabClassName?: string;
-  tabClassName?: string;
-  contentClassName?: string;
-  disable3D?: boolean;
-  activeTab?: string;
-  onTabChange?: (tabValue: string) => void;
-}) => {
-  // 初始化内部状态
-  const getInitialActiveTab = () => {
-    if (activeTab) {
-      return propTabs.find(tab => tab.value === activeTab) || propTabs[0];
-    }
-    return propTabs[0];
-  };
+  disable3D = false,
+}: TabsProps) => {
+  const [tabs, setTabs] = useState<Tab[]>(propTabs);
+  const [internalActive, setInternalActive] = useState<Tab>(propTabs[0]);
 
-  const getInitialTabsOrder = () => {
-    if (activeTab && !disable3D) {
-      const targetIndex = propTabs.findIndex(tab => tab.value === activeTab);
-      if (targetIndex > 0) {
-        const newTabs = [...propTabs];
-        const selectedTab = newTabs.splice(targetIndex, 1);
-        newTabs.unshift(selectedTab[0]);
-        return newTabs;
-      }
-    }
-    return propTabs;
-  };
-
-  const [internalActive, setInternalActive] = useState<Tab>(getInitialActiveTab);
-  const [tabs, setTabs] = useState<Tab[]>(getInitialTabsOrder);
-
-  // 计算当前活跃的tab
-  const active = activeTab 
+  // 当前激活的tab，优先使用外部控制的activeTab
+  const active = activeTab !== undefined 
     ? propTabs.find(tab => tab.value === activeTab) || propTabs[0]
     : internalActive;
 
@@ -138,9 +119,18 @@ export const Tabs = ({
                 layoutId="clickedbutton"
                 transition={{ type: "spring", bounce: 0.3, duration: 0.6 }}
                 className={cn(
-                  "absolute inset-0 bg-gray-200 dark:bg-zinc-800 rounded-full ",
+                  "absolute inset-0 bg-gray-200 dark:bg-zinc-800 rounded-full will-change-transform",
                   activeTabClassName
                 )}
+                style={{
+                  // 强制GPU加速和优化渲染
+                  transform: "translateZ(0)",
+                  backfaceVisibility: "hidden",
+                  perspective: "1000px",
+                  // 防止滚动时的渲染问题
+                  position: "absolute" as const,
+                  isolation: "isolate",
+                }}
               />
             )}
 
@@ -207,11 +197,15 @@ export const FadeInDiv = ({
               zIndex: tabIndex >= 0 ? -displayIndex : -999,
               opacity: tabIndex >= 0 && displayIndex < 3 ? 1 - displayIndex * 0.1 : 0,
               visibility: tabIndex >= 0 ? 'visible' : 'hidden',
+              // 添加优化样式防止渲染问题
+              transform: "translateZ(0)",
+              backfaceVisibility: "hidden",
+              perspective: "1000px",
             }}
             animate={{
               y: isCurrentActive ? [0, 40, 0] : 0,
             }}
-            className={cn("w-full h-full absolute top-0 left-0", className)}
+            className={cn("w-full h-full absolute top-0 left-0 will-change-transform", className)}
           >
             {tab.content}
           </motion.div>

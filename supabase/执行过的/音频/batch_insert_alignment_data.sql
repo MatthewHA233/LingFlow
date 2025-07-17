@@ -125,9 +125,10 @@ BEGIN
           END;
         END LOOP;
         
-        -- 5. 更新语境块信息
+        -- 5. 更新语境块信息（先备份content到original_content）
         UPDATE context_blocks 
         SET 
+          original_content = COALESCE(content, ''),  -- 备份当前content到original_content
           speech_id = speech_id_uuid,  -- 使用转换后的UUID
           begin_time = block_begin_time,
           end_time = block_end_time,

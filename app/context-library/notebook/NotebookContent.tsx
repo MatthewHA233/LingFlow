@@ -9,19 +9,40 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HoverBorderGradient } from '@/components/ui/hover-border-gradient';
-import { Plus, BookOpen, MoreHorizontal, Trash, Share, Edit, Calendar, Tag, ChevronRight, FileText } from 'lucide-react';
+import { Plus, BookOpen, MoreHorizontal, Trash, Share, Edit, ChevronRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { confirmAlert } from 'react-confirm-alert';
 import 'react-confirm-alert/src/react-confirm-alert.css';
 import { toast } from 'sonner';
 import { CardContainer, CardBody, CardItem } from '@/components/ui/3d-card';
 import NotebookCreateDialog from '@/components/content/NotebookCreateDialog';
+import NotebookEditDialog from '@/components/content/NotebookEditDialog';
+
+// 页面级别的内存缓存
+let pageCache: {
+  userId: string | null;
+  notebooks: Book[];
+  timestamp: number;
+} = {
+  userId: null,
+  notebooks: [],
+  timestamp: 0
+};
+
+const CACHE_DURATION = 5 * 60 * 1000; // 5分钟缓存
 
 export default function NotebookContent() {
   const [notebooks, setNotebooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
+  const [placeholderStates, setPlaceholderStates] = useState<Record<string, boolean>>({});
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editingNotebook, setEditingNotebook] = useState<Book | null>(null);
+  const [notebookResources, setNotebookResources] = useState<Array<any>>([]);
+  const [resourcesLoading, setResourcesLoading] = useState(false);
+  const [savingNotebook, setSavingNotebook] = useState(false);
+  const [editingNotebookIds, setEditingNotebookIds] = useState<Record<string, boolean>>({});
   const { user } = useAuthStore();
   const router = useRouter();
 
@@ -36,11 +57,29 @@ export default function NotebookContent() {
   async function loadNotebooks() {
     if (!user) return;
 
+    // 检查缓存
+    const now = Date.now();
+    const isCacheValid = pageCache.userId === user.id && 
+                        pageCache.notebooks.length > 0 && 
+                        (now - pageCache.timestamp) < CACHE_DURATION;
+
+    if (isCacheValid) {
+      console.log('使用缓存的笔记本数据');
+      setNotebooks(pageCache.notebooks);
+      setLoading(false);
+      return;
+    }
+
+    console.log('重新加载笔记本数据');
+
     try {
       // 从 books 表获取类型为 'notebook' 的记录
       const { data: notebooksData, error: notebooksError } = await supabase
         .from('books')
-        .select('*')
+        .select(`
+          *,
+          chapters (*, order_index)
+        `)
         .eq('user_id', user.id)
         .eq('type', 'notebook')
         .eq('status', 'ready')
@@ -48,40 +87,60 @@ export default function NotebookContent() {
 
       if (notebooksError) throw notebooksError;
 
-      // 为每个笔记本获取其章节列表（原来的页面）
-      const notebooksWithPages = await Promise.all(
-        (notebooksData || []).map(async (notebook) => {
-          try {
-            const { data: chaptersData, error: chaptersError } = await supabase
-              .from('chapters')
-              .select(`
-                *,
-                content_parents!chapters_parent_id_fkey (
-                  id,
-                  title,
-                  content_type
-                )
-              `)
-              .eq('book_id', notebook.id)
-              .order('order_index', { ascending: true });
+      // 确保章节按顺序排列并添加统计信息
+      const notebooksWithStats = (notebooksData || []).map(notebook => ({
+        ...notebook,
+        chapters: notebook.chapters?.sort((a: { order_index: number }, b: { order_index: number }) => a.order_index - b.order_index) || [],
+        stats: {
+          chapter_count: notebook.chapters?.length || 0,
+          text_block_count: 0,
+          audio_block_count: 0,
+          image_block_count: 0,
+          total_block_count: 0
+        }
+      }));
 
-            if (chaptersError) {
-              console.error(`获取笔记本 ${notebook.id} 的章节失败:`, chaptersError);
-              return { ...notebook, chapters: [] };
-            }
+      // 尝试获取统计数据
+      try {
+        const notebookIds = notebooksWithStats.map(notebook => notebook.id);
+        if (notebookIds.length > 0) {
+          const { data: statsData } = await supabase
+            .from('book_statistics')
+            .select('book_id, chapter_count, text_block_count, audio_block_count, image_block_count, total_block_count')
+            .in('book_id', notebookIds);
 
-            return {
-              ...notebook,
-              chapters: chaptersData || []
-            };
-          } catch (error) {
-            console.error(`处理笔记本 ${notebook.id} 时出错:`, error);
-            return { ...notebook, chapters: [] };
+          if (statsData && statsData.length > 0) {
+            const statsMap = statsData.reduce((acc, stat) => {
+              acc[stat.book_id] = stat;
+              return acc;
+            }, {} as Record<string, any>);
+
+            notebooksWithStats.forEach(notebook => {
+              if (statsMap[notebook.id]) {
+                notebook.stats = {
+                  chapter_count: statsMap[notebook.id].chapter_count || notebook.chapters?.length || 0,
+                  text_block_count: statsMap[notebook.id].text_block_count || 0,
+                  audio_block_count: statsMap[notebook.id].audio_block_count || 0,
+                  image_block_count: statsMap[notebook.id].image_block_count || 0,
+                  total_block_count: statsMap[notebook.id].total_block_count || 0
+                };
+              }
+            });
           }
-        })
-      );
+        }
+      } catch (statsError) {
+        console.warn('获取统计数据失败，使用默认值:', statsError);
+      }
 
-      setNotebooks(notebooksWithPages);
+      setNotebooks(notebooksWithStats);
+      
+      // 更新缓存
+      pageCache = {
+        userId: user.id,
+        notebooks: notebooksWithStats,
+        timestamp: Date.now()
+      };
+      
     } catch (error) {
       console.error('加载笔记本失败:', error);
       toast.error('加载笔记本失败');
@@ -89,6 +148,144 @@ export default function NotebookContent() {
       setLoading(false);
     }
   }
+
+  // 加载笔记本资源
+  async function loadNotebookResources(notebookId: string) {
+    setResourcesLoading(true);
+    try {
+      const { data: resources, error } = await supabase
+        .from('book_resources')
+        .select('*')
+        .eq('book_id', notebookId)
+        .eq('resource_type', 'image')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setNotebookResources(resources || []);
+    } catch (error) {
+      console.error('加载资源失败:', error);
+      toast.error('加载资源失败');
+      setNotebookResources([]);
+    } finally {
+      setResourcesLoading(false);
+    }
+  }
+
+  // 处理编辑按钮点击
+  const handleEditNotebook = async (notebook: Book, e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // 关闭菜单
+    setExpandedMenus(prev => ({...prev, [notebook.id]: false}));
+    
+    // 关闭任何已经打开的编辑对话框
+    setShowEditDialog(false);
+    
+    // 清除之前的编辑笔记本和资源
+    setEditingNotebook(null);
+    setNotebookResources([]);
+    
+    // 设置编辑加载状态
+    setEditingNotebookIds(prev => ({...prev, [notebook.id]: true}));
+    
+    try {
+      // 设置正在编辑的笔记本
+      setEditingNotebook(notebook);
+      
+      // 加载笔记本资源
+      await loadNotebookResources(notebook.id);
+      
+      // 显示编辑对话框
+      setShowEditDialog(true);
+    } catch (error) {
+      console.error('准备编辑笔记本时出错:', error);
+      toast.error('加载编辑信息失败');
+    } finally {
+      // 无论成功失败，都清除加载状态
+      setEditingNotebookIds(prev => ({...prev, [notebook.id]: false}));
+    }
+  };
+
+  // 保存笔记本信息
+  const saveNotebookInfo = async (values: any) => {
+    if (!editingNotebook) return;
+    
+    try {
+      setSavingNotebook(true);
+      
+      const response = await fetch(`/api/notebooks/update-info`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+        },
+        body: JSON.stringify({
+          notebookId: editingNotebook.id,
+          title: values.title,
+          description: values.description,
+          cover_url: values.cover_url,
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '更新笔记本信息失败');
+      }
+      
+      const data = await response.json();
+      
+      // 更新本地笔记本数据
+      const updatedNotebooks = notebooks.map(notebook => 
+        notebook.id === editingNotebook.id
+          ? {
+              ...notebook,
+              title: values.title,
+              description: values.description || notebook.description,
+              cover_url: values.cover_url || notebook.cover_url,
+              updated_at: data.notebook.updated_at
+            }
+          : notebook
+      );
+      
+      setNotebooks(updatedNotebooks);
+      
+      // 更新缓存
+      pageCache = {
+        userId: user?.id || null,
+        notebooks: updatedNotebooks,
+        timestamp: Date.now()
+      };
+      
+      toast.success('笔记本信息已更新');
+      setShowEditDialog(false);
+    } catch (error: any) {
+      console.error('更新笔记本信息失败:', error);
+      toast.error(error.message || '更新笔记本信息失败');
+    } finally {
+      setSavingNotebook(false);
+    }
+  };
+
+  // 处理编辑对话框关闭
+  const handleEditDialogChange = (open: boolean) => {
+    if (!open) {
+      // 如果对话框正在关闭，清理状态
+      setTimeout(() => {
+        setEditingNotebook(null);
+        setNotebookResources([]);
+      }, 300); // 等待对话框关闭动画完成
+    }
+    setShowEditDialog(open);
+  };
+
+  // 格式化数字显示
+  const formatNumber = (num: number) => {
+    if (num >= 1000) {
+      return (num / 1000).toFixed(1) + 'k';
+    }
+    return num.toString();
+  };
 
   const handleDeleteNotebook = async (notebookId: string, title: string, e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -117,11 +314,12 @@ export default function NotebookContent() {
             
             try {
               // 先将笔记本标记为正在删除状态
-              setNotebooks(notebooks.map(notebook => 
+              const updatedNotebooks = notebooks.map(notebook => 
                 notebook.id === notebookId 
                   ? { ...notebook, isDeleting: true } 
                   : notebook
-              ));
+              );
+              setNotebooks(updatedNotebooks);
 
               const response = await fetch(`/api/books/delete`, {
                 method: 'DELETE',
@@ -144,7 +342,15 @@ export default function NotebookContent() {
               });
 
               // 从列表中移除
-              setNotebooks(notebooks.filter(notebook => notebook.id !== notebookId));
+              const finalNotebooks = notebooks.filter(notebook => notebook.id !== notebookId);
+              setNotebooks(finalNotebooks);
+              
+              // 更新缓存
+              pageCache = {
+                userId: user?.id || null,
+                notebooks: finalNotebooks,
+                timestamp: Date.now()
+              };
 
             } catch (error) {
               console.error('删除笔记本失败:', error);
@@ -192,20 +398,17 @@ export default function NotebookContent() {
     setExpandedMenus(prev => ({...prev, [notebookId]: false}));
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('zh-CN', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
   const handleCreateNotebook = () => {
     setShowCreateDialog(true);
   };
 
   const handleCreateSuccess = () => {
-    // 重新加载笔记本列表
+    // 清除缓存并重新加载笔记本列表
+    pageCache = {
+      userId: null,
+      notebooks: [],
+      timestamp: 0
+    };
     loadNotebooks();
   };
 
@@ -226,7 +429,7 @@ export default function NotebookContent() {
       </button>
       
       <button 
-        onClick={(e) => handleMenuItemClick(notebook.id, e)}
+        onClick={(e) => handleEditNotebook(notebook, e)}
         className="flex items-center px-3 py-2 lg:px-4 lg:py-2.5 text-xs lg:text-sm text-white w-full hover:bg-white/10 transition-colors border-b border-white/10"
       >
         <Edit className="w-3 h-3 lg:w-4 lg:h-4 mr-2" />
@@ -242,152 +445,6 @@ export default function NotebookContent() {
       </button>
     </CardItem>
   );
-
-  // 渲染单个笔记本卡片
-  const renderNotebookCard = (notebook: Book) => {
-    // 获取最近更新的3个章节，按更新时间排序
-    const recentChapters = notebook.chapters
-      ?.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-      ?.slice(0, 3) || [];
-    
-    return (
-      <div key={notebook.id} className={`relative transition-all duration-500 ${
-        notebook.isDeleting ? 'opacity-50 blur-sm scale-95' : ''
-      }`}>
-        <CardContainer className="!p-0 !m-0 h-auto" containerClassName="!p-0 !m-0 h-auto !perspective-[1000px]">
-          <CardBody className={`relative bg-black border border-white/[0.2] w-full h-auto rounded-lg p-3 group/card hover:shadow-lg hover:shadow-purple-500/[0.1] ${
-            notebook.isDeleting ? 'pointer-events-none' : ''
-          }`}>
-            <div className="flex flex-col h-full">
-              <CardItem
-                translateZ="35"
-                rotateX="-2"
-                className="text-sm lg:text-base font-bold text-white mb-1 truncate text-shadow-sm"
-              >
-                {notebook.title}
-              </CardItem>
-              
-              {notebook.description && (
-                <CardItem
-                  as="p"
-                  translateZ="40"
-                  rotateX="-1"
-                  rotateY="0.5"
-                  className="text-neutral-300 text-[10px] lg:text-xs mb-3 line-clamp-2"
-                >
-                  {notebook.description}
-                </CardItem>
-              )}
-              
-              <CardItem 
-                translateZ="45" 
-                rotateY="1.5"
-                className="w-full mb-3"
-              >
-                <div className="relative aspect-[4/3] bg-gradient-to-br from-purple-900/20 via-purple-800/10 to-black rounded-lg overflow-hidden border border-purple-500/20 flex items-center justify-center">
-                  {notebook.cover_url ? (
-                    <Image
-                      src={notebook.cover_url}
-                      alt={notebook.title}
-                      fill
-                      className="object-cover group-hover/card:shadow-xl"
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center justify-center text-purple-400">
-                      <BookOpen className="w-8 h-8 mb-2" />
-                      <span className="text-xs opacity-70">笔记本</span>
-                    </div>
-                  )}
-                </div>
-              </CardItem>
-              
-              {/* 最近章节预览 - 只在有章节时显示 */}
-              {notebook.note_count > 0 && recentChapters.length > 0 && (
-                <CardItem translateZ="30" className="mb-3">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs text-gray-400 font-medium">最近页面</div>
-                      <div className="text-xs text-purple-400">{notebook.note_count}页</div>
-                    </div>
-                    <div className="space-y-1.5">
-                      {recentChapters.map((chapter, index) => (
-                        <div 
-                          key={chapter.id}
-                          className="group/page bg-gray-900/30 border border-gray-700/50 rounded-md p-2 hover:bg-gray-800/40 hover:border-purple-500/30 transition-all duration-200"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-start gap-2 flex-1 min-w-0">
-                              <div className="flex-shrink-0 mt-0.5">
-                                <div className="w-1.5 h-1.5 rounded-full bg-purple-400 group-hover/page:bg-purple-300 transition-colors"></div>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-xs text-gray-200 truncate font-medium">
-                                  {chapter.title}
-                                </div>
-                                <div className="text-[10px] text-gray-500 mt-0.5">
-                                  {formatDate(chapter.updated_at)}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      
-                      {notebook.note_count > 3 && (
-                        <div className="text-center">
-                          <div className="text-xs text-gray-500 bg-gray-900/40 border border-gray-700/30 rounded-md py-1.5 px-2">
-                            还有 {notebook.note_count - 3} 个页面...
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </CardItem>
-              )}
-              
-              <div className="flex flex-col mt-auto space-y-2">
-                {/* 统计信息 */}
-                <div className="flex justify-between items-center text-xs text-gray-400">
-                  <div className="flex items-center">
-                    <Tag className="w-3 h-3 mr-1" />
-                    <span>{notebook.note_count} 页面</span>
-                  </div>
-                  <div className="flex items-center">
-                    <Calendar className="w-3 h-3 mr-1" />
-                    <span>{formatDate(notebook.updated_at)}</span>
-                  </div>
-                </div>
-                
-                {/* 打开按钮 */}
-                <CardItem
-                  translateZ={35}
-                  rotateY="0.8"
-                  as={Link}
-                  href={`/content/${notebook.id}`}
-                  className="w-full px-3 py-2 rounded-md bg-gradient-to-tr from-purple-600 to-purple-500 text-white text-xs font-bold flex items-center justify-center hover:shadow-sm hover:shadow-purple-500/20 transition-all"
-                >
-                  打开笔记本 <ChevronRight className="w-3 h-3 ml-1" />
-                </CardItem>
-              </div>
-            </div>
-            
-            <CardItem
-              as="button"
-              translateZ="50"
-              rotateZ="1"
-              onClick={(e: React.MouseEvent) => toggleMenu(notebook.id, e)}
-              className="absolute right-1.5 top-1.5 lg:right-2 lg:top-2 z-20 p-1.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 text-white transition-all hover:bg-black/60"
-              ref={(el: HTMLButtonElement | null) => activeMenuButtonRef.current[notebook.id] = el}
-            >
-              <MoreHorizontal className="w-4 h-4" />
-            </CardItem>
-            
-            {expandedMenus[notebook.id] && renderNotebookMenu(notebook)}
-          </CardBody>
-        </CardContainer>
-      </div>
-    );
-  };
 
   return (
     <div className="relative overflow-hidden rounded-xl p-[1px] mx-2 sm:mx-6 md:mx-8 lg:mx-12 xl:mx-16">
@@ -419,23 +476,19 @@ export default function NotebookContent() {
             </div>
 
             {loading ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 px-1 sm:px-2 md:px-4">
-                {[...Array(8)].map((_, i) => (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-1.5 sm:gap-3 px-2 sm:px-4">
+                {[...Array(10)].map((_, i) => (
                   <div key={i} className="relative">
-                    <div className="bg-black border border-white/[0.2] rounded-lg p-3 h-auto overflow-hidden">
-                      <Skeleton className="h-4 w-4/5 mb-2 bg-gray-800" />
-                      <Skeleton className="h-3 w-full mb-3 bg-gray-800" />
-                      <Skeleton className="w-full aspect-[4/3] rounded-lg mb-3 bg-gray-800" />
-                      <div className="space-y-1 mb-3">
-                        <Skeleton className="h-2 w-16 bg-gray-800" />
-                        <Skeleton className="h-3 w-full bg-gray-800" />
-                        <Skeleton className="h-3 w-3/4 bg-gray-800" />
+                    <div className="bg-black border border-white/[0.2] rounded-lg lg:p-3 p-2 h-auto overflow-hidden">
+                      <Skeleton className="h-4 w-4/5 mb-0.5 bg-gray-800" />
+                      <Skeleton className="h-3 w-full mb-1.5 bg-gray-800" />
+                      <Skeleton className="w-full aspect-[3/2.2] lg:aspect-[3/2] rounded-lg mb-2 bg-gray-800" />
+                      <div className="grid grid-cols-5 gap-0.5 mb-1">
+                        {[...Array(5)].map((_, j) => (
+                          <Skeleton key={j} className="h-8 bg-gray-800" />
+                        ))}
                       </div>
-                      <div className="flex justify-between items-center mb-2">
-                        <Skeleton className="h-3 w-16 bg-gray-800" />
-                        <Skeleton className="h-3 w-20 bg-gray-800" />
-                      </div>
-                      <Skeleton className="h-8 w-full rounded-md bg-gray-800" />
+                      <Skeleton className="h-6 w-full rounded-md bg-gray-800" />
                     </div>
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent skeleton-shine rounded-lg" />
                   </div>
@@ -456,8 +509,190 @@ export default function NotebookContent() {
                 </HoverBorderGradient>
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 px-1 sm:px-2 md:px-4">
-                {notebooks.map(renderNotebookCard)}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-1.5 sm:gap-3 px-2 sm:px-4">
+                {notebooks.map((notebook) => (
+                  <div key={notebook.id} className={`relative transition-all duration-500 ${
+                    notebook.isDeleting ? 'opacity-50 blur-sm scale-95' : ''
+                  }`}>
+                    <CardContainer className="!p-0 !m-0 h-auto" containerClassName="!p-0 !m-0 h-auto !perspective-[1000px]">
+                      <CardBody className={`relative bg-black border border-white/[0.2] w-full h-auto rounded-lg lg:p-3 p-2 group/card hover:shadow-lg hover:shadow-purple-500/[0.1] ${
+                        notebook.isDeleting ? 'pointer-events-none' : ''
+                      }`}>
+                        <div className="flex flex-col h-full">
+                          <CardItem
+                            translateZ="35"
+                            rotateX="-2"
+                            className="text-sm lg:text-base font-bold text-white mb-0.5 truncate text-shadow-sm"
+                          >
+                            {notebook.title}
+                          </CardItem>
+                          
+                          <CardItem
+                            as="p"
+                            translateZ="40"
+                            rotateX="-1"
+                            rotateY="0.5"
+                            className="text-neutral-300 text-[10px] lg:text-xs mb-1.5 truncate"
+                          >
+                            {notebook.description || "自定义笔记本"}
+                          </CardItem>
+                          
+                          <CardItem 
+                            translateZ="45" 
+                            rotateY="1.5"
+                            className="w-full mb-2"
+                          >
+                            <div className="relative aspect-[3/2.2] lg:aspect-[3/2] bg-gradient-to-br from-purple-900/20 via-purple-800/10 to-black rounded-lg overflow-hidden border border-purple-500/20 flex items-center justify-center">
+                              {notebook.cover_url ? (
+                                <Image
+                                  src={notebook.cover_url}
+                                  alt={notebook.title}
+                                  fill
+                                  className="object-cover group-hover/card:shadow-xl"
+                                  onError={(e) => {
+                                    try {
+                                      const img = e.target as HTMLImageElement;
+                                      img.style.display = 'none';
+                                      setPlaceholderStates(prev => ({...prev, [notebook.id]: true}));
+                                    } catch (error) {
+                                      console.error('处理封面失败:', error);
+                                      setPlaceholderStates(prev => ({...prev, [notebook.id]: true}));
+                                    }
+                                  }}
+                                />
+                              ) : (
+                                <div className="flex flex-col items-center justify-center text-purple-400">
+                                  <BookOpen className="w-8 h-8 mb-2" />
+                                  <span className="text-xs opacity-70">笔记本</span>
+                                </div>
+                              )}
+                              
+                              {placeholderStates[notebook.id] && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-purple-900/20 via-purple-800/10 to-black text-purple-400">
+                                  <BookOpen className="w-8 h-8 mb-2" />
+                                  <span className="text-xs opacity-70">笔记本</span>
+                                </div>
+                              )}
+                            </div>
+                          </CardItem>
+                          
+                          <div className="flex flex-col mt-auto space-y-1">
+                            {/* 统计数据 - 突出显示页面和语境块 */}
+                            <div className="grid grid-cols-5 w-full gap-0.5 mb-1">
+                              {/* 页面 - 高亮显示 */}
+                              <CardItem
+                                translateZ={25}
+                                className="text-[8px] lg:text-[11px] text-center"
+                              >
+                                <div className="flex flex-col">
+                                  <span className="font-bold text-white">{notebook.chapters?.length || 0}</span>
+                                  <span className="text-purple-400">页面</span>
+                                </div>
+                              </CardItem>
+                              
+                              {/* 语境块 - 高亮显示 */}
+                              <CardItem
+                                translateZ={25}
+                                className="text-[8px] lg:text-[11px] text-center"
+                              >
+                                <div className="flex flex-col">
+                                  <span className="font-bold text-white">{formatNumber(notebook.stats?.total_block_count || 0)}</span>
+                                  <span className="text-purple-400">语境块</span>
+                                </div>
+                              </CardItem>
+                              
+                              {/* 其他三个项目保持稍暗状态 */}
+                              <CardItem
+                                translateZ={15}
+                                className="text-[8px] lg:text-[11px] text-center opacity-70"
+                              >
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{formatNumber(notebook.stats?.text_block_count || 0)}</span>
+                                  <span className="text-gray-400">文本块</span>
+                                </div>
+                              </CardItem>
+                              
+                              <CardItem
+                                translateZ={15}
+                                className="text-[8px] lg:text-[11px] text-center opacity-70"
+                              >
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{formatNumber(notebook.stats?.image_block_count || 0)}</span>
+                                  <span className="text-gray-400">图片块</span>
+                                </div>
+                              </CardItem>
+
+                              {/* 点读块 - 当数量大于0时使用橙色强调 */}
+                              <CardItem
+                                translateZ={15}
+                                className={`text-[8px] lg:text-[11px] text-center ${
+                                  (notebook.stats?.audio_block_count || 0) > 0 
+                                    ? 'opacity-100' 
+                                    : 'opacity-70'
+                                }`}
+                              >
+                                <div className="flex flex-col">
+                                  <span className={`font-medium ${
+                                    (notebook.stats?.audio_block_count || 0) > 0 
+                                      ? 'font-bold text-orange-400' 
+                                      : ''
+                                  }`}>
+                                    {formatNumber(notebook.stats?.audio_block_count || 0)}
+                                  </span>
+                                  <span className={`${
+                                    (notebook.stats?.audio_block_count || 0) > 0 
+                                      ? 'text-orange-400' 
+                                      : 'text-gray-400'
+                                  }`}>
+                                    点读块
+                                  </span>
+                                </div>
+                              </CardItem>
+                            </div>
+                            
+                            {/* 打开按钮单独一行，宽度占满 */}
+                            <CardItem
+                              translateZ={35}
+                              rotateY="0.8"
+                              as={Link}
+                              href={`/content/${notebook.id}`}
+                              className="w-full px-2 py-1 lg:px-3 lg:py-1.5 rounded-md bg-gradient-to-tr from-purple-600 to-purple-500 text-white text-[10px] lg:text-xs font-bold flex items-center justify-center hover:shadow-sm hover:shadow-purple-500/20 transition-all"
+                            >
+                              打开笔记本 <ChevronRight className="w-2 h-2 lg:w-3 lg:h-3 ml-0.5 lg:ml-1" />
+                            </CardItem>
+                          </div>
+                        </div>
+                        
+                        <CardItem
+                          as="button"
+                          translateZ="50"
+                          rotateZ="1"
+                          onClick={(e: React.MouseEvent) => toggleMenu(notebook.id, e)}
+                          className="absolute right-1.5 top-1.5 lg:right-2 lg:top-2 z-20 p-1 lg:p-1.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 text-white transition-all hover:bg-black/60"
+                          ref={(el: HTMLButtonElement | null) => activeMenuButtonRef.current[notebook.id] = el}
+                        >
+                          <MoreHorizontal className="w-3 h-3 lg:w-4 lg:h-4" />
+                        </CardItem>
+                        
+                        {expandedMenus[notebook.id] && renderNotebookMenu(notebook)}
+                      </CardBody>
+                    </CardContainer>
+                    
+                    {/* 编辑加载状态覆盖层 - 移到CardContainer外部，作为兄弟元素 */}
+                    {editingNotebookIds[notebook.id] && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm rounded-lg z-[100]">
+                        <div className="flex flex-col items-center space-y-2">
+                          <div className="relative w-10 h-10">
+                            <div className="absolute inset-0 rounded-full border-t-2 border-purple-500 animate-spin"></div>
+                            <div className="absolute inset-1 rounded-full border-r-2 border-purple-300/30 animate-spin animate-delay-150"></div>
+                            <div className="absolute inset-2 rounded-full border-b-2 border-purple-400/50 animate-spin animate-delay-300"></div>
+                          </div>
+                          <div className="text-xs text-purple-400 font-medium">加载编辑信息</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -470,6 +705,19 @@ export default function NotebookContent() {
         onOpenChange={setShowCreateDialog}
         onSuccess={handleCreateSuccess}
       />
+
+      {/* 编辑笔记本对话框 */}
+      {editingNotebook && (
+        <NotebookEditDialog
+          notebook={editingNotebook}
+          resources={notebookResources.filter(r => r.resource_type === 'image')}
+          resourcesLoading={resourcesLoading}
+          isOpen={showEditDialog}
+          onOpenChange={handleEditDialogChange}
+          onSave={saveNotebookInfo}
+          isSaving={savingNotebook}
+        />
+      )}
     </div>
   );
 }
