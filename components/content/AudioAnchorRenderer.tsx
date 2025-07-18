@@ -403,7 +403,7 @@ export function AudioAnchorRenderer({
     anchorRanges.forEach(anchorRange => {
       const wordsInAnchor: string[] = [];
       
-      // 找到这个锚点涉及的所有单词
+      // 找到这个锚点涉及的所有单词 - 使用更精确的匹配
       expandedData.sentencePositions.forEach((sentencePos) => {
         const sentence = embeddedSentences.get(sentencePos.sentenceId);
         if (!sentence || !sentence.words) return;
@@ -413,20 +413,54 @@ export function AudioAnchorRenderer({
           if (!wordContent) return;
           
           const sentenceText = sentence.content || sentence.text_content;
-          const wordPositionInSentence = sentenceText.indexOf(wordContent);
+          
+          // 使用更精确的位置计算，考虑单词在句子中的实际位置
+          let wordPositionInSentence = -1;
+          let searchStart = 0;
+          
+          // 按顺序查找，避免重复单词的误匹配
+          for (let i = 0; i <= wordIndex; i++) {
+            const currentWord = sentence.words[i];
+            const currentWordContent = currentWord?.content || currentWord?.word;
+            if (currentWordContent) {
+              const foundIndex = sentenceText.indexOf(currentWordContent, searchStart);
+              if (foundIndex !== -1) {
+                if (i === wordIndex) {
+                  wordPositionInSentence = foundIndex;
+                }
+                searchStart = foundIndex + currentWordContent.length;
+              }
+            }
+          }
+          
           if (wordPositionInSentence === -1) return;
           
           const wordStartInExpanded = sentencePos.startInExpanded + wordPositionInSentence;
           const wordEndInExpanded = wordStartInExpanded + wordContent.length;
           
-          // 检查单词是否在锚点范围内
-          if (anchorRange.start <= wordStartInExpanded && anchorRange.end >= wordEndInExpanded) {
-            const wordKey = `${sentence.id || sentencePos.sentenceId}-${word.id || wordIndex}`;
-            wordsInAnchor.push(wordKey);
+          // 更严格的锚点范围检查：单词必须完全在锚点范围内，且锚点不能超出太多
+          const isWordInAnchor = wordStartInExpanded >= anchorRange.start && 
+                                wordEndInExpanded <= anchorRange.end;
+          
+          // 额外检查：确保锚点文本确实包含这个单词（按顺序）
+          if (isWordInAnchor) {
+            const anchorText = expandedData.expandedContent.substring(anchorRange.start, anchorRange.end);
+            const relativeWordStart = wordStartInExpanded - anchorRange.start;
+            const relativeWordEnd = wordEndInExpanded - anchorRange.start;
+            
+            // 验证在锚点文本中的相对位置是否匹配
+            if (relativeWordStart >= 0 && relativeWordEnd <= anchorText.length) {
+              const wordInAnchor = anchorText.substring(relativeWordStart, relativeWordEnd);
+              if (wordInAnchor === wordContent) {
+                const wordKey = `${sentence.id || sentencePos.sentenceId}-${word.id || wordIndex}`;
+                wordsInAnchor.push(wordKey);
+              }
+            }
           }
         });
       });
 
+      // 只有包含多个单词的才算短语
       if (wordsInAnchor.length > 1) {
         phraseRanges.push({ anchorRange, wordKeys: wordsInAnchor });
       }
@@ -669,33 +703,64 @@ export function AudioAnchorRenderer({
         // 使用位置信息精确匹配锚点
         let anchorRange = null;
         if (expandedData && currentSentencePosition) {
-          // 计算单词在展开内容中的绝对位置
-          const wordStartInSentence = wordPosition;
-          const wordEndInSentence = wordPosition + wordContent.length;
-          const wordStartInExpanded = currentSentencePosition.startInExpanded + wordStartInSentence;
-          const wordEndInExpanded = currentSentencePosition.startInExpanded + wordEndInSentence;
+          // 使用更精确的位置计算，避免重复单词的误匹配
+          let preciseWordPosition = -1;
+          let searchStart = 0;
           
-          // 检查是否有锚点完全包含这个单词位置
-          anchorRange = anchorRanges.find(range => {
-            const anchorFullyContainsWord = range.start <= wordStartInExpanded && range.end >= wordEndInExpanded;
-            const hasOverlap = !(range.end <= wordStartInExpanded || range.start >= wordEndInExpanded);
-            
-            // 精确匹配：锚点完全包含单词，或者有重叠且文本匹配
-            if (anchorFullyContainsWord) {
-              return true;
+          // 按顺序查找到当前单词的精确位置
+          for (let i = 0; i <= idx; i++) {
+            const currentWord = sortedWords[i];
+            const currentWordContent = currentWord?.content || currentWord?.word;
+            if (currentWordContent) {
+              const foundIndex = originalText.indexOf(currentWordContent, searchStart);
+              if (foundIndex !== -1) {
+                if (i === idx) {
+                  preciseWordPosition = foundIndex;
+                }
+                searchStart = foundIndex + currentWordContent.length;
+              }
             }
-            
-            // 对于短语，检查是否是部分匹配
-            if (hasOverlap && range.text.includes(wordContent)) {
-              const anchorText = expandedData.expandedContent.substring(range.start, range.end);
-              return anchorText.includes(wordContent);
-            }
-            
-            return false;
-          });
+          }
           
-          if (anchorRange) {
-            renderedAnchorCount++;
+          if (preciseWordPosition !== -1) {
+            // 计算单词在展开内容中的绝对位置
+            const wordStartInExpanded = currentSentencePosition.startInExpanded + preciseWordPosition;
+            const wordEndInExpanded = wordStartInExpanded + wordContent.length;
+            
+            // 查找完全匹配的锚点
+            anchorRange = anchorRanges.find(range => {
+              // 单词锚点：锚点范围完全等于单词位置
+              const isExactWordMatch = range.start === wordStartInExpanded && 
+                                     range.end === wordEndInExpanded;
+              
+              // 短语锚点：单词完全在锚点范围内
+              const isWordInPhrase = range.start <= wordStartInExpanded && 
+                                   range.end >= wordEndInExpanded &&
+                                   range.start < range.end; // 确保是有效范围
+              
+              if (isExactWordMatch) {
+                return true;
+              }
+              
+              // 对于短语，需要进一步验证单词确实属于这个锚点
+              if (isWordInPhrase) {
+                const anchorText = expandedData.expandedContent.substring(range.start, range.end);
+                const relativeStart = wordStartInExpanded - range.start;
+                const relativeEnd = wordEndInExpanded - range.start;
+                
+                // 验证在锚点文本中的位置和内容
+                if (relativeStart >= 0 && relativeEnd <= anchorText.length) {
+                  const wordInAnchorText = anchorText.substring(relativeStart, relativeEnd);
+                  return wordInAnchorText === wordContent;
+                }
+              }
+              
+              return false;
+            });
+            
+            if (anchorRange) {
+              renderedAnchorCount++;
+            }
           }
         }
         
