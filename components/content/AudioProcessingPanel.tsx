@@ -1410,17 +1410,21 @@ export function AudioProcessingPanel({
     for (let i = 0; i < sentences.length; i++) {
       const sentence: string = sentences[i]
       
-      // 检查是否是单独的引号或很短的内容（可能是被错误分离的）
-      if (sentence.length <= 3 && /^["')\]}>]+$/.test(sentence.trim())) {
-        // 如果前面有句子，将这个引号合并到前面的句子
+      // 检查是否是只包含标点符号的句子
+      const isPunctuationOnly = /^[^\w\s]*$/.test(sentence.trim())
+      
+      if (isPunctuationOnly && sentence.trim().length > 0) {
+        // 如果前面有句子，将这个标点符号合并到前面的句子
         if (processedSentences.length > 0) {
           processedSentences[processedSentences.length - 1] += sentence
+          console.log(`📝 合并标点符号句子: "${sentence}" 到前一句`)
         } else {
           // 如果没有前面的句子，检查后面是否有句子可以合并
           if (i + 1 < sentences.length) {
             sentences[i + 1] = sentence + sentences[i + 1]
+            console.log(`📝 合并标点符号句子: "${sentence}" 到后一句`)
           } else {
-            // 如果都没有，还是保留这个句子
+            // 如果都没有，还是保留这个句子（虽然不太可能发生）
             processedSentences.push(sentence)
           }
         }
@@ -1446,14 +1450,32 @@ export function AudioProcessingPanel({
 
   // 检查是否是常见缩写
   const checkIfAbbreviation = (text: string, dotIndex: number): boolean => {
-    // 常见英文缩写列表
+    // 常见英文缩写列表 - 大幅扩展
     const abbreviations = [
+      // 基本称谓
       'Mr', 'Mrs', 'Ms', 'Dr', 'Prof', 'Sr', 'Jr',
-      'vs', 'etc', 'Inc', 'Ltd', 'Corp', 'Co',
-      'St', 'Ave', 'Rd', 'Blvd', 'Apt', 'Dept',
+      // 商业和组织
+      'vs', 'etc', 'Inc', 'Ltd', 'Corp', 'Co', 'LLC', 'LLP',
+      // 地址相关
+      'St', 'Ave', 'Rd', 'Blvd', 'Apt', 'Dept', 'Bldg', 'Fl', 'Rm',
+      // 月份缩写
       'Jan', 'Feb', 'Mar', 'Apr', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      // 星期缩写
       'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun',
-      'a.m', 'p.m', 'AM', 'PM', 'U.S', 'U.K', 'U.N'
+      // 时间
+      'a.m', 'p.m', 'AM', 'PM', 
+      // 国家和地区缩写
+      'U.S', 'U.K', 'U.N', 'E.U', 'N.Y', 'L.A', 'D.C',
+      // 学位和头衔
+      'Ph.D', 'M.D', 'B.A', 'M.A', 'M.S', 'B.S', 'J.D', 'LL.B', 'LL.M',
+      // 其他常见缩写
+      'i.e', 'e.g', 'cf', 'ibid', 'op', 'loc', 'et', 'al', 'misc', 'max', 'min',
+      // 技术和单位
+      'ft', 'in', 'yd', 'mi', 'lb', 'oz', 'kg', 'km', 'cm', 'mm', 'ml', 'mg',
+      // 方向
+      'N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW',
+      // 数量
+      'no', 'vol', 'ch', 'pg', 'pp', 'fig', 'sec'
     ]
     
     // 向前查找单词开始位置
@@ -1466,10 +1488,116 @@ export function AudioProcessingPanel({
     // 提取可能的缩写
     const possibleAbbr = text.substring(wordStart, dotIndex)
     
-    // 检查是否在缩写列表中
-    return abbreviations.some(abbr => 
+    // 1. 检查是否在缩写列表中
+    const isKnownAbbr = abbreviations.some(abbr => 
       abbr.toLowerCase() === possibleAbbr.toLowerCase()
     )
+    
+    if (isKnownAbbr) {
+      console.log(`🎯 识别为已知缩写: ${possibleAbbr}`)
+      return true
+    }
+    
+    // 2. 检查是否是网站域名 (如 Amazon.com, Google.org, etc.)
+    if (possibleAbbr.length >= 2) {
+      // 检查点号后面是否是常见域名后缀
+      const remainingText = text.substring(dotIndex + 1)
+      const domainSuffixMatch = remainingText.match(/^(com|org|net|edu|gov|mil|int|co|uk|de|fr|jp|cn|au|ca|ru|br|in|mx|it|es|nl|se|no|dk|fi|be|ch|at|ie|pl|cz|hu|pt|gr|tr|il|za|nz|sg|hk|tw|th|my|id|ph|vn|kr|ae|sa|eg|ma|ng|ke|gh|zm|ug|tz|mw|bw|sz|ls|na|mu|sc|mg|re|yt|km|dj|so|et|er|sd|ly|td|cf|cm|ga|gq|st|cv|gw|gn|sl|lr|ci|bf|ml|ne|sn|gm|mr|eh|dz|tn|ma)\b/i)
+      
+      if (domainSuffixMatch) {
+        console.log(`🌐 识别为网站域名: ${possibleAbbr}.${domainSuffixMatch[1]}`)
+        return true
+      }
+    }
+    
+    // 3. 检查是否是人名中的中间名首字母 (如 Dennis D. Crouch)
+    if (possibleAbbr.length === 1 && /[A-Z]/.test(possibleAbbr)) {
+      // 检查前面是否是名字
+      let prevWordEnd = wordStart - 1
+      while (prevWordEnd >= 0 && /\s/.test(text[prevWordEnd])) {
+        prevWordEnd--
+      }
+      
+      if (prevWordEnd >= 0) {
+        let prevWordStart = prevWordEnd
+        while (prevWordStart >= 0 && /[a-zA-Z]/.test(text[prevWordStart])) {
+          prevWordStart--
+        }
+        prevWordStart++
+        
+        const prevWord = text.substring(prevWordStart, prevWordEnd + 1)
+        
+        // 检查后面是否还有单词（姓氏）
+        let nextWordStart = dotIndex + 1
+        while (nextWordStart < text.length && /\s/.test(text[nextWordStart])) {
+          nextWordStart++
+        }
+        
+        if (nextWordStart < text.length) {
+          let nextWordEnd = nextWordStart
+          while (nextWordEnd < text.length && /[a-zA-Z]/.test(text[nextWordEnd])) {
+            nextWordEnd++
+          }
+          
+          const nextWord = text.substring(nextWordStart, nextWordEnd)
+          
+          // 如果前面是首字母大写的名字，后面也是首字母大写的单词，很可能是人名中的中间名首字母
+          if (prevWord.length >= 2 && /^[A-Z][a-z]/.test(prevWord) && 
+              nextWord.length >= 2 && /^[A-Z][a-z]/.test(nextWord)) {
+            console.log(`👤 识别为人名中间名首字母: ${prevWord} ${possibleAbbr}. ${nextWord}`)
+            return true
+          }
+        }
+      }
+    }
+    
+    // 4. 检查是否是单独的大写字母（可能是首字母缩写的一部分）
+    if (possibleAbbr.length === 1 && /[A-Z]/.test(possibleAbbr)) {
+      // 检查后面是否紧跟着另一个大写字母和点号（如 U.S. 中的 U.）
+      const nextPart = text.substring(dotIndex + 1)
+      if (/^[A-Z]\./.test(nextPart)) {
+        console.log(`🔤 识别为多字母缩写的一部分: ${possibleAbbr}.`)
+        return true
+      }
+    }
+    
+    // 5. 检查是否是版本号或序号 (如 v2.0, iOS 15.1)
+    if (/\d/.test(possibleAbbr)) {
+      // 检查前面是否是版本标识符
+      let beforeStart = wordStart - 1
+      while (beforeStart >= 0 && /\s/.test(text[beforeStart])) {
+        beforeStart--
+      }
+      
+      if (beforeStart >= 0) {
+        let versionStart = beforeStart
+        while (versionStart >= 0 && /[a-zA-Z]/.test(text[versionStart])) {
+          versionStart--
+        }
+        versionStart++
+        
+        const versionPrefix = text.substring(versionStart, beforeStart + 1)
+        
+        // 常见版本标识符
+        const versionPrefixes = ['v', 'ver', 'version', 'iOS', 'macOS', 'Windows', 'Android', 'Chrome', 'Firefox', 'Safari']
+        
+        if (versionPrefixes.some(prefix => 
+          versionPrefix.toLowerCase() === prefix.toLowerCase()
+        )) {
+          console.log(`📱 识别为版本号: ${versionPrefix} ${possibleAbbr}.`)
+          return true
+        }
+      }
+      
+      // 检查后面是否还有数字（版本号的小数部分）
+      const afterDot = text.substring(dotIndex + 1)
+      if (/^\d/.test(afterDot)) {
+        console.log(`🔢 识别为数字的小数部分: ${possibleAbbr}.`)
+        return true
+      }
+    }
+    
+    return false
   }
 
   // 重置选择状态

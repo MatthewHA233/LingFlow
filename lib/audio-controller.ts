@@ -76,6 +76,7 @@ class AudioControllerClass {
   // 添加播放请求队列管理
   private currentPlayPromise: Promise<void> | null = null;
   private isPlayRequested = false;
+  private playRequestId = 0; // 添加请求ID来跟踪最新的播放请求
   
   constructor() {
     // 检查是否在浏览器环境
@@ -257,18 +258,31 @@ class AudioControllerClass {
   
   // 紧急停止和清理所有音频
   emergencyCleanup(): void {
+    console.log('[AudioController] 执行紧急清理');
+    
+    // 取消所有播放请求
+    this.playRequestId++;
+    this.isPlayRequested = false;
+    this.currentPlayPromise = null;
+    
     if (this.audio) {
+      try {
       this.audio.pause();
       this.audio.currentTime = 0;
+      } catch (error) {
+        console.warn('[AudioController] 紧急清理时暂停音频失败:', error);
+      }
     }
     
     // 清除所有定时器
     if (this.loopCheckInterval) {
       clearInterval(this.loopCheckInterval);
+      this.loopCheckInterval = null;
     }
     
     if (this.timeUpdateInterval) {
       clearInterval(this.timeUpdateInterval);
+      this.timeUpdateInterval = null;
     }
     
     if (this.playbackTimeout) {
@@ -276,6 +290,7 @@ class AudioControllerClass {
       this.playbackTimeout = null;
     }
     
+    // 重置状态
     this.updateState({
       isPlaying: false,
       currentTime: 0,
@@ -503,7 +518,11 @@ class AudioControllerClass {
     speechId?: string;
     onEnd?: () => void;
   } = {}): Promise<void> {
+    // 生成新的请求ID
+    const requestId = ++this.playRequestId;
+    
     console.log('[AudioController] 播放请求', {
+      requestId,
       options,
       currentState: {
         url: this.state.url,
@@ -514,23 +533,35 @@ class AudioControllerClass {
       }
     });
 
-    // 如果有正在进行的播放请求，等待它完成
+    // 取消之前的播放请求
     if (this.currentPlayPromise) {
-      try {
-        await this.currentPlayPromise;
-      } catch (error) {
-        // 忽略之前请求的错误
-        console.log('[AudioController] 忽略之前播放请求的错误:', error);
-      }
+      console.log('[AudioController] 取消之前的播放请求');
+      this.isPlayRequested = false;
+      
+      // 不等待之前的请求完成，直接继续
     }
 
     // 创建新的播放请求
-    this.currentPlayPromise = this.executePlay(options);
+    this.currentPlayPromise = this.executePlay(options, requestId);
     
     try {
       await this.currentPlayPromise;
+    } catch (error) {
+      // 如果是 AbortError 且不是当前最新的请求，忽略错误
+      if (error instanceof DOMException && 
+          error.name === 'AbortError' && 
+          requestId !== this.playRequestId) {
+        console.log('[AudioController] 忽略过期请求的 AbortError');
+        return;
+      }
+      
+      console.error('[AudioController] 播放失败:', error);
+      throw error;
     } finally {
+      // 只有当前请求才清理
+      if (requestId === this.playRequestId) {
       this.currentPlayPromise = null;
+      }
     }
   }
 
@@ -542,18 +573,36 @@ class AudioControllerClass {
     loop?: boolean;
     speechId?: string;
     onEnd?: () => void;
-  }): Promise<void> {
+  }, requestId: number): Promise<void> {
     try {
+      // 检查请求是否还有效
+      if (requestId !== this.playRequestId) {
+        console.log('[AudioController] 请求已过期，取消执行');
+        return;
+      }
+
       // 如果提供了新的URL，设置新的音频源
       if (options.url && options.url !== this.state.url) {
         console.log('[AudioController] 设置新的音频源', {
           url: options.url
         });
         await this.setSource(options.url, options.speechId);
+        
+        // 再次检查请求是否还有效
+        if (requestId !== this.playRequestId) {
+          console.log('[AudioController] 设置音频源后请求已过期');
+          return;
+        }
       }
 
       if (!this.audio) {
         throw new Error('音频实例未初始化');
+      }
+
+      // 先暂停当前播放（安全操作）
+      if (!this.audio.paused) {
+        console.log('[AudioController] 暂停当前播放以准备新的播放');
+        this.audio.pause();
       }
 
       // 设置开始时间
@@ -562,6 +611,12 @@ class AudioControllerClass {
           startTime: options.startTime
         });
         this.audio.currentTime = options.startTime / 1000;
+      }
+
+      // 再次检查请求是否还有效
+      if (requestId !== this.playRequestId) {
+        console.log('[AudioController] 设置时间后请求已过期');
+        return;
       }
 
       // 设置循环
@@ -593,33 +648,55 @@ class AudioControllerClass {
         this.audio.addEventListener('ended', handleEnd);
       }
 
-      // 开始播放 - 添加重试逻辑
+      // 最后检查请求是否还有效
+      if (requestId !== this.playRequestId) {
+        console.log('[AudioController] 播放前请求已过期');
+        return;
+      }
+
+      // 开始播放
       console.log('[AudioController] 开始播放');
       this.isPlayRequested = true;
       
       try {
         await this.audio.play();
+        
+        // 检查播放是否成功且请求仍然有效
+        if (requestId === this.playRequestId && !this.audio.paused) {
+          console.log('[AudioController] 播放成功');
+          this.updateState({
+            isPlaying: true,
+            currentTime: this.audio.currentTime * 1000
+          });
+        }
       } catch (error) {
-        // 如果是AbortError且音频仍在播放状态，忽略错误
+        // 如果是AbortError且不是当前请求，忽略
+        if (error instanceof DOMException && 
+            error.name === 'AbortError' && 
+            requestId !== this.playRequestId) {
+          console.log('[AudioController] 忽略过期请求的AbortError');
+          return;
+        }
+        
+        // 如果是AbortError且音频仍在播放状态，也忽略错误
         if (error instanceof DOMException && 
             error.name === 'AbortError' && 
             !this.audio.paused) {
           console.log('[AudioController] 忽略AbortError，音频正在播放');
-        } else {
+          return;
+        }
+        
           throw error;
         }
-      }
-
-      // 更新状态
-      this.updateState({
-        isPlaying: true,
-        currentTime: this.audio.currentTime * 1000
-      });
 
     } catch (error) {
-      console.error('[AudioController] 播放失败:', error);
+      console.error('[AudioController] 播放执行失败:', error);
       this.isPlayRequested = false;
+      
+      // 只有当前请求才抛出错误
+      if (requestId === this.playRequestId) {
       throw error;
+      }
     } finally {
       this.isPlayRequested = false;
     }
@@ -630,18 +707,36 @@ class AudioControllerClass {
     if (!this.audio) return;
     
     console.log('[AudioController] 暂停播放');
+    
+    // 取消当前的播放请求
     this.isPlayRequested = false;
+    this.playRequestId++; // 增加请求ID，使之前的请求失效
+    
+    try {
     this.audio.pause();
     this.updateState({ isPlaying: false });
+    } catch (error) {
+      console.warn('[AudioController] 暂停时出错:', error);
+    }
   }
   
   // 跳转到指定时间
   seek(timeMs: number): void {
     if (!this.audio) return;
     
+    console.log('[AudioController] 跳转到时间:', timeMs);
+    
+    // 取消当前的播放请求
+    this.playRequestId++;
+    this.isPlayRequested = false;
+    
+    try {
     const timeSec = timeMs / 1000;
     this.audio.currentTime = timeSec;
     this.updateState({ currentTime: timeMs });
+    } catch (error) {
+      console.warn('[AudioController] 跳转时间失败:', error);
+    }
   }
   
   // 设置音量
@@ -679,6 +774,8 @@ class AudioControllerClass {
   
   // 播放特定句子
   playSentence(startTimeMs: number, endTimeMs?: number): Promise<void> {
+    console.log('[AudioController] 播放句子:', { startTimeMs, endTimeMs });
+    
     // 先清除现有的定时器
     if (this.playbackTimeout) {
       clearTimeout(this.playbackTimeout);
@@ -695,6 +792,8 @@ class AudioControllerClass {
   
   // 播放特定段落
   playBlock(startTimeMs: number, endTimeMs?: number): Promise<void> {
+    console.log('[AudioController] 播放段落:', { startTimeMs, endTimeMs });
+    
     return this.play({
       startTime: startTimeMs,
       endTime: endTimeMs,
@@ -707,9 +806,20 @@ class AudioControllerClass {
   stop(): void {
     if (!this.audio) return;
     
+    console.log('[AudioController] 停止播放');
+    
+    // 取消所有播放请求
+    this.playRequestId++;
+    this.isPlayRequested = false;
+    this.currentPlayPromise = null;
+    
+    try {
     // 彻底停止播放并清理
     this.audio.pause();
     this.audio.currentTime = 0;
+    } catch (error) {
+      console.warn('[AudioController] 停止播放时出错:', error);
+    }
     
     // 清除所有定时器
     if (this.playbackTimeout) {
@@ -726,9 +836,13 @@ class AudioControllerClass {
     }
     
     // 发送结束事件
+    try {
     window.dispatchEvent(new CustomEvent(AUDIO_EVENTS.END, {
       detail: { context: this.state.context, playerId: 'stopped' }
     }));
+    } catch (error) {
+      console.warn('[AudioController] 发送结束事件失败:', error);
+    }
     
     // 更新状态
     this.updateState({ 

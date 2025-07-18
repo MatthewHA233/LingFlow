@@ -1631,6 +1631,124 @@ export function ContextBlocks({
     return null; // 不再显示含义块计数
   };
 
+  // 添加中文句子分割算法
+  const splitChineseIntoSentences = (text: string): string[] => {
+    if (!text || !text.trim()) return []
+    
+    const sentences = []
+    let currentSentence = ''
+    let i = 0
+    
+    while (i < text.length) {
+      const char = text[i]
+      currentSentence += char
+      
+      // 检查是否是中文句子结束符（移除冒号）
+      if (/[。！？；…]/.test(char)) {
+        // 检查是否是省略号（多个连续的点或省略号符号）
+        if (char === '…' || char === '。') {
+          // 检查是否是多个连续的点或省略号
+          let dotCount = 1
+          let nextIndex = i + 1
+          
+          // 计算连续符号的数量
+          while (nextIndex < text.length && /[。…]/.test(text[nextIndex])) {
+            dotCount++
+            nextIndex++
+          }
+          
+          // 如果有多个连续符号，添加到当前句子
+          if (dotCount > 1) {
+            for (let j = i + 1; j < nextIndex; j++) {
+              currentSentence += text[j]
+            }
+            i = nextIndex - 1
+          }
+        }
+        
+        // 检查后面是否有引号或括号需要包含
+        let endIndex = i
+        while (endIndex + 1 < text.length && /["'）】》"']/.test(text[endIndex + 1])) {
+          endIndex++
+          currentSentence += text[endIndex]
+        }
+        
+        // 添加句子到结果中
+        const trimmedSentence = currentSentence.trim()
+        if (trimmedSentence.length > 0) {
+          sentences.push(trimmedSentence)
+        }
+        
+        currentSentence = ''
+        i = endIndex
+      }
+      
+      i++
+    }
+    
+    // 添加最后一个句子（如果有）
+    const finalSentence = currentSentence.trim()
+    if (finalSentence.length > 0) {
+      sentences.push(finalSentence)
+    }
+    
+    return sentences.filter(s => s.length > 0)
+  }
+
+  // 渲染带句子高亮的翻译内容
+  const renderTranslationWithHighlight = (translationContent: string) => {
+    // 分割中文翻译为句子
+    const translationSentences = splitChineseIntoSentences(translationContent)
+    
+    // 如果只有一个句子或没有句子，直接显示
+    if (translationSentences.length <= 1) {
+      return (
+        <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+          {translationContent}
+        </div>
+      )
+    }
+    
+    // 计算当前应该高亮的翻译句子索引
+    const getHighlightedTranslationIndex = () => {
+      if (!sentences || sentences.length === 0 || translationSentences.length === 0 || activeIndex === null) {
+        return -1
+      }
+      
+      // 简单的比例映射：英文句子索引 -> 中文句子索引
+      const ratio = translationSentences.length / sentences.length
+      const translationIndex = Math.floor(activeIndex * ratio)
+      
+      return Math.min(translationIndex, translationSentences.length - 1)
+    }
+    
+    const highlightedIndex = getHighlightedTranslationIndex()
+    
+    // 调试信息
+    if (activeIndex !== null && activeIndex >= 0) {
+      console.log(`[翻译高亮] 英文句子索引: ${activeIndex}, 中文句子索引: ${highlightedIndex}, 英文句子数: ${sentences?.length || 0}, 中文句子数: ${translationSentences.length}`)
+    }
+    
+    return (
+      <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+        {translationSentences.map((sentence, index) => (
+          <span
+            key={index}
+            className={cn(
+              "transition-all duration-300",
+              index === highlightedIndex && activeIndex !== null && activeIndex >= 0
+                ? "bg-green-200/60 dark:bg-green-800/40 text-green-900 dark:text-green-100 font-medium rounded-sm px-1 py-0.5"
+                : ""
+            )}
+          >
+            {sentence}
+            {index < translationSentences.length - 1 && ' '}
+          </span>
+        ))}
+      </div>
+    )
+  }
+
   // 修改renderContent函数，添加含义块信息显示
   const renderContent = () => {
     // 如果处于锚定模式，渲染锚定词块
@@ -3360,9 +3478,7 @@ export function ContextBlocks({
             }}
             style={{ transformOrigin: 'top' }}
           >
-            <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-              {block.translation_content}
-            </div>
+            {renderTranslationWithHighlight(block.translation_content)}
           </motion.div>
         )}
       </AnimatePresence>
