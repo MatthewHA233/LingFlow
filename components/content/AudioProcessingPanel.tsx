@@ -998,6 +998,163 @@ export function AudioProcessingPanel({
     return sentenceTimestamps
   }
 
+  // 🔧 修复缺失的时间戳数据
+  const fixMissingTimestamps = (words: any[]): any[] => {
+    if (!words || words.length === 0) return words
+
+    console.log('🔧 开始修复时间戳数据，单词数量:', words.length)
+    
+    // 创建单词副本以避免修改原数组
+    const fixedWords = words.map(word => ({ ...word }))
+    
+    // 1. 识别缺失时间戳的单词
+    const missingTimestamps: number[] = []
+    fixedWords.forEach((word, index) => {
+      if (!word.ts || !word.end_ts || word.ts === 0 || word.end_ts === 0) {
+        missingTimestamps.push(index)
+        console.log(`⚠️ 发现缺失时间戳的单词 [${index}]: "${word.value}"`)
+      }
+    })
+    
+    if (missingTimestamps.length === 0) {
+      console.log('✅ 所有单词时间戳完整，无需修复')
+      return fixedWords
+    }
+    
+    console.log(`🔧 需要修复 ${missingTimestamps.length} 个单词的时间戳`)
+    
+    // 2. 按连续缺失的区间分组
+    const missingGroups: number[][] = []
+    let currentGroup: number[] = []
+    
+    missingTimestamps.forEach((index, i) => {
+      if (i === 0 || index !== missingTimestamps[i - 1] + 1) {
+        // 开始新的连续组
+        if (currentGroup.length > 0) {
+          missingGroups.push(currentGroup)
+        }
+        currentGroup = [index]
+      } else {
+        // 继续当前连续组
+        currentGroup.push(index)
+      }
+    })
+    
+    if (currentGroup.length > 0) {
+      missingGroups.push(currentGroup)
+    }
+    
+    console.log(`📊 发现 ${missingGroups.length} 个连续缺失区间:`, missingGroups)
+    
+    // 3. 为每个连续缺失区间修复时间戳
+    missingGroups.forEach((group, groupIndex) => {
+      console.log(`🔧 修复第 ${groupIndex + 1} 个区间: 单词索引 ${group[0]} 到 ${group[group.length - 1]}`)
+      
+      const startIndex = group[0]
+      const endIndex = group[group.length - 1]
+      
+      // 找到前一个有效时间戳的单词
+      let prevValidIndex = -1
+      for (let i = startIndex - 1; i >= 0; i--) {
+        if (fixedWords[i].ts && fixedWords[i].end_ts && 
+            fixedWords[i].ts > 0 && fixedWords[i].end_ts > 0) {
+          prevValidIndex = i
+          break
+        }
+      }
+      
+      // 找到后一个有效时间戳的单词
+      let nextValidIndex = -1
+      for (let i = endIndex + 1; i < fixedWords.length; i++) {
+        if (fixedWords[i].ts && fixedWords[i].end_ts && 
+            fixedWords[i].ts > 0 && fixedWords[i].end_ts > 0) {
+          nextValidIndex = i
+          break
+        }
+      }
+      
+      console.log(`📍 区间边界: 前有效索引=${prevValidIndex}, 后有效索引=${nextValidIndex}`)
+      
+      // 确定时间范围
+      let rangeStartTime: number
+      let rangeEndTime: number
+      
+      if (prevValidIndex >= 0 && nextValidIndex >= 0) {
+        // 前后都有有效时间戳
+        rangeStartTime = fixedWords[prevValidIndex].end_ts
+        rangeEndTime = fixedWords[nextValidIndex].ts
+        console.log(`⏰ 使用前后边界时间: ${rangeStartTime}s - ${rangeEndTime}s`)
+      } else if (prevValidIndex >= 0) {
+        // 只有前面有有效时间戳
+        const prevEndTime = fixedWords[prevValidIndex].end_ts
+        const estimatedDuration = (group.length + 1) * 0.5 // 每个单词估计0.5秒
+        rangeStartTime = prevEndTime
+        rangeEndTime = prevEndTime + estimatedDuration
+        console.log(`⏰ 使用前边界时间估算: ${rangeStartTime}s - ${rangeEndTime}s (估算持续时间: ${estimatedDuration}s)`)
+      } else if (nextValidIndex >= 0) {
+        // 只有后面有有效时间戳
+        const nextStartTime = fixedWords[nextValidIndex].ts
+        const estimatedDuration = (group.length + 1) * 0.5 // 每个单词估计0.5秒
+        rangeStartTime = Math.max(0, nextStartTime - estimatedDuration)
+        rangeEndTime = nextStartTime
+        console.log(`⏰ 使用后边界时间估算: ${rangeStartTime}s - ${rangeEndTime}s (估算持续时间: ${estimatedDuration}s)`)
+      } else {
+        // 前后都没有有效时间戳，使用默认估算
+        rangeStartTime = startIndex * 0.5 // 每个单词估计0.5秒
+        rangeEndTime = rangeStartTime + (group.length * 0.5)
+        console.log(`⏰ 使用默认估算时间: ${rangeStartTime}s - ${rangeEndTime}s`)
+      }
+      
+      // 确保时间范围有效
+      if (rangeEndTime <= rangeStartTime) {
+        const minDuration = group.length * 0.3 // 最小每个单词0.3秒
+        rangeEndTime = rangeStartTime + minDuration
+        console.warn(`⚠️ 调整无效时间范围，新结束时间: ${rangeEndTime}s`)
+      }
+      
+      // 计算每个单词的时间分配
+      const totalDuration = rangeEndTime - rangeStartTime
+      const wordDuration = totalDuration / group.length
+      
+      console.log(`📏 总时长: ${totalDuration.toFixed(3)}s, 单词平均时长: ${wordDuration.toFixed(3)}s`)
+      
+      // 为每个缺失时间戳的单词分配时间
+      group.forEach((wordIndex, i) => {
+        const wordStartTime = rangeStartTime + (i * wordDuration)
+        const wordEndTime = rangeStartTime + ((i + 1) * wordDuration)
+        
+        // 更新时间戳
+        fixedWords[wordIndex].ts = parseFloat(wordStartTime.toFixed(3))
+        fixedWords[wordIndex].end_ts = parseFloat(wordEndTime.toFixed(3))
+        
+        console.log(`✅ 修复单词 [${wordIndex}] "${fixedWords[wordIndex].value}": ${wordStartTime.toFixed(3)}s - ${wordEndTime.toFixed(3)}s`)
+      })
+    })
+    
+    // 4. 验证修复结果
+    const stillMissingCount = fixedWords.filter(word => 
+      !word.ts || !word.end_ts || word.ts === 0 || word.end_ts === 0
+    ).length
+    
+    if (stillMissingCount > 0) {
+      console.warn(`⚠️ 修复后仍有 ${stillMissingCount} 个单词缺失时间戳`)
+    } else {
+      console.log('🎉 所有单词时间戳修复完成')
+    }
+    
+    // 5. 验证时间戳的逻辑顺序
+    for (let i = 1; i < fixedWords.length; i++) {
+      const prevWord = fixedWords[i - 1]
+      const currentWord = fixedWords[i]
+      
+      if (currentWord.ts < prevWord.end_ts) {
+        console.warn(`⚠️ 时间戳顺序异常: 单词 [${i-1}] "${prevWord.value}" 结束于 ${prevWord.end_ts}s, 但单词 [${i}] "${currentWord.value}" 开始于 ${currentWord.ts}s`)
+      }
+    }
+    
+    return fixedWords
+  }
+
   // 写入对齐数据到数据库
   const writeAlignmentData = async (alignmentData: any, selectedBlocks: any[], cleanedText: string) => {
     // 📊 数据库写入性能监控
@@ -1102,13 +1259,16 @@ export function AudioProcessingPanel({
         wordIndex++
       }
       
+      // 🔧 修复缺失的时间戳数据
+      const fixedWords = fixMissingTimestamps(matchedWords)
+      
         const sentenceData = {
           order: globalSentenceOrder,
           textContent: sentenceText,
           beginTime: Math.round((startTime || 0) * 1000),
           endTime: Math.round((endTime || 0) * 1000),
           orderInBlock: sentenceIndex + 1,
-          words: matchedWords.map((word: any) => ({
+          words: fixedWords.map((word: any) => ({
           word: word.value,
             beginTime: Math.round((word.ts || 0) * 1000),
             endTime: Math.round((word.end_ts || 0) * 1000)

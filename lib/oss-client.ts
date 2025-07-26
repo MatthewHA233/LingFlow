@@ -38,15 +38,51 @@ async function isAllowedEnvironment(): Promise<boolean> {
   }
 }
 
+// URL转换函数：将OSS默认URL转换为自定义域名URL
+export function transformUrl(ossUrl: string): string {
+  const customDomain = process.env.OSS_CUSTOM_DOMAIN;
+  
+  if (!customDomain) {
+    // 如果没有自定义域名，确保返回公网可访问的URL（去除-internal）
+    return ossUrl.replace(/-internal\.aliyuncs\.com/, '.aliyuncs.com');
+  }
+  
+  // 解析OSS URL，提取文件路径
+  try {
+    const url = new URL(ossUrl);
+    const pathname = url.pathname; // 例如: /books/user123/book456/file.epub
+    
+    // 确保自定义域名以https://开头且不以/结尾
+    const cleanCustomDomain = customDomain.replace(/\/$/, '');
+    const finalCustomDomain = cleanCustomDomain.startsWith('http') 
+      ? cleanCustomDomain 
+      : `https://${cleanCustomDomain}`;
+    
+    const finalUrl = `${finalCustomDomain}${pathname}`;
+    
+    console.log(`🔄 URL转换: ${ossUrl} -> ${finalUrl}`);
+    return finalUrl;
+  } catch (error) {
+    console.warn(`⚠️ URL转换失败，使用原始URL: ${ossUrl}`, error);
+    return ossUrl.replace(/-internal\.aliyuncs\.com/, '.aliyuncs.com');
+  }
+}
+
 // 创建 OSS 客户端的工厂函数
 export async function createOSSClient() {
   console.log('🚀 开始创建OSS客户端...');
   const startTime = Date.now();
   
-  if (!process.env.ALIYUN_AK_ID || !process.env.ALIYUN_AK_SECRET || 
-      !process.env.OSS_REGION || !process.env.OSS_BUCKET) {
-    console.error('❌ 缺少OSS配置参数');
-    throw new Error('Missing OSS configuration');
+  // 使用环境变量，如果不存在则使用默认值
+  const region = process.env.OSS_REGION || 'oss-cn-beijing';
+  const bucket = process.env.OSS_BUCKET || 'chango-url';
+  const accessKeyId = process.env.ALIYUN_AK_ID;
+  const accessKeySecret = process.env.ALIYUN_AK_SECRET;
+  const customDomain = process.env.OSS_CUSTOM_DOMAIN; // 自定义域名，例如: https://static.lingflow.cn
+  
+  if (!accessKeyId || !accessKeySecret) {
+    console.error('❌ 缺少OSS认证配置参数');
+    throw new Error('Missing OSS authentication configuration');
   }
 
   // 检查是否在阿里云内网环境
@@ -54,21 +90,22 @@ export async function createOSSClient() {
   
   // 根据环境选择适当的endpoint
   const endpoint = isIntranet 
-    ? `${process.env.OSS_REGION}-internal.aliyuncs.com`  // 内网endpoint
-    : `${process.env.OSS_REGION}.aliyuncs.com`;          // 公网endpoint
+    ? `${region}-internal.aliyuncs.com`  // 内网endpoint
+    : `${region}.aliyuncs.com`;          // 公网endpoint
   
   console.log(`📡 OSS连接信息:
     - 连接模式: ${isIntranet ? '【阿里云内网】' : '【公网】'}
     - Endpoint: ${endpoint}
-    - Bucket: ${process.env.OSS_BUCKET}
-    - Region: ${process.env.OSS_REGION}
+    - Bucket: ${bucket}
+    - Region: ${region}
+    - 自定义域名: ${customDomain || '未配置'}
   `);
 
   const config = {
     endpoint,  // 使用动态确定的endpoint
-    accessKeyId: process.env.ALIYUN_AK_ID,
-    accessKeySecret: process.env.ALIYUN_AK_SECRET,
-    bucket: process.env.OSS_BUCKET,
+    accessKeyId,
+    accessKeySecret,
+    bucket,
     secure: true,
     timeout: 60000
   };
@@ -115,20 +152,20 @@ export async function uploadToOSS(data: Buffer, name: string): Promise<{url: str
     });
     const uploadTime = Date.now() - uploadStart;
 
-    // 确保返回公网可访问的URL（去除-internal）
-    const publicUrl = result.url.replace(/-internal\.aliyuncs\.com/, '.aliyuncs.com');
+    // 使用transformUrl函数转换URL
+    const finalUrl = transformUrl(result.url);
 
     const totalTime = Date.now() - startTime;
     console.log(`✅ 上传成功! (上传耗时: ${uploadTime}ms, 总耗时: ${totalTime}ms)`, {
       originalUrl: result.url,
-      publicUrl: publicUrl,
+      finalUrl: finalUrl,
       name: name,
       size: data.length,
       status: result.res.status
     });
 
     return {
-      url: publicUrl, // 返回转换后的公网URL
+      url: finalUrl, // 返回转换后的URL
       name
     };
   } catch (error: any) {
@@ -155,8 +192,8 @@ export async function getSignedUrl(objectName: string): Promise<string> {
     process: 'style/default'
   });
   
-  // 确保返回公网URL
-  return signedUrl.replace(/-internal\.aliyuncs\.com/, '.aliyuncs.com');
+  // 使用transformUrl函数转换URL
+  return transformUrl(signedUrl);
 }
 
 // 导出删除目录函数

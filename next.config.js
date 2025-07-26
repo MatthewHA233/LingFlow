@@ -43,7 +43,8 @@ const nextConfig = {
     NLS_APP_KEY: process.env.NLS_APP_KEY,
     WECHAT_APP_ID: process.env.WECHAT_APP_ID,
     WECHAT_APP_SECRET: process.env.WECHAT_APP_SECRET,
-    SUPABASE_REDIRECT_URL: process.env.SUPABASE_REDIRECT_URL
+    SUPABASE_REDIRECT_URL: process.env.SUPABASE_REDIRECT_URL,
+    OSS_CUSTOM_DOMAIN: process.env.OSS_CUSTOM_DOMAIN // 添加这行
   },
   webpack: (config, { isServer }) => {
     if (!isServer) {

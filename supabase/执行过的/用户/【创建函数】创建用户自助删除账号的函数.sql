@@ -36,6 +36,7 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+
 declare
   _user_id uuid;
 begin
@@ -47,7 +48,63 @@ begin
   end if;
 
   -- 按照依赖关系顺序删除数据
-  -- 1. 删除语音识别相关数据
+  
+  -- 1. 删除block_sentences表中的记录
+  delete from block_sentences
+  where block_id in (
+    select cb.id
+    from context_blocks cb
+    join content_parents cp on cb.parent_id = cp.id
+    where cp.user_id = _user_id
+  );
+  
+  -- 2. 删除含义块与语境块关联表中的记录（两种方式：通过语境块和通过用户ID）
+  delete from meaning_block_contexts
+  where context_block_id in (
+    select cb.id
+    from context_blocks cb
+    join content_parents cp on cb.parent_id = cp.id
+    where cp.user_id = _user_id
+  ) OR user_id = _user_id;
+  
+  -- 3. 删除熟练度记录表中的记录
+  delete from proficiency_records
+  where user_id = _user_id;
+  
+  -- 4. 删除含义块表中的记录（两种方式：通过关联的语境块和通过用户ID）
+  delete from meaning_blocks
+  where user_id = _user_id OR id in (
+    select mb.id
+    from meaning_blocks mb
+    join meaning_block_contexts mbc on mb.id = mbc.meaning_block_id
+    join context_blocks cb on mbc.context_block_id = cb.id
+    join content_parents cp on cb.parent_id = cp.id
+    where cp.user_id = _user_id
+  );
+  
+  -- 5. 删除锚点表中用户创建的记录
+  delete from anchors
+  where user_id = _user_id;
+  
+  -- 6. 删除context_blocks表中的记录
+  delete from context_blocks
+  where parent_id in (
+    select id from content_parents
+    where user_id = _user_id
+  );
+  
+  -- 7. 删除chapters表中的记录
+  delete from chapters
+  where parent_id in (
+    select id from content_parents
+    where user_id = _user_id
+  );
+  
+  -- 8. 删除content_parents表中的记录
+  delete from content_parents
+  where user_id = _user_id;
+
+  -- 9. 删除语音识别相关数据
   delete from words 
   where sentence_id in (
     select s.id from sentences s
@@ -64,11 +121,11 @@ begin
   delete from speech_results 
   where user_id = _user_id;
 
-  -- 2. 删除其他相关数据
+  -- 10. 删除其他相关数据
   delete from books where user_id = _user_id;
   delete from profiles where id = _user_id;
   
-  -- 3. 最后删除用户认证数据
+  -- 11. 最后删除用户认证数据
   delete from auth.users where id = _user_id;
 end;
 $$;

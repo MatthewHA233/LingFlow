@@ -8,6 +8,7 @@ import { NextRequest } from 'next/server'
 import fs from 'fs'
 import os from 'os'
 import { join } from 'path'
+import { createOSSClient, transformUrl } from '@/lib/oss-client'
 
 // 日志记录功能
 const colors = {
@@ -17,6 +18,13 @@ const colors = {
   ERROR: '\x1b[31m', // 红色
   reset: '\x1b[0m'   // 重置
 };
+
+// 构建OSS公网URL的辅助函数
+function buildOSSUrl(path: string): string {
+  const region = process.env.OSS_REGION || 'oss-cn-beijing';
+  const bucket = process.env.OSS_BUCKET || 'chango-url';
+  return `https://${bucket}.${region}.aliyuncs.com/${path}`;
+}
 
 // 生成唯一请求 ID
 function generateRequestId() {
@@ -399,7 +407,7 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
               id: bookId,
               title: parsedData.title,
               author: parsedData.author,
-              epub_path: `https://chango-url.oss-cn-beijing.aliyuncs.com/books/${userId}/${bookId}/${file.name}`,
+              epub_path: buildOSSUrl(`books/${userId}/${bookId}/${file.name}`),
               user_id: userId,
               metadata: parsedData.metadata,
               created_at: new Date().toISOString(),
@@ -420,17 +428,9 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
       
       log('DEBUG', requestId, `📦 文件大小: ${(file.size / 1024 / 1024).toFixed(2)}MB, 书名: ${bookData.title}`);
       
-      const { default: OSS } = await import('ali-oss');
+      const client = await createOSSClient();
       log('DEBUG', requestId, '🔄 初始化OSS客户端');
       
-    const client = new OSS({
-      region: 'oss-cn-beijing',
-        accessKeyId: process.env.ALIYUN_AK_ID || '',
-        accessKeySecret: process.env.ALIYUN_AK_SECRET || '',
-      bucket: 'chango-url',
-      secure: true
-      });
-
       const baseDir = `books/${userId}/${bookId}`;
       const epubPath = `${baseDir}/${path.basename(file.name)}`;
       log('DEBUG', requestId, `⏱️ 开始转换文件为ArrayBuffer`);
@@ -458,7 +458,7 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
           id: bookId,
           title: bookData.title,
           author: bookData.author,
-          epub_path: epubResult.url.replace('http://', 'https://'),
+          epub_path: transformUrl(epubResult.url),
           user_id: userId,
           metadata: bookData.metadata || {},
           created_at: new Date().toISOString(),
@@ -515,15 +515,7 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
       
       const arrayBuffer = await file.arrayBuffer();
       
-      const { default: OSS } = await import('ali-oss');
-      const client = new OSS({
-        region: 'oss-cn-beijing',
-        accessKeyId: process.env.ALIYUN_AK_ID || '',
-        accessKeySecret: process.env.ALIYUN_AK_SECRET || '',
-        bucket: 'chango-url',
-        secure: true
-      });
-
+      const client = await createOSSClient();
       const baseDir = `books/${userId}/${bookId}`;
       const resourceUploads: BookResource[] = [];
       
@@ -557,18 +549,18 @@ async function handleFormUpload(req: NextRequest, requestId: string, timer: Time
             log('DEBUG', requestId, `⏱️ 上传资源: ${resourcePath}`);
             timer.mark(`resourceUpload-${normalizedPath}`);
             
-            await client.put(resourcePath, imageBuffer, {
+            const resourceResult = await client.put(resourcePath, imageBuffer, {
               mime: resource['media-type'] || getMimeType(normalizedPath),
               headers: { 'Cache-Control': 'max-age=31536000' }
             });
             
             timer.mark(`resourceUploadEnd-${normalizedPath}`);
-            log('DEBUG', requestId, `✅ 资源上传成功: ${resourcePath}, 耗时: ${timer.getElapsed(`resourceUploadEnd-${normalizedPath}`) - timer.getElapsed(`resourceUpload-${normalizedPath}`)}ms`);
+            log('DEBUG', requestId, `✅ 资源上传成功: ${resourceResult.url}, 耗时: ${timer.getElapsed(`resourceUploadEnd-${normalizedPath}`) - timer.getElapsed(`resourceUpload-${normalizedPath}`)}ms`);
 
             resourceUploads.push({
               book_id: bookId,
               original_path: normalizedPath,
-              oss_path: `https://chango-url.oss-cn-beijing.aliyuncs.com/${resourcePath}`,
+              oss_path: transformUrl(resourceResult.url),
               resource_type: 'image',
               mime_type: resource['media-type'] || getMimeType(normalizedPath)
             });

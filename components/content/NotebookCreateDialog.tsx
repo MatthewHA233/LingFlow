@@ -248,24 +248,27 @@ export default function NotebookCreateDialog({
 
   // 获取默认模板图片
   const getDefaultTemplates = (): CachedImage[] => {
+    // 从环境变量获取自定义域名，fallback 到默认值
+    const customDomain = process.env.OSS_CUSTOM_DOMAIN ;
+    
     return [
       {
         id: 'default_cover1',
-        imageUrl: '/default_cover/cover1.jpg',
+        imageUrl: `${customDomain}/default_cover/cover1.jpg`,
         prompt: '默认模板 1',
         timestamp: Date.now(),
         isDefault: true
       },
       {
         id: 'default_cover2',
-        imageUrl: '/default_cover/cover2.png',
+        imageUrl: `${customDomain}/default_cover/cover2.png`,
         prompt: '默认模板 2',
         timestamp: Date.now(),
         isDefault: true
       },
       {
         id: 'default_cover3',
-        imageUrl: '/default_cover/cover3.jpg',
+        imageUrl: `${customDomain}/default_cover/cover3.jpg`,
         prompt: '默认模板 3',
         timestamp: Date.now(),
         isDefault: true
