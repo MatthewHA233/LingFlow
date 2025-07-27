@@ -8,10 +8,10 @@ export const config = {
   
   // 颜色设置
   colors: {
-    primary: 'rgba(140, 255, 140, 0.8)',
-    bright: 'rgba(180, 255, 180, 0.95)',
-    dim: 'rgba(140, 255, 140, 0.3)',
-    trail: 'rgba(0, 0, 0, 0.15)' // 拖尾效果的透明度
+    primary: 'rgba(140, 255, 140, 0.3)',
+    bright: 'rgba(180, 255, 180, 0.4)',
+    dim: 'rgba(140, 255, 140, 0.15)',
+    trail: 'rgba(0, 0, 0, 0.08)' // 拖尾效果的透明度
   },
   
   // 动画效果

@@ -1,166 +1,206 @@
 'use client';
 
 import { BookOpen, Headphones, Network, Brain } from 'lucide-react';
-import { useRef, useEffect, useState } from 'react';
-import gsap from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { FEATURES_DATA } from '@/lib/constants/features';
-
-// 确保注册ScrollTrigger插件
-gsap.registerPlugin(ScrollTrigger);
 
 export function Features() {
   const sectionRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const titleRef = useRef<HTMLHeadingElement>(null);
-  const [isVisible, setIsVisible] = useState(false);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [centerRow, setCenterRow] = useState<number>(0);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    const cards = cardRefs.current;
-    const section = sectionRef.current;
-    
-    // 检测当前节是否可见的函数
-    const checkVisibility = () => {
-      if (!section) return;
-      
-      const rect = section.getBoundingClientRect();
-      // 如果元素顶部在视口内或刚好在视口下方
-      const isInView = rect.top < window.innerHeight && rect.bottom >= 0;
-      setIsVisible(isInView);
+    // 检测是否是移动设备
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
     };
-    
-    // 在滚动容器上添加监听
-    const scrollContainer = document.querySelector('.overflow-auto');
-    if (scrollContainer) {
-      scrollContainer.addEventListener('scroll', checkVisibility);
-      // 初始检查
-      requestAnimationFrame(checkVisibility);
-    }
-    
-    // 标题动画
-    if (titleRef.current) {
-      gsap.fromTo(titleRef.current,
-        { 
-          y: -30,
-          opacity: 0 
-        },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 1.2,
-          ease: "power3.out",
-          scrollTrigger: {
-            trigger: titleRef.current,
-            start: 'top bottom-=100',
-            scroller: '.overflow-auto',
-            toggleActions: 'play none none reverse'
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+
+    // 渐入动画观察器
+    const fadeObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('animate-fade-in-up');
+          }
+        });
+      },
+      { threshold: 0.1 }
+    );
+
+    // 滚动处理函数
+    const handleScroll = () => {
+      if (!isMobile) return;
+      
+      const viewportCenter = window.innerHeight / 2;
+      let closestRow = -1;
+      let minDistance = Infinity;
+      
+      // 检查所有卡片，找到最接近中心的行
+      cardRefs.current.forEach((card, index) => {
+        if (!card) return;
+        
+        const rect = card.getBoundingClientRect();
+        // 只考虑在视口内的卡片
+        if (rect.bottom > 0 && rect.top < window.innerHeight) {
+          const cardCenter = rect.top + rect.height / 2;
+          const distance = Math.abs(cardCenter - viewportCenter);
+          
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestRow = Math.floor(index / 2);
           }
         }
-      );
+      });
+      
+      if (closestRow !== -1 && closestRow !== centerRow) {
+        setCenterRow(closestRow);
+      }
+    };
+
+    // 设置观察器
+    cardRefs.current.forEach((card) => {
+      if (card) {
+        fadeObserver.observe(card);
+      }
+    });
+    
+    // 添加滚动监听（仅移动端）
+    let scrollTimer: NodeJS.Timeout;
+    const debouncedScroll = () => {
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(handleScroll, 50);
+    };
+    
+    if (isMobile) {
+      // 查找滚动容器
+      const scrollContainer = document.querySelector('.overflow-auto');
+      if (scrollContainer) {
+        scrollContainer.addEventListener('scroll', debouncedScroll);
+      } else {
+        window.addEventListener('scroll', debouncedScroll);
+      }
+      
+      // 初始检测
+      setTimeout(handleScroll, 200);
     }
 
-    // 创建时间线动画，让所有卡片一起动画更流畅
-    const tl = gsap.timeline({
-      scrollTrigger: {
-        trigger: section,
-        start: 'top bottom-=100',
-        scroller: '.overflow-auto',
-        toggleActions: 'play none none reverse'
-      }
-    });
-    
-    // 将所有卡片添加到同一个时间线
-    cards.forEach((card, index) => {
-      if (!card) return;
-
-      // 添加发光效果
-      const iconGlow = document.createElement('div');
-      iconGlow.className = 'absolute inset-0 opacity-0 bg-primary/30 blur-xl';
-      
-      const iconContainer = card.querySelector('.icon-container');
-      if (iconContainer) {
-        const container = iconContainer as HTMLElement;
-        container.style.position = 'relative';
-        container.appendChild(iconGlow);
-      }
-      
-      // 添加到时间线，使动画更加流畅
-      tl.fromTo(card,
-        {
-          y: 40,
-          opacity: 0,
-          scale: 0.95
-        },
-        {
-          y: 0,
-          opacity: 1,
-          scale: 1,
-          duration: 0.7,
-          ease: "back.out(1.2)",
-        }, 
-        index * 0.08 // 减小延迟，让卡片之间衔接更紧密
-      );
-
-      // 鼠标悬停动画
-      card.addEventListener('mouseenter', () => {
-        gsap.to(iconGlow, {
-          opacity: 1,
-          duration: 0.3
-        });
-        gsap.to(card, {
-          y: -5,
-          scale: 1.02,
-          duration: 0.3
-        });
-      });
-
-      card.addEventListener('mouseleave', () => {
-        gsap.to(iconGlow, {
-          opacity: 0,
-          duration: 0.3
-        });
-        gsap.to(card, {
-          y: 0,
-          scale: 1,
-          duration: 0.3
-        });
-      });
-    });
-    
     return () => {
+      fadeObserver.disconnect();
+      window.removeEventListener('resize', checkMobile);
+      
+      // 清理滚动监听
+      clearTimeout(scrollTimer);
+      const scrollContainer = document.querySelector('.overflow-auto');
       if (scrollContainer) {
-        scrollContainer.removeEventListener('scroll', checkVisibility);
+        scrollContainer.removeEventListener('scroll', debouncedScroll);
+      } else {
+        window.removeEventListener('scroll', debouncedScroll);
       }
-      ScrollTrigger.getAll().forEach(trigger => trigger.kill());
     };
-  }, []);
+  }, [isMobile, centerRow]);
 
   return (
     <section 
       ref={sectionRef} 
-      className={`py-16 px-4 sm:px-6 lg:px-8 w-full ${isVisible ? 'opacity-100' : 'opacity-70'} transition-opacity duration-500`}
+      className="py-12 sm:py-16 md:py-20 lg:py-24 px-4 sm:px-6 lg:px-8 w-full"
     >
       <div className="max-w-7xl mx-auto w-full">
-        <h2 
-          ref={titleRef} 
-          className="text-3xl font-bold text-center mb-12 bg-gradient-to-r from-white to-primary bg-clip-text text-transparent"
-        >
-          核心特性
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8 w-full">
+        {/* 标题部分 */}
+        <div className="text-center mb-10 sm:mb-16 md:mb-20">
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-light text-gray-100 mb-3 sm:mb-4 md:mb-6">
+            核心特性
+          </h2>
+          <p className="text-gray-500 text-sm sm:text-base md:text-lg max-w-3xl mx-auto px-4">
+            发现洪流二语习得的强大功能，开启你的沉浸式语言学习之旅
+          </p>
+        </div>
+        
+        {/* 功能卡片网格 - 移动端2列，桌面端4列 */}
+        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {FEATURES_DATA.map((feature, index) => (
             <div 
               key={feature.title}
               ref={el => {
                 if (el) cardRefs.current[index] = el;
               }}
-              className="bg-card/50 backdrop-blur-sm p-6 rounded-lg border border-primary/10 transition-all duration-300"
+              className="opacity-0 group relative"
+              onMouseEnter={() => !isMobile && setHoveredIndex(index)}
+              onMouseLeave={() => !isMobile && setHoveredIndex(null)}
             >
-              <div className="icon-container h-12 w-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                <feature.icon className="h-6 w-6 text-primary" />
+              {/* 默认状态的紫色光晕 */}
+              <div className={`
+                absolute inset-0 rounded-2xl sm:rounded-3xl transition-opacity duration-300
+                ${(hoveredIndex === index || (isMobile && centerRow === Math.floor(index / 2))) ? 'opacity-0' : 'opacity-100'}
+              `}
+                style={{
+                  background: 'radial-gradient(circle at center, rgba(168, 85, 247, 0.08) 0%, transparent 70%)',
+                  filter: 'blur(40px)'
+                }}
+              />
+              <div className={`
+                relative h-full p-4 sm:p-6 lg:p-8 rounded-2xl sm:rounded-3xl border sm:border-2 transition-all duration-200
+                ${(hoveredIndex === index || (isMobile && centerRow === Math.floor(index / 2)))
+                  ? 'border-transparent shadow-lg shadow-purple-500/20' 
+                  : 'border-purple-500/20 bg-gray-900/30'
+                }
+              `}
+                style={{
+                  background: (hoveredIndex === index || (isMobile && centerRow === Math.floor(index / 2)))
+                    ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.05) 0%, rgba(236, 72, 153, 0.05) 50%, rgba(168, 85, 247, 0.05) 100%)'
+                    : '',
+                  borderImage: (hoveredIndex === index || (isMobile && centerRow === Math.floor(index / 2)))
+                    ? 'linear-gradient(135deg, rgb(168, 85, 247) 0%, rgb(236, 72, 153) 50%, rgb(168, 85, 247) 100%) 1'
+                    : 'none'
+                }}
+              >
+                {/* 图标 */}
+                <div className="mb-3 sm:mb-4 lg:mb-6">
+                  <div className={`
+                    inline-flex p-2 sm:p-3 rounded-lg sm:rounded-xl transition-all duration-200
+                    ${(hoveredIndex === index || (isMobile && centerRow === Math.floor(index / 2)))
+                      ? 'bg-gradient-to-br from-purple-500/20 to-pink-500/20' 
+                      : ''}
+                  `}>
+                    <feature.icon className={`
+                      h-5 w-5 sm:h-6 sm:w-6 transition-all duration-200
+                      ${(hoveredIndex === index || (isMobile && centerRow === Math.floor(index / 2)))
+                        ? 'text-transparent bg-gradient-to-br from-purple-400 to-pink-400 bg-clip-text' 
+                        : 'text-purple-400'}
+                    `} strokeWidth={1.5} 
+                      style={{
+                        stroke: (hoveredIndex === index || (isMobile && centerRow === Math.floor(index / 2)))
+                          ? 'url(#purple-gradient)' 
+                          : 'currentColor'
+                      }}
+                    />
+                  </div>
+                </div>
+                
+                {/* 渐变定义 */}
+                <svg width="0" height="0">
+                  <defs>
+                    <linearGradient id="purple-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#a855f7" />
+                      <stop offset="50%" stopColor="#ec4899" />
+                      <stop offset="100%" stopColor="#a855f7" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+                
+                {/* 标题 */}
+                <h3 className="text-base sm:text-lg lg:text-xl font-medium mb-2 sm:mb-3 text-gray-100">
+                  {feature.title}
+                </h3>
+                
+                {/* 描述 */}
+                <p className="text-gray-400 text-[10px] leading-relaxed sm:text-sm">
+                  {feature.description}
+                </p>
               </div>
-              <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
-              <p className="text-muted-foreground text-sm sm:text-base">{feature.description}</p>
             </div>
           ))}
         </div>

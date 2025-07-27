@@ -65,12 +65,12 @@ export default function Home() {
   ];
   
   return (
-    <div className="min-h-screen flex flex-col relative overflow-hidden">
+    <div className="min-h-screen flex flex-col relative overflow-hidden bg-black">
       <MatrixBackground />
       
       {/* Hero Section - 修改移动端布局使标题垂直居中 */}
-      <section className={`${isMobile ? 'min-h-[100vh] flex' : 'py-40'} flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8`}>
-        <div className={`${isMobile ? 'my-auto py-16' : ''} max-w-7xl mx-auto text-center`}>
+      <section className={`${isMobile ? 'min-h-[80vh] flex' : 'py-40'} flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8`}>
+        <div className={`${isMobile ? 'my-auto py-12' : ''} max-w-7xl mx-auto text-center`}>
           {/* 根据设备类型显示不同的标题 */}
           <div className="mb-4 px-2">
             {isMobile ? (
@@ -127,16 +127,16 @@ export default function Home() {
       </div>
 
       {/* 添加页脚 */}
-      <footer className="w-full py-6 mt-auto border-t border-gray-800 relative z-10">
+      <footer className="w-full py-8 mt-auto border-t border-gray-900 relative z-10 bg-black">
         <div className="container mx-auto px-4">
-          <div className="flex flex-col items-center justify-center space-y-2 text-sm text-gray-400">
+          <div className="flex flex-col items-center justify-center space-y-2 text-sm text-gray-500">
             <div>© 2025 洪流二语习得. 保留所有权利.</div>
             <div className="flex items-center space-x-1">
               <a 
                 href="https://beian.miit.gov.cn/" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="hover:text-gray-300 transition-colors"
+                className="hover:text-gray-400 transition-colors"
               >
                 鄂ICP备2024085025号-2
               </a>

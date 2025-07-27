@@ -31,7 +31,7 @@ export function MatrixBackground() {
             ? config.colors.bright
             : isHead 
               ? config.colors.primary
-              : `rgba(140, 255, 140, ${alpha * 0.5})`;
+              : `rgba(140, 255, 140, ${alpha * 0.2})`;
 
           ctx.font = `${config.charSize}px "SF Mono", monospace`;
           ctx.fillText(char.value, char.x, char.y);

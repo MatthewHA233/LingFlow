@@ -16,11 +16,12 @@ export function createDots({ container, count = 150, size = 4 }: CreateDotsParam
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 1000;
+    z-index: 1;
     display: flex;
     justify-content: center;
     align-items: center;
     opacity: 0;
+    pointer-events: none;
   `;
 
   container.appendChild(dotsContainer);

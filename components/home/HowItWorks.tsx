@@ -2,10 +2,6 @@
 
 import { FileText, Headphones, PlayCircle, UserPlus, BookOpen, Brain, Clock } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import gsap from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
-
-gsap.registerPlugin(ScrollTrigger);
 
 const steps = [
   {
@@ -43,144 +39,175 @@ const steps = [
 export function HowItWorks() {
   const sectionRef = useRef<HTMLDivElement>(null);
   const stepsRef = useRef<(HTMLDivElement | null)[]>([]);
-  const titleRef = useRef<HTMLHeadingElement>(null);
-  const [isVisible, setIsVisible] = useState(false);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [centerIndex, setCenterIndex] = useState<number | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    const stepsElements = stepsRef.current;
-    const section = sectionRef.current;
-    
-    // 检测当前节是否可见的函数
-    const checkVisibility = () => {
-      if (!section) return;
-      
-      const rect = section.getBoundingClientRect();
-      // 如果元素顶部在视口内或刚好在视口下方
-      const isInView = rect.top < window.innerHeight && rect.bottom >= 0;
-      setIsVisible(isInView);
+    // 检测是否是移动设备
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
     };
-    
-    // 在滚动容器上添加监听
-    const scrollContainer = document.querySelector('.overflow-auto');
-    if (scrollContainer) {
-      scrollContainer.addEventListener('scroll', checkVisibility);
-      // 初始检查
-      checkVisibility();
-    }
-    
-    // 标题动画
-    if (titleRef.current) {
-      gsap.fromTo(titleRef.current,
-        { 
-          y: -30,
-          opacity: 0 
-        },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 1,
-          scrollTrigger: {
-            trigger: titleRef.current,
-            start: 'top bottom-=100',
-            scroller: '.overflow-auto', // 指定滚动容器
-            toggleActions: 'play none none reverse'
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+
+    const fadeObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('animate-fade-in-up');
+          }
+        });
+      },
+      { threshold: 0.1 }
+    );
+
+    // 中心检测观察器（仅移动端）
+    const centerObserver = new IntersectionObserver(
+      (entries) => {
+        if (!isMobile) return;
+        
+        let maxRatio = 0;
+        let centerCard = null;
+        
+        entries.forEach((entry) => {
+          if (entry.intersectionRatio > maxRatio) {
+            maxRatio = entry.intersectionRatio;
+            centerCard = entry.target;
+          }
+        });
+        
+        if (centerCard) {
+          const index = stepsRef.current.findIndex(step => step === centerCard);
+          if (index !== -1) {
+            // 计算所在行（每行2个）
+            const row = Math.floor(index / 2);
+            setCenterIndex(row);
           }
         }
-      );
-    }
-
-    // 步骤动画
-    stepsElements.forEach((step, index) => {
-      if (!step) return;
-
-      // 添加发光效果
-      const iconGlow = document.createElement('div');
-      iconGlow.className = 'absolute inset-0 opacity-0 bg-primary/30 blur-xl';
-      
-      // 使用类型守卫确保 iconContainer 是 HTMLElement
-      const iconContainer = step.querySelector('.icon-container');
-      if (iconContainer) {
-        const container = iconContainer as HTMLElement;
-        container.style.position = 'relative';
-        container.appendChild(iconGlow);
+      },
+      { 
+        threshold: [0, 0.25, 0.5, 0.75, 1],
+        rootMargin: '-45% 0px -45% 0px'
       }
+    );
 
-      // 入场动画
-      gsap.fromTo(step,
-        {
-          x: index % 2 === 0 ? -30 : 30,
-          y: 20,
-          opacity: 0
-        },
-        {
-          x: 0,
-          y: 0,
-          opacity: 1,
-          duration: 1,
-          delay: Math.floor(index / 2) * 0.2 + (index % 2) * 0.3,
-          ease: 'power2.out',
-          scrollTrigger: {
-            trigger: step,
-            start: 'top bottom-=100',
-            scroller: '.overflow-auto', // 指定滚动容器
-            toggleActions: 'play none none reverse'
-          }
+    stepsRef.current.forEach((step) => {
+      if (step) {
+        fadeObserver.observe(step);
+        if (isMobile) {
+          centerObserver.observe(step);
         }
-      );
-
-      // 鼠标悬停动画
-      step.addEventListener('mouseenter', () => {
-        gsap.to(iconGlow, {
-          opacity: 1,
-          duration: 0.3
-        });
-        gsap.to(step, {
-          y: -5,
-          duration: 0.3
-        });
-      });
-
-      step.addEventListener('mouseleave', () => {
-        gsap.to(iconGlow, {
-          opacity: 0,
-          duration: 0.3
-        });
-        gsap.to(step, {
-          y: 0,
-          duration: 0.3
-        });
-      });
+      }
     });
-    
+
     return () => {
-      if (scrollContainer) {
-        scrollContainer.removeEventListener('scroll', checkVisibility);
-      }
-      ScrollTrigger.getAll().forEach(trigger => trigger.kill());
+      fadeObserver.disconnect();
+      centerObserver.disconnect();
+      window.removeEventListener('resize', checkMobile);
     };
-  }, []);
+  }, [isMobile]);
 
   return (
     <section 
       ref={sectionRef} 
-      className={`py-20 px-4 sm:px-6 lg:px-8 bg-card/50 backdrop-blur-sm w-full ${isVisible ? 'opacity-100' : 'opacity-80'} transition-opacity duration-500`}
+      className="py-12 sm:py-16 md:py-20 px-4 sm:px-6 lg:px-8 bg-gray-900/30 w-full"
     >
       <div className="max-w-7xl mx-auto w-full">
-        <h2 ref={titleRef} className="text-3xl font-bold text-center mb-12 bg-gradient-to-r from-white to-primary bg-clip-text text-transparent">
-          使用步骤
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 w-full">
+        <div className="text-center mb-10 sm:mb-12 md:mb-16">
+          <h2 className="text-3xl sm:text-4xl font-bold mb-3 sm:mb-4 text-white">
+            使用步骤
+          </h2>
+          <p className="text-gray-400 text-sm sm:text-base max-w-2xl mx-auto px-4">
+            简单几步，开启您的沉浸式语言学习之旅
+          </p>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
           {steps.map((step, index) => (
             <div 
               key={index}
               ref={el => { stepsRef.current[index] = el; }}
-              className="flex flex-col items-center text-center group"
+              className="opacity-0 transition-all duration-300 relative h-full"
+              onMouseEnter={() => !isMobile && setHoveredIndex(index)}
+              onMouseLeave={() => !isMobile && setHoveredIndex(null)}
             >
-              <div className="icon-container h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center mb-4 sm:mb-6 transition-colors group-hover:bg-primary/20">
-                <step.icon className="h-8 w-8 text-primary" />
+              {/* 默认状态的紫色光晕 */}
+              <div className={`
+                absolute inset-0 rounded-3xl transition-opacity duration-300
+                ${(hoveredIndex === index || (isMobile && centerIndex === Math.floor(index / 2))) ? 'opacity-0' : 'opacity-60'}
+              `}
+                style={{
+                  background: 'radial-gradient(circle at center, rgba(168, 85, 247, 0.06) 0%, transparent 70%)',
+                  filter: 'blur(30px)'
+                }}
+              />
+              <div className={`
+                relative h-full p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl border sm:border-2 transition-all duration-200
+                ${(hoveredIndex === index || (isMobile && centerIndex === Math.floor(index / 2)))
+                  ? 'border-transparent shadow-lg shadow-purple-500/20' 
+                  : 'border-purple-500/20 bg-gray-900/30'
+                }
+              `}
+                style={{
+                  background: (hoveredIndex === index || (isMobile && centerIndex === Math.floor(index / 2)))
+                    ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.05) 0%, rgba(236, 72, 153, 0.05) 50%, rgba(168, 85, 247, 0.05) 100%)'
+                    : '',
+                  borderImage: (hoveredIndex === index || (isMobile && centerIndex === Math.floor(index / 2)))
+                    ? 'linear-gradient(135deg, rgb(168, 85, 247) 0%, rgb(236, 72, 153) 50%, rgb(168, 85, 247) 100%) 1'
+                    : 'none'
+                }}
+              >
+                <div className="flex flex-col items-center text-center h-full">
+                  <div className={`
+                    h-12 w-12 sm:h-14 sm:w-14 md:h-16 md:w-16 rounded-xl sm:rounded-2xl flex items-center justify-center mb-3 sm:mb-4
+                    transition-all duration-300
+                    ${(hoveredIndex === index || (isMobile && centerIndex === Math.floor(index / 2)))
+                      ? 'bg-gradient-to-br from-purple-500/20 to-pink-500/20' 
+                      : 'bg-purple-500/10'}
+                  `}>
+                    <step.icon className={`
+                      h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 transition-all duration-300
+                      ${(hoveredIndex === index || (isMobile && centerIndex === Math.floor(index / 2))) 
+                        ? 'text-transparent bg-gradient-to-br from-purple-400 to-pink-400 bg-clip-text' 
+                        : 'text-purple-400/70'}
+                    `} strokeWidth={1.5} 
+                      style={{
+                        stroke: (hoveredIndex === index || (isMobile && centerIndex === Math.floor(index / 2)))
+                          ? 'url(#purple-gradient-how)' 
+                          : 'currentColor'
+                      }}
+                    />
+                  </div>
+                  <div className={`
+                    absolute -top-2 -right-2 sm:-top-3 sm:-right-3 w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full 
+                    flex items-center justify-center text-xs sm:text-sm font-bold
+                    transition-all duration-300 border sm:border-2
+                    ${(hoveredIndex === index || (isMobile && centerIndex === Math.floor(index / 2)))
+                      ? 'bg-gradient-to-br from-purple-500 to-pink-500 text-white border-black' 
+                      : 'bg-gray-800/80 text-gray-400 border-gray-700'
+                    }
+                  `}>
+                    {index + 1}
+                  </div>
+                  <h3 className="text-sm sm:text-base md:text-xl font-semibold mb-2 sm:mb-3 text-white">
+                    {step.title}
+                  </h3>
+                  <p className="text-gray-300 text-[10px] leading-relaxed sm:text-sm md:text-base sm:line-clamp-3 md:line-clamp-none mt-auto">
+                    {step.description}
+                  </p>
+                </div>
+                
+                {/* 渐变定义 */}
+                <svg width="0" height="0" className="absolute">
+                  <defs>
+                    <linearGradient id="purple-gradient-how" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#a855f7" />
+                      <stop offset="50%" stopColor="#ec4899" />
+                      <stop offset="100%" stopColor="#a855f7" />
+                    </linearGradient>
+                  </defs>
+                </svg>
               </div>
-              <h3 className="text-xl font-semibold mb-2 sm:mb-3">{step.title}</h3>
-              <p className="text-muted-foreground text-sm sm:text-base">{step.description}</p>
             </div>
           ))}
         </div>
