@@ -23,7 +23,7 @@ interface AuthState {
   deleteAccount: () => Promise<void>;
   checkRole: () => Promise<string | null>;
   checkEmailInOldAuth: (email: string) => Promise<boolean>;
-  deleteFromAuthOld: (email: string) => Promise<void>;
+  markOldUserAsRegistered: (email: string) => Promise<void>;
 }
 
 // 缓存用户角色
@@ -95,11 +95,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         console.log('用户 profile 创建成功');
         set({ role: 'user' });
         
-        // 注册成功后，尝试从旧表中删除对应邮箱
+        // 注册成功后，检查是否是旧用户并标记已注册
         try {
-          await get().deleteFromAuthOld(email);
-        } catch (deleteError) {
-          console.error('删除旧表邮箱记录失败:', deleteError);
+          const isOldUser = await get().checkEmailInOldAuth(email);
+          if (isOldUser) {
+            await get().markOldUserAsRegistered(email);
+          }
+        } catch (markError) {
+          console.error('标记旧用户状态失败:', markError);
           // 不影响主流程，所以只记录错误不抛出
         }
         
@@ -364,59 +367,54 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   checkEmailInOldAuth: async (email: string) => {
     try {
+      console.log('🔍 开始检查邮箱是否为旧用户:', email);
       const { data, error } = await supabase
-        .from('auth_old')
-        .select('email')
+        .from('old_auth_users')
+        .select('email, has_registered')
         .eq('email', email)
+        .eq('has_registered', false)
         .single();
+      
+      console.log('📊 数据库查询结果 - data:', data, 'error:', error);
       
       if (error) {
         if (error.code === 'PGSQL_ERROR') {
-          console.error('数据表不存在或查询错误:', error);
+          console.error('❌ 数据表不存在或查询错误:', error);
         } else if (error.code !== 'PGSQL_ERROR') {
-          console.error('检查旧用户表出错:', error);
+          console.error('❌ 检查旧用户表出错:', error);
         }
+        console.log('🔄 返回 false (有错误)');
         return false;
       }
       
-      return !!data;
+      const result = !!data;
+      console.log('✅ 旧用户检查完成，结果:', result);
+      return result;
     } catch (error) {
-      console.error('检查旧用户表出错:', error);
+      console.error('💥 检查旧用户表出错 (catch):', error);
       return false;
     }
   },
 
-  deleteFromAuthOld: async (email: string) => {
+  markOldUserAsRegistered: async (email: string) => {
     try {
-      console.log('检查并删除旧表中的邮箱:', email);
-      // 先检查邮箱是否存在于旧表
-      const { data: existingData, error: checkError } = await supabase
-        .from('auth_old')
-        .select('email')
-        .eq('email', email)
-        .single();
+      console.log('标记旧用户已注册:', email);
+      const { error } = await supabase
+        .from('old_auth_users')
+        .update({ 
+          has_registered: true,
+          registered_at: new Date().toISOString()
+        })
+        .eq('email', email);
       
-      if (checkError) {
-        // 如果是因为找不到记录导致的错误，就不需要删除
-        if (checkError.code === 'PGSQL_ERROR' || checkError.message?.includes('No rows found')) {
-          console.log('旧表中不存在该邮箱，无需删除');
-          return;
-        }
-        throw checkError;
+      if (error) {
+        console.error('标记旧用户已注册失败:', error);
+        throw error;
       }
       
-      // 如果找到了记录，就删除它
-      if (existingData) {
-        const { error: deleteError } = await supabase
-          .from('auth_old')
-          .delete()
-          .eq('email', email);
-        
-        if (deleteError) throw deleteError;
-        console.log('成功从旧表中删除邮箱:', email);
-      }
+      console.log('成功标记旧用户已注册:', email);
     } catch (error) {
-      console.error('从旧表中删除邮箱失败:', error);
+      console.error('标记旧用户已注册失败:', error);
       throw error;
     }
   },

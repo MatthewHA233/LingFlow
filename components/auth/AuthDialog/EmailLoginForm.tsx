@@ -74,14 +74,21 @@ export function EmailLoginForm({ onSuccess, onSwitchToRegister }: EmailLoginForm
     } catch (error: any) {
       console.error('登录失败:', error);
       const errorMessage = error?.message || '未知错误';
+      console.log('错误消息:', errorMessage);
       
       if (errorMessage.includes('Invalid login credentials')) {
-        toast.error('邮箱或密码错误');
+        console.log('检测到登录凭据错误，开始检查是否为旧用户:', values.email);
         const isOld = await checkEmailInOldAuth(values.email);
+        console.log('旧用户检查结果:', isOld);
         if (isOld) {
+          console.log('显示旧用户迁移提示');
           showOldUserAlert(values.email);
+        } else {
+          console.log('显示普通密码错误提示');
+          toast.error('邮箱或密码错误');
         }
       } else {
+        console.log('其他类型的登录错误');
         toast.error('登录失败: ' + errorMessage);
       }
     } finally {
@@ -100,9 +107,7 @@ export function EmailLoginForm({ onSuccess, onSwitchToRegister }: EmailLoginForm
               </h1>
               
               <p className="text-gray-200 mb-8 text-center leading-relaxed">
-                <span className="font-semibold">{migrationEmail}</span>你好，由于
-                <span className="text-red-400 font-bold text-lg mx-1">数据库迁移</span>，
-                请您<span className="text-red-400 font-bold text-lg mx-1">重新注册</span>，谢谢！
+                旧用户您好，本站数据库已清空移植，请重新注册，给您带来不方便，万分抱歉。
               </p>
               
               <div className="mt-8">
