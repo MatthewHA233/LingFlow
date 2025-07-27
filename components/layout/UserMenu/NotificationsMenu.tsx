@@ -91,9 +91,14 @@ export function NotificationsMenu() {
                   <DropdownMenuItem
                     key={notification.id}
                     className="flex flex-col items-start gap-1 p-4 cursor-default hover:bg-transparent notification-item"
-                    onClick={() => {
-                      markAsRead(notification.id);
-                      setSelectedNotification(notification);
+                    onClick={async () => {
+                      try {
+                        await markAsRead(notification.id);
+                        setSelectedNotification(notification);
+                      } catch (error) {
+                        console.error('标记已读失败:', error);
+                        // 可以添加 toast 提示
+                      }
                     }}
                   >
                     <div className="flex items-center justify-between w-full">

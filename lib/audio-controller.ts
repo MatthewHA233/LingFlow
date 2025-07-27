@@ -3,6 +3,8 @@
  * 统一管理所有音频操作，解决冲突问题
  */
 
+import { AudioRangeLoader } from './audio-range-loader';
+
 // 定义事件类型
 export const AUDIO_EVENTS = {
   STATE_CHANGE: 'audio-state-change',
@@ -77,6 +79,15 @@ class AudioControllerClass {
   private currentPlayPromise: Promise<void> | null = null;
   private isPlayRequested = false;
   private playRequestId = 0; // 添加请求ID来跟踪最新的播放请求
+  
+  // Range分片加载器
+  private rangeLoader: AudioRangeLoader = new AudioRangeLoader({
+    chunkSize: 512 * 1024, // 512KB 分片大小，匹配CDN配置
+    maxCacheSize: 50 * 1024 * 1024, // 最大缓存50MB
+    preloadStrategy: 'adaptive', // 自适应预加载策略
+    maxRetries: 3, // 最大重试次数
+    retryDelay: 1000 // 重试延迟
+  });
   
   constructor() {
     // 检查是否在浏览器环境
@@ -238,6 +249,20 @@ class AudioControllerClass {
     if (this.state.loop.active) {
       this.checkLoopBoundaries();
     }
+    
+    // 播放过程中的智能预加载
+    if (this.audio && this.state.url && this.state.isPlaying) {
+      const currentTimeMs = this.audio.currentTime * 1000;
+      const durationMs = this.audio.duration * 1000;
+      
+      // 每5秒检查一次预加载需求（避免过于频繁）
+      if (Math.floor(currentTimeMs / 5000) !== Math.floor((currentTimeMs - 100) / 5000)) {
+        this.triggerSmartPreload(currentTimeMs, durationMs)
+          .catch((err: Error) => {
+            console.warn('[AudioController] 播放中预加载失败:', err);
+          });
+      }
+    }
   };
   
   // 播放结束处理
@@ -296,6 +321,10 @@ class AudioControllerClass {
       currentTime: 0,
       loop: { active: false, start: 0, end: 0 }
     });
+    
+    // 清理Range分片缓存
+    this.rangeLoader.clear();
+    console.log('[AudioController] Range分片缓存已清理');
   }
   
   // 清理资源
@@ -332,6 +361,35 @@ class AudioControllerClass {
     }
   }
 
+  // 触发智能预加载
+  private async triggerSmartPreload(currentTimeMs: number, durationMs: number): Promise<void> {
+    if (!this.state.url || !this.audio) return;
+    
+    const fileSize = await this.rangeLoader.getFileSize(this.state.url);
+    if (fileSize === 0) return;
+    
+    await this.rangeLoader.preloadChunks(
+      this.state.url, 
+      currentTimeMs, 
+      durationMs, 
+      fileSize
+    );
+  }
+  
+  // 启动智能预加载
+  private async startIntelligentPreloading(): Promise<void> {
+    if (!this.audio || !this.state.url) return;
+    
+    // 等待音频元数据加载完成
+    if (this.audio.duration) {
+      const durationMs = this.audio.duration * 1000;
+      const currentTimeMs = this.audio.currentTime * 1000;
+      
+      // 开始预加载当前位置附近的分片
+      await this.triggerSmartPreload(currentTimeMs, durationMs);
+    }
+  }
+  
   // 修改缓存方法，添加预加载
   async cacheSpeechResult(result: SpeechResult) {
     this.speechCache.set(result.id, result);
@@ -386,6 +444,17 @@ class AudioControllerClass {
       loop: { active: false, start: 0, end: 0 }
     });
     
+    // 异步检测Range支持（不阻塞主流程）
+    this.rangeLoader.checkRangeSupport(url).then(supportsRange => {
+      if (supportsRange) {
+        console.log('[AudioController] ✅ 检测到CDN支持Range请求，将启用智能分片加载');
+      } else {
+        console.log('[AudioController] ❌ CDN不支持Range请求，使用传统加载方式');
+      }
+    }).catch(err => {
+      console.warn('[AudioController] Range支持检测异常:', err);
+    });
+    
     // 设置新源
     this.audio.src = url;
     
@@ -401,6 +470,12 @@ class AudioControllerClass {
         this.audio.removeEventListener('canplay', handleCanPlay);
         this.audio.removeEventListener('error', handleError);
         console.log('[AudioController] 音频加载完成');
+        
+        // 音频加载完成后，开始智能预加载
+        this.startIntelligentPreloading().catch((err: Error) => {
+          console.warn('[AudioController] 智能预加载启动失败:', err);
+        });
+        
         resolve();
       };
       
@@ -506,6 +581,16 @@ class AudioControllerClass {
         loop: this.state.loop
       }
     }));
+  }
+  
+  // seek操作时也触发预加载
+  private async triggerSeekPreload(timeMs: number): Promise<void> {
+    if (!this.audio || !this.state.url) return;
+    
+    const durationMs = this.audio.duration * 1000;
+    if (durationMs > 0) {
+      await this.triggerSmartPreload(timeMs, durationMs);
+    }
   }
   
   // 修改 play 方法
@@ -731,9 +816,14 @@ class AudioControllerClass {
     this.isPlayRequested = false;
     
     try {
-    const timeSec = timeMs / 1000;
-    this.audio.currentTime = timeSec;
-    this.updateState({ currentTime: timeMs });
+      const timeSec = timeMs / 1000;
+      this.audio.currentTime = timeSec;
+      this.updateState({ currentTime: timeMs });
+      
+      // 跳转时触发预加载
+      this.triggerSeekPreload(timeMs).catch(err => {
+        console.warn('[AudioController] Seek预加载失败:', err);
+      });
     } catch (error) {
       console.warn('[AudioController] 跳转时间失败:', error);
     }
@@ -865,6 +955,11 @@ class AudioControllerClass {
 
   get playing(): boolean {  // 为了向后兼容
     return this.state.isPlaying;
+  }
+  
+  // 获取Range分片加载状态信息
+  getRangeLoadingStatus() {
+    return this.rangeLoader.getStatus();
   }
 }
 

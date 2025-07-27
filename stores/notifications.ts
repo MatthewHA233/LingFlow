@@ -46,10 +46,12 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
           created_by,
           is_active,
           user_notification_status!left (
-            read_at
+            read_at,
+            user_id
           )
         `)
         .eq('is_active', true)
+        .eq('user_notification_status.user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -108,23 +110,30 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('用户未登录');
 
+      // 先尝试更新数据库
       const { error } = await supabase
         .rpc('mark_notification_as_read', {
-          p_notification_id: id,
-          p_user_id: user.id
+          p_user_id: user.id,
+          p_notification_id: id
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error('RPC 调用失败:', error);
+        throw error;
+      }
 
-      // 更新本地状态
+      // 只有在数据库更新成功后才更新本地状态
       set(state => ({
         notifications: state.notifications.map(n =>
           n.id === id ? { ...n, read: true } : n
         ),
-        unreadCount: state.unreadCount - 1
+        unreadCount: Math.max(0, state.unreadCount - 1) // 确保不会变成负数
       }));
+      
     } catch (error) {
       console.error('标记通知已读失败:', error);
+      // 如果失败，重新获取数据以保持同步
+      await get().fetchNotifications();
       throw error;
     }
   },
