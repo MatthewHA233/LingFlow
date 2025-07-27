@@ -22,32 +22,22 @@ interface LLMModel {
 // 默认可用模型列表
 const DEFAULT_MODELS: LLMModel[] = [
   {
-    id: 'gemini-2.5-flash',
-    provider: 'mnapi',
-    name: 'gemini-2.5-flash',
-    displayName: 'Gemini 2.5 Flash',
-    description: 'Google快速响应模型',
-    iconSrc: '/icons/gemini-logo.svg',
-    maxTokens: 4096,
-    temperature: 0.7
-  },
-  {
-    id: 'claude-sonnet-4',
-    provider: 'mnapi',
-    name: 'claude-sonnet-4',
-    displayName: 'Claude Sonnet 4',
-    description: 'Anthropic最新一代高性能模型',
-    iconSrc: '/icons/anthropic-logo.svg',
-    maxTokens: 4096,
-    temperature: 0.7
-  },
-  {
     id: 'deepseek-v3',
     provider: 'mnapi',
     name: 'deepseek-v3',
     displayName: 'DeepSeek V3',
     description: '性能强大的多语言模型',
     iconSrc: '/icons/deepseek-logo.svg',
+    maxTokens: 4096,
+    temperature: 0.7
+  },
+  {
+    id: 'gemini-2.5-flash',
+    provider: 'mnapi',
+    name: 'gemini-2.5-flash',
+    displayName: 'Gemini 2.5 Flash',
+    description: 'Google快速响应模型',
+    iconSrc: '/icons/gemini-logo.svg',
     maxTokens: 4096,
     temperature: 0.7
   },
@@ -59,6 +49,16 @@ const DEFAULT_MODELS: LLMModel[] = [
     description: 'OpenAI顶级多模态大语言模型',
     iconSrc: '/icons/openai-logo.svg',
     maxTokens: 8192,
+    temperature: 0.7
+  },
+  {
+    id: 'claude-sonnet-4',
+    provider: 'mnapi',
+    name: 'claude-sonnet-4',
+    displayName: 'Claude Sonnet 4',
+    description: 'Anthropic最新一代高性能模型',
+    iconSrc: '/icons/anthropic-logo.svg',
+    maxTokens: 4096,
     temperature: 0.7
   }
 ];
@@ -304,7 +304,15 @@ ${originalContent}
 
       const result = await response.json();
       
-      if (result.text) {
+      // 添加详细的响应日志
+      console.log('翻译API响应:', {
+        result,
+        hasText: !!result.text,
+        textLength: result.text?.length || 0,
+        model: selectedModel.name
+      });
+      
+      if (result.text && result.text.trim()) {
         const translatedText = result.text.trim();
         setTranslationContent(translatedText);
         setHasUnsavedChanges(true);
@@ -321,7 +329,14 @@ ${originalContent}
         
         toast.success('AI翻译完成');
       } else {
-        throw new Error('翻译结果为空');
+        console.error('翻译结果详情:', {
+          result,
+          model: selectedModel.name,
+          provider: selectedModel.provider,
+          hasText: !!result.text,
+          textContent: result.text
+        });
+        throw new Error(`翻译结果为空 (模型: ${selectedModel.name})`);
       }
     } catch (error) {
       console.error('AI翻译失败:', error);

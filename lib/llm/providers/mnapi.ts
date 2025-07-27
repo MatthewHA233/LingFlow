@@ -319,10 +319,30 @@ export class MNAPILLM extends BaseLLM {
           stream: false,
         });
         
-        const response = completion.choices[0]?.message?.content || '';
+        // 添加详细的响应日志
+        ChatLogger.log('MNAPI原始响应', {
+          completion,
+          hasChoices: !!completion.choices,
+          choicesLength: completion.choices?.length || 0,
+          firstChoice: completion.choices?.[0],
+          modelId: modelConfig.modelId
+        });
+
+        const response = completion.choices?.[0]?.message?.content || '';
         // 获取推理内容(如果有)
-        const reasoningContent = (completion.choices[0]?.message as any)?.reasoning_content || '';
+        const reasoningContent = (completion.choices?.[0]?.message as any)?.reasoning_content || '';
         const usage = completion.usage;
+        
+        // 检查响应是否为空
+        if (!response || response.trim() === '') {
+          ChatLogger.error('MNAPI返回空响应', {
+            completion,
+            modelId: modelConfig.modelId,
+            requestedModel,
+            hasChoices: !!completion.choices,
+            choicesLength: completion.choices?.length || 0
+          });
+        }
         
         ChatLogger.log('MNAPI响应成功', { 
           responseLength: response.length,
