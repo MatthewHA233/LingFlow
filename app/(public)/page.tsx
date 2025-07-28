@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import { AnimatedButton } from '@/components/ui/animated-button';
 import { Features } from '@/components/home/Features';
 import { HowItWorks } from '@/components/home/HowItWorks';
-import { MatrixBackground } from '@/components/home/MatrixBackground';
+import { MatrixBackground } from '@/components/home/MatrixBackground/index';
 import { TypewriterEffectSmooth } from '@/components/ui/typewriter-effect';
 import { SequentialTypewriter } from '@/components/ui/typewriter-text';
 
@@ -65,7 +65,7 @@ export default function Home() {
   ];
   
   return (
-    <div className="min-h-screen flex flex-col relative overflow-hidden bg-black">
+    <div className="min-h-screen flex flex-col relative" style={{ backgroundColor: 'transparent' }}>
       <MatrixBackground />
       
       {/* Hero Section - 修改移动端布局使标题垂直居中 */}
@@ -127,7 +127,7 @@ export default function Home() {
       </div>
 
       {/* 添加页脚 */}
-      <footer className="w-full py-8 mt-auto border-t border-gray-900 relative z-10 bg-black">
+      <footer className="w-full py-8 mt-auto border-t border-gray-900 relative z-10">
         <div className="container mx-auto px-4">
           <div className="flex flex-col items-center justify-center space-y-2 text-sm text-gray-500">
             <div>© 2025 洪流二语习得. 保留所有权利.</div>

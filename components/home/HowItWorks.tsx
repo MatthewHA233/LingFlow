@@ -111,7 +111,7 @@ export function HowItWorks() {
   return (
     <section 
       ref={sectionRef} 
-      className="py-12 sm:py-16 md:py-20 px-4 sm:px-6 lg:px-8 bg-gray-900/30 w-full"
+      className="py-12 sm:py-16 md:py-20 px-4 sm:px-6 lg:px-8 w-full relative"
     >
       <div className="max-w-7xl mx-auto w-full">
         <div className="text-center mb-10 sm:mb-12 md:mb-16">
@@ -145,13 +145,14 @@ export function HowItWorks() {
                 relative h-full p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl border sm:border-2 transition-all duration-200
                 ${(hoveredIndex === index || (isMobile && centerIndex === Math.floor(index / 2)))
                   ? 'border-transparent shadow-lg shadow-purple-500/20' 
-                  : 'border-purple-500/20 bg-gray-900/30'
+                  : 'border-purple-500/20'
                 }
               `}
                 style={{
+                  backdropFilter: 'blur(12px)',
                   background: (hoveredIndex === index || (isMobile && centerIndex === Math.floor(index / 2)))
-                    ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.05) 0%, rgba(236, 72, 153, 0.05) 50%, rgba(168, 85, 247, 0.05) 100%)'
-                    : '',
+                    ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(236, 72, 153, 0.15) 50%, rgba(168, 85, 247, 0.15) 100%)'
+                    : 'rgba(0, 0, 0, 0.5)',
                   borderImage: (hoveredIndex === index || (isMobile && centerIndex === Math.floor(index / 2)))
                     ? 'linear-gradient(135deg, rgb(168, 85, 247) 0%, rgb(236, 72, 153) 50%, rgb(168, 85, 247) 100%) 1'
                     : 'none'
