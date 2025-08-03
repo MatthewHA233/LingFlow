@@ -7,7 +7,7 @@ import { DraggableAudioPlayer } from './DraggableAudioPlayer';
 import { TableOfContents } from './TableOfContents';
 import { Book } from '@/types/book';
 import { supabase } from '@/lib/supabase-client';
-import { X, Mic, Menu, ChevronLeft, ChevronRight, Info, Undo, Pause, Play, Plus } from 'lucide-react';
+import { X, Mic, Menu, ChevronLeft, ChevronRight, Info, Undo, Pause, Play, Plus, Volume2 } from 'lucide-react';
 import { ContextBlocks } from './ContextBlocks';
 import { WordCloudSidebar } from './WordCloudSidebar';
 import { SelectedWord } from './AnchorWordBlock';
@@ -2520,15 +2520,36 @@ export function ReaderContent({ book, targetBlockId }: ReaderContentProps) {
               </button>
             )}
 
-            {/* 上传按钮 - 始终显示 */}
-            <HoverBorderGradient
-              containerClassName="rounded-md"
-              className="flex items-center gap-1.5 text-xs"
-              onClick={() => setIsUploadDialogOpen(true)}
-            >
-              <IconUpload className="w-4 h-4" />
-              <span>上传音频</span>
-            </HoverBorderGradient>
+            {/* 音频操作按钮组 */}
+            <div className="flex gap-2">
+              {/* TTS生成音频按钮 */}
+              <HoverBorderGradient
+                containerClassName="rounded-md"
+                className="flex items-center gap-1.5 text-xs"
+                onClick={() => {
+                  console.log('点击TTS生成按钮 - 启动TTS选择流程');
+                  // 触发AudioProcessingPanel的TTS选择流程
+                  window.dispatchEvent(new CustomEvent('start-tts-selection', {
+                    detail: { bookId: book.id }
+                  }));
+                  // 打开音频处理面板
+                  setShowAudioPanel(true);
+                }}
+              >
+                <Volume2 className="w-3.5 h-3.5" />
+                <span>TTS生成</span>
+              </HoverBorderGradient>
+              
+              {/* 上传按钮 */}
+              <HoverBorderGradient
+                containerClassName="rounded-md"
+                className="flex items-center gap-1.5 text-xs"
+                onClick={() => setIsUploadDialogOpen(true)}
+              >
+                <IconUpload className="w-4 h-4" />
+                <span>上传音频</span>
+              </HoverBorderGradient>
+            </div>
 
             <AudioUploader
               bookId={book.id}
@@ -2538,6 +2559,7 @@ export function ReaderContent({ book, targetBlockId }: ReaderContentProps) {
               onOpenChange={setIsUploadDialogOpen}
               isProcessing={false}
             />
+            
           </div>
         </div>
 

@@ -860,13 +860,20 @@ export function ContextBlocks({
 
   // 添加语境块选择相关状态
   const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [selectionType, setSelectionType] = useState<'start' | 'end' | null>(null);
+  const [selectionType, setSelectionType] = useState<'start' | 'end' | 'tts' | null>(null);
   const [isBlockSelectable, setIsBlockSelectable] = useState(false);
   const [isSelectedAsStart, setIsSelectedAsStart] = useState(false);
   const [isSelectedAsEnd, setIsSelectedAsEnd] = useState(false);
   const [isProcessingAlignment, setIsProcessingAlignment] = useState(false);
   // 新增：记录选择范围信息
   const [selectedRange, setSelectedRange] = useState<{startBlockId: string, endBlockId: string} | null>(null);
+  
+  // TTS相关状态
+  const [isTTSMode, setIsTTSMode] = useState(false);
+  const [ttsStartBlock, setTtsStartBlock] = useState<string | null>(null);
+  const [ttsSelectedBlocks, setTtsSelectedBlocks] = useState<string[]>([]);
+  const [isTTSStartBlock, setIsTTSStartBlock] = useState(false);
+  const [isTTSSelectedBlock, setIsTTSSelectedBlock] = useState(false);
 
   // 监听对齐处理开始和完成事件
   useEffect(() => {
@@ -897,18 +904,27 @@ export function ContextBlocks({
       setSelectionType(mode);
       setIsBlockSelectable(true);
       
-      // 只在开始选择起始块时重置状态，切换到选择结束块时保持起始块状态
-      if (mode === 'start') {
-        // 重置所有选中状态
+      if (mode === 'tts') {
+        // TTS模式
+        setIsTTSMode(true);
+        setTtsStartBlock(null);
+        setTtsSelectedBlocks([]);
+        setIsSelectedAsStart(false);
+        setIsSelectedAsEnd(false);
+        setIsProcessingAlignment(false);
+        setSelectedRange(null);
+      } else if (mode === 'start') {
+        // 音频对齐模式 - 选择起始块
+        setIsTTSMode(false);
         setIsSelectedAsStart(false);
         setIsSelectedAsEnd(false);
         setIsProcessingAlignment(false);
         setSelectedRange(null);
       } else if (mode === 'end') {
-        // 切换到选择结束块时，只重置结束块状态，保持起始块状态
+        // 音频对齐模式 - 选择结束块
+        setIsTTSMode(false);
         setIsSelectedAsEnd(false);
         setIsProcessingAlignment(false);
-        // 不重置 isSelectedAsStart 和 selectedRange
       }
     };
 
@@ -921,7 +937,14 @@ export function ContextBlocks({
       // setIsSelectedAsEnd(false);
       setIsProcessingAlignment(false);
       // selectedRange 也不重置，保持选择范围信息
-      // setSelectedRange(null); 
+      // setSelectedRange(null);
+      
+      // 重置TTS状态
+      setIsTTSMode(false);
+      setTtsStartBlock(null);
+      setTtsSelectedBlocks([]);
+      setIsTTSStartBlock(false);
+      setIsTTSSelectedBlock(false);
     };
 
     // 监听选择确认事件
@@ -956,6 +979,39 @@ export function ContextBlocks({
           endBlockId: prev?.endBlockId || ''
         }));
       }
+    };
+
+    // TTS选择事件处理函数
+    const handleMarkTTSBlockSelected = (event: CustomEvent) => {
+      const { blockId, isStart } = event.detail;
+      
+      if (block.id === blockId) {
+        if (isStart) {
+          setIsTTSStartBlock(true);
+          setIsTTSSelectedBlock(false);
+        }
+      } else {
+        setIsTTSStartBlock(false);
+      }
+    };
+
+    const handleMarkTTSBlocksSelected = (event: CustomEvent) => {
+      const { selectedBlockIds } = event.detail;
+      
+      if (selectedBlockIds && Array.isArray(selectedBlockIds)) {
+        const isInSelection = selectedBlockIds.includes(block.id);
+        setIsTTSSelectedBlock(isInSelection);
+        
+        // 如果不在选择中，则也不是起始块
+        if (!isInSelection) {
+          setIsTTSStartBlock(false);
+        }
+      }
+    };
+
+    const handleResetTTSSelection = () => {
+      setIsTTSStartBlock(false);
+      setIsTTSSelectedBlock(false);
     };
 
     // 监听处理开始事件 - 改进逻辑
@@ -997,12 +1053,44 @@ export function ContextBlocks({
       console.log(`✅ 语境块 ${block.id} 处理完成，清除动画和选择状态`);
     };
 
+    // 添加start-tts-selection事件处理
+    const handleStartTTSSelection = (event: CustomEvent) => {
+      console.log('🎯 ContextBlocks收到start-tts-selection事件', event.detail);
+      setIsSelectionMode(true);
+      setSelectionType('tts');
+      setIsBlockSelectable(true);
+      setIsTTSMode(true);
+      setTtsStartBlock(null);
+      setTtsSelectedBlocks([]);
+      setIsSelectedAsStart(false);
+      setIsSelectedAsEnd(false);
+      setIsProcessingAlignment(false);
+      setSelectedRange(null);
+    };
+
+    // 添加disable-tts-selection事件处理
+    const handleDisableTTSSelection = () => {
+      setIsSelectionMode(false);
+      setSelectionType(null);
+      setIsBlockSelectable(false);
+      setIsTTSMode(false);
+      setTtsStartBlock(null);
+      setTtsSelectedBlocks([]);
+      setIsTTSStartBlock(false);
+      setIsTTSSelectedBlock(false);
+    };
+
     window.addEventListener('enable-block-selection', handleEnableSelection as EventListener);
     window.addEventListener('disable-block-selection', handleDisableSelection as EventListener);
     window.addEventListener('selection-confirmed', handleSelectionConfirmed as EventListener);
     window.addEventListener('alignment-processing-start', handleProcessingStart as EventListener);
     window.addEventListener('alignment-processing-complete', handleProcessingComplete as EventListener);
     window.addEventListener('mark-start-block-selected', handleMarkStartBlockSelected as EventListener);
+    window.addEventListener('mark-tts-block-selected', handleMarkTTSBlockSelected as EventListener);
+    window.addEventListener('mark-tts-blocks-selected', handleMarkTTSBlocksSelected as EventListener);
+    window.addEventListener('reset-tts-selection', handleResetTTSSelection as EventListener);
+    window.addEventListener('start-tts-selection', handleStartTTSSelection as EventListener);
+    window.addEventListener('disable-tts-selection', handleDisableTTSSelection as EventListener);
 
     return () => {
       window.removeEventListener('enable-block-selection', handleEnableSelection as EventListener);
@@ -1011,6 +1099,11 @@ export function ContextBlocks({
       window.removeEventListener('alignment-processing-start', handleProcessingStart as EventListener);
       window.removeEventListener('alignment-processing-complete', handleProcessingComplete as EventListener);
       window.removeEventListener('mark-start-block-selected', handleMarkStartBlockSelected as EventListener);
+      window.removeEventListener('mark-tts-block-selected', handleMarkTTSBlockSelected as EventListener);
+      window.removeEventListener('mark-tts-blocks-selected', handleMarkTTSBlocksSelected as EventListener);
+      window.removeEventListener('reset-tts-selection', handleResetTTSSelection as EventListener);
+      window.removeEventListener('start-tts-selection', handleStartTTSSelection as EventListener);
+      window.removeEventListener('disable-tts-selection', handleDisableTTSSelection as EventListener);
     };
   }, [block.id, selectedRange]);
 
@@ -1021,6 +1114,65 @@ export function ContextBlocks({
     e.preventDefault();
     e.stopPropagation();
     
+    if (selectionType === 'tts') {
+      // TTS模式的选择逻辑 - 支持多选
+      const isCurrentlySelected = ttsSelectedBlocks.includes(block.id);
+      
+      if (isCurrentlySelected) {
+        // 如果已选中，则取消选择
+        const newSelection = ttsSelectedBlocks.filter(id => id !== block.id);
+        setTtsSelectedBlocks(newSelection);
+        setIsTTSSelectedBlock(false);
+        
+        // 如果取消的是起始块，重新设置起始块
+        if (block.id === ttsStartBlock && newSelection.length > 0) {
+          setTtsStartBlock(newSelection[0]);
+        } else if (newSelection.length === 0) {
+          setTtsStartBlock(null);
+        }
+      } else {
+        // 如果未选中，则添加到选择
+        const newSelection = [...ttsSelectedBlocks, block.id];
+        setTtsSelectedBlocks(newSelection);
+        setIsTTSSelectedBlock(true);
+        
+        // 如果是第一个选择的块，设为起始块
+        if (!ttsStartBlock) {
+          setTtsStartBlock(block.id);
+          setIsTTSStartBlock(true);
+        }
+      }
+      
+      // 收集所有选中块的内容
+      const allBlocks = document.querySelectorAll('[data-block-id]');
+      const selectedTexts: string[] = [];
+      const selectedBlockIds: string[] = [];
+      
+      allBlocks.forEach((blockEl) => {
+        const blockId = blockEl.getAttribute('data-block-id');
+        if (blockId && (ttsSelectedBlocks.includes(blockId) || blockId === block.id)) {
+          if (!isCurrentlySelected || blockId !== block.id) {
+            selectedBlockIds.push(blockId);
+            const contentEl = blockEl.querySelector('[data-block-content]');
+            if (contentEl && contentEl.textContent) {
+              selectedTexts.push(contentEl.textContent.trim());
+            }
+          }
+        }
+      });
+      
+      // 发送TTS选择事件
+      window.dispatchEvent(new CustomEvent('tts-blocks-selected', {
+        detail: {
+          blockIds: selectedBlockIds,
+          texts: selectedTexts
+        }
+      }));
+      
+      return;
+    }
+    
+    // 原有的音频对齐选择逻辑
     // 发送选择事件
     window.dispatchEvent(new CustomEvent('context-block-selected', {
       detail: {
@@ -1039,8 +1191,10 @@ export function ContextBlocks({
     }
     
     // 提供用户反馈
-    toast.success(selectionType === 'start' ? '起始语境块已选择' : '结束语境块已选择');
-  }, [isSelectionMode, selectionType, block.id, block.content]);
+    if (selectionType !== 'tts') {
+      toast.success(selectionType === 'start' ? '起始语境块已选择' : '结束语境块已选择');
+    }
+  }, [isSelectionMode, selectionType, block.id, block.content, ttsStartBlock]);
 
   // 修改handleClick函数，添加语境块选择逻辑
   const handleClick = (e: React.MouseEvent) => {
@@ -1796,7 +1950,7 @@ export function ContextBlocks({
         <div className="audio-aligned-block relative">
           {/* 主要内容 - 减少内部缩进 */}
           <div className="py-2 px-3 text-sm leading-relaxed">
-          <div className="prose prose-sm max-w-none">
+          <div className="prose prose-sm max-w-none" data-block-content="true">
             {isLoadingSentences ? (
               <span className="text-muted-foreground">加载句子内容中...</span>
               ) : meaningBlocks.length > 0 ? (
@@ -1859,7 +2013,7 @@ export function ContextBlocks({
     if (block.block_type === 'text' && block.content && block.content.includes('[[')) {
       return (
         <div className="embedded-sentences-block relative py-2 px-3 text-sm leading-relaxed">
-          <div className="prose prose-sm max-w-none">
+          <div className="prose prose-sm max-w-none" data-block-content="true">
             {isLoadingSentences ? (
               <span className="text-muted-foreground">加载句子内容中...</span>
             ) : meaningBlocks.length > 0 ? (
@@ -1929,6 +2083,7 @@ export function ContextBlocks({
           <div className="relative">
             <div
               ref={contentEditableRef}
+              data-block-content="true"
               contentEditable={block.block_type === 'text' || block.block_type.startsWith('heading_')}
               suppressContentEditableWarning
               className={cn(
@@ -3345,6 +3500,7 @@ export function ContextBlocks({
   return (
     <div
       ref={blockRef}
+      data-block-id={block.id}
       className={cn(
         'group relative my-1 p-2 rounded-md transition-all duration-300',
         isBlockActive ? 'bg-accent/20 border border-primary/30' : 'hover:bg-accent/10 border border-transparent',
@@ -3355,14 +3511,19 @@ export function ContextBlocks({
         showCompleteAnimation ? 'alignment-complete' : '',
         isInAnchorMode ? 'bg-gradient-to-r from-blue-50/50 to-purple-50/50 dark:from-blue-950/20 dark:to-purple-950/20 border-blue-200 dark:border-blue-800' : '',
         // 选择模式的预选择状态（悬浮高亮）
-        isSelectionMode && isBlockSelectable && !isSelectedAsStart && !isSelectedAsEnd ? (
+        isSelectionMode && isBlockSelectable && !isSelectedAsStart && !isSelectedAsEnd && !isTTSStartBlock && !isTTSSelectedBlock ? (
           selectionType === 'start' 
-            ? 'hover:bg-gradient-to-r hover:from-orange-50 hover:to-red-50 dark:hover:from-orange-900/10 dark:hover:to-red-900/10 hover:border-orange-200 dark:hover:border-orange-800 cursor-pointer' 
-            : 'hover:bg-gradient-to-r hover:from-green-50 hover:to-teal-50 dark:hover:from-green-900/10 dark:hover:to-teal-900/10 hover:border-green-200 dark:hover:border-green-800 cursor-pointer'
+            ? 'hover:bg-gradient-to-r hover:from-orange-50 hover:to-red-50 dark:hover:from-orange-900/10 dark:hover:to-red-900/10 hover:border-orange-200 dark:hover:border-orange-800 cursor-pointer'
+            : selectionType === 'tts'
+              ? 'hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 dark:hover:from-blue-900/10 dark:hover:to-indigo-900/10 hover:border-blue-200 dark:hover:border-blue-800 cursor-pointer'
+              : 'hover:bg-gradient-to-r hover:from-green-50 hover:to-teal-50 dark:hover:from-green-900/10 dark:hover:to-teal-900/10 hover:border-green-200 dark:hover:border-green-800 cursor-pointer'
         ) : '',
         // 选择模式的已选择状态
         isSelectedAsStart ? cn('bg-gradient-to-r from-orange-100 to-red-100 dark:from-orange-900/30 dark:to-red-900/30 border-orange-400 dark:border-orange-600 shadow-lg ring-2 ring-orange-300 dark:ring-orange-700', styles.selectionStartAnimated) : '',
         isSelectedAsEnd ? cn('bg-gradient-to-r from-green-100 to-teal-100 dark:from-green-900/30 dark:to-teal-900/30 border-green-400 dark:border-green-600 shadow-lg ring-2 ring-green-300 dark:ring-green-700', styles.selectionEndAnimated) : '',
+        // TTS选择状态
+        isTTSStartBlock ? 'bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 border-blue-400 dark:border-blue-600 shadow-lg ring-2 ring-blue-300 dark:ring-blue-700' : '',
+        isTTSSelectedBlock && !isTTSStartBlock ? 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-300 dark:border-blue-700 shadow-md' : '',
         // 处理中状态
         isProcessingAlignment ? 'bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 border-purple-400 dark:border-purple-600 shadow-lg' : ''
       )}
@@ -3386,6 +3547,13 @@ export function ContextBlocks({
           isSelectedAsStart ? styles.selectionIndicatorStart : styles.selectionIndicatorEnd
         )}>
           {isSelectedAsStart ? '始' : '终'}
+        </div>
+      )}
+
+      {/* TTS选择指示器 */}
+      {(isTTSStartBlock || isTTSSelectedBlock) && (
+        <div className="absolute -top-1 -right-1 w-6 h-6 bg-blue-500 text-white text-xs font-bold rounded-full flex items-center justify-center z-10 shadow-lg">
+          {isTTSStartBlock ? 'T' : '✓'}
         </div>
       )}
 
@@ -3456,6 +3624,8 @@ export function ContextBlocks({
         // 确保选中状态下文本颜色正确
         isSelectedAsStart ? 'text-orange-900 dark:text-orange-100' : '',
         isSelectedAsEnd ? 'text-green-900 dark:text-green-100' : '',
+        isTTSStartBlock ? 'text-blue-900 dark:text-blue-100' : '',
+        isTTSSelectedBlock && !isTTSStartBlock ? 'text-blue-800 dark:text-blue-200' : '',
         isProcessingAlignment ? 'text-purple-900 dark:text-purple-100' : ''
       )}>
         {renderContent()}

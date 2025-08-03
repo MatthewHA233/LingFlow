@@ -132,9 +132,9 @@ export enum VoiceType {
   EN_MALE_JACKSON = 'en_male_jackson_mars_bigtts', // Jackson（美式英语）
   ICL_EN_MALE_CC_SHA = 'ICL_en_male_cc_sha_v1_tob', // Cartoon Chef
   EN_FEMALE_EMILY = 'en_female_emily_mars_bigtts', // Emily（英式英语）
-  EN_MALE_DANIEL = 'zh_male_xudong_conversation_wvae_bigtts', // Daniel（英式英语）
+  EN_MALE_DANIEL = 'en_male_daniel_mars_bigtts', // Daniel（英式英语）
   EN_MALE_LUCAS = 'zh_male_M100_conversation_wvae_bigtts', // Lucas（美式英语）
-  EN_FEMALE_SOPHIE = 'zh_female_sophie_conversation_wvae_bigtts', // Sophie（美式英语）
+  EN_FEMALE_SOPHIE = 'en_female_sophie_mars_bigtts', // Sophie（美式英语）
   EN_FEMALE_DAISY = 'en_female_dacey_conversation_wvae_bigtts', // Daisy（美式英语）
   EN_MALE_OWEN = 'en_male_charlie_conversation_wvae_bigtts', // Owen（美式英语）
   ICL_EN_MALE_AUSSIE = 'ICL_en_male_aussie_v1_tob', // Ethan（澳洲英语）
@@ -177,7 +177,7 @@ export enum VoiceType {
   MULTI_MALE_DANIEL = 'multi_male_xudong_conversation_wvae_bigtts', // Daníel（西语）
   MULTI_FEMALE_SATOMI = 'multi_female_sophie_conversation_wvae_bigtts', // さとみ（智美）（日语）
   MULTI_MALE_MASAO = 'multi_male_xudong_conversation_wvae_bigtts', // まさお（正男）（日语）
-  MULTI_FEMALE_TSUKI = 'multi_female_maomao_conversation_wvae_bigtts', // つき（月）（日语）
+  MULTI_FEMALE_TSUKI = 'multi_female_tsuki_mars_bigtts', // つき（月）（日语）
 
   // 趣味口音
   ZH_MALE_JINGQIANGKANYE = 'zh_male_jingqiangkanye_moon_bigtts', // 京腔侃爷/Harmony
@@ -1003,6 +1003,31 @@ function generateVoiceInfoFromType(voiceType: string): VoiceInfo | null {
     'multi_male_M100_conversation_wvae_bigtts': { name: 'Lucía', description: '西语男声', category: '日语西语', language: '西语' },
     'multi_female_sophie_conversation_wvae_bigtts': { name: 'Sofía', description: '西语女声', category: '日语西语', language: '西语' },
     'multi_male_xudong_conversation_wvae_bigtts': { name: 'Daniel', description: '西语男声', category: '日语西语', language: '西语' },
+    
+    // 添加新的英文音色（避免ID重复）
+    'en_male_daniel_mars_bigtts': { 
+      name: 'Daniel', 
+      description: '英式英语男声', 
+      category: '英文多情感', 
+      language: '英语',
+      gender: 'male',
+      emotions: ['happy', 'sad', 'angry', 'surprised', 'fear', 'hate', 'excited', 'coldness', 'neutral']
+    },
+    'en_female_sophie_mars_bigtts': { 
+      name: 'Sophie', 
+      description: '美式英语女声', 
+      category: '英文多情感', 
+      language: '英语',
+      gender: 'female',
+      emotions: ['happy', 'sad', 'angry', 'surprised', 'fear', 'hate', 'excited', 'coldness', 'neutral']
+    },
+    'multi_female_tsuki_mars_bigtts': { 
+      name: 'つき（月）', 
+      description: '日语女声', 
+      category: '日语西语', 
+      language: '日语',
+      gender: 'female'
+    },
   };
 
   // 检查是否有特殊映射

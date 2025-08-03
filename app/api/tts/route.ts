@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createBigModelTTSService } from '@/lib/services/tts-service-bigmodel';
 import { TTSSynthesizeOptions, VoiceType, AudioEncoding } from '@/types/tts';
 import { rateLimit } from '@/lib/rate-limit';
+import { uploadToOSS } from '@/lib/oss-client';
 
 // 初始化 Supabase 客户端
 const supabase = createClient(
@@ -31,6 +32,7 @@ interface TTSRequestBody {
   voiceType?: string;
   speedRatio?: number;
   format?: 'base64' | 'url';
+  bookId?: string;  // 添加bookId用于保存到数据库
   // 大模型新增参数
   emotion?: string;
   enableEmotion?: boolean;
@@ -94,7 +96,7 @@ export async function POST(req: NextRequest) {
     // 3. 解析请求体
     const body: TTSRequestBody = await req.json();
     const { 
-      text, voiceType, speedRatio, format = 'base64',
+      text, voiceType, speedRatio, format = 'base64', bookId,
       emotion, enableEmotion, emotionScale, encoding,
       rate, loudnessRatio, withTimestamp, textType,
       silenceDuration, operation, disableMarkdownFilter,
@@ -109,10 +111,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5. 限制文本长度
-    if (text.length > 1024) { // 大模型推荐小于300字符，这里放宽到1024字节
+    // 5. 限制文本长度（UTF-8字节数）
+    const textBytes = Buffer.from(text, 'utf8').length;
+    if (textBytes > 1024) { // 文档要求最大1024字节（UTF-8编码）
       return NextResponse.json(
-        { error: '文本长度超过限制（最大1024字符）' },
+        { error: `文本长度超过限制（最大1024字节，当前${textBytes}字节）` },
         { status: 400 }
       );
     }
@@ -204,18 +207,68 @@ export async function POST(req: NextRequest) {
       // 始终返回 Base64 编码的音频数据，由前端创建 Blob URL
       const { audio, duration } = await ttsService.synthesizeToBase64(synthesizeOptions);
       
-      result = {
-        success: true,
-        data: {
-          audio,
-          duration,
-          format: 'base64',
-          encoding: synthesizeOptions.encoding || AudioEncoding.MP3
+      // 12. 如果提供了bookId，则上传到OSS并保存到数据库
+      if (bookId) {
+        // 将base64转换为Buffer
+        const audioBuffer = Buffer.from(audio, 'base64');
+        
+        // 生成文件名 - 使用完整的音色ID
+        const voiceTypeId = voiceType || 'default';
+        const timestamp = Date.now();
+        const filename = `audio/${bookId}/TTS_${voiceTypeId}_${timestamp}.mp3`;
+        
+        // 上传到OSS
+        const uploadResult = await uploadToOSS(audioBuffer, filename);
+        const audioUrl = uploadResult.url;
+        
+        // 保存到数据库
+        const { data: speechResult, error: createError } = await supabase
+          .from('speech_results')
+          .insert({
+            task_id: `tts_${timestamp}`,
+            audio_url: audioUrl,
+            user_id: userId,
+            book_id: bookId,
+            name: `TTS - ${voiceTypeId} - ${new Date().toLocaleString('zh-CN')}`,
+            duration: Math.round(duration / 1000), // 转换为秒
+            status: 'completed',
+            error_message: null
+          })
+          .select()
+          .single();
+          
+        if (createError) {
+          console.error('保存TTS结果失败:', createError);
+          // 即使保存失败，仍然返回音频数据
         }
-      };
-
-      // 12. 记录使用日志
-      console.log(`TTS 合成成功 - 用户: ${userId}, 文本长度: ${text.length}, 音色: ${voiceType || '默认'}, 时长: ${result.data.duration}ms`);
+        
+        result = {
+          success: true,
+          audioUrl: audioUrl,
+          speechId: speechResult?.id || null,
+          data: {
+            audio,
+            duration,
+            format: 'base64',
+            encoding: synthesizeOptions.encoding || AudioEncoding.MP3
+          }
+        };
+        
+        console.log(`TTS 合成并上传成功 - 用户: ${userId}, 文件: ${filename}, 时长: ${duration}ms`);
+      } else {
+        // 没有bookId，只返回音频数据
+        result = {
+          success: true,
+          data: {
+            audio,
+            duration,
+            format: 'base64',
+            encoding: synthesizeOptions.encoding || AudioEncoding.MP3
+          }
+        };
+        
+        console.log(`TTS 合成成功 - 用户: ${userId}, 文本长度: ${text.length}, 音色: ${voiceType || '默认'}, 时长: ${result.data.duration}ms`);
+      }
 
       return NextResponse.json(result);
       

@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Wand2, Upload, X, AlignCenter } from 'lucide-react';
+import { Wand2, Upload, X, AlignCenter, Volume2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { SentencePlayer } from './SentencePlayer';
 import { AudioUploader } from './AudioUploader';
+import { TTSGenerator } from './TTSGenerator';
 import {
   Select,
   SelectContent,
@@ -26,6 +27,7 @@ import {
 } from "@/components/ui/dialog"
 import { cn } from '@/lib/utils';
 import { AudioController } from '@/lib/audio-controller';
+import { toast } from 'sonner';
 
 interface AudioRecognizerProps {
   bookContent: string;
@@ -68,6 +70,7 @@ export function AudioRecognizer({
   const [speechResults, setSpeechResults] = useState<SpeechResult[]>([]);
   const [isAlignMode, setIsAlignMode] = useState(false);
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [isTTSDialogOpen, setIsTTSDialogOpen] = useState(false);
   const [hideAligned, setHideAligned] = useState(false);
   const [lastAlignmentUpdateTime, setLastAlignmentUpdateTime] = useState<string | null>(null);
   const [alignmentEventType, setAlignmentEventType] = useState<string | null>(null);
@@ -207,6 +210,56 @@ export function AudioRecognizer({
     }
   };
 
+  // TTS生成成功处理函数
+  const handleTTSGenerateSuccess = async (newAudioUrl: string, newSpeechId: string) => {
+    try {
+      // 创建speech_results记录
+      const { data: speechResult, error } = await supabase
+        .from('speech_results')
+        .insert({
+          task_id: newSpeechId,
+          audio_url: newAudioUrl,
+          user_id: (await supabase.auth.getUser()).data.user?.id,
+          book_id: bookId,
+          status: 'completed'
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // 刷新音频记录列表
+      const { data: allResults } = await supabase
+        .from('speech_results')
+        .select('*')
+        .eq('book_id', bookId)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false });
+
+      if (allResults) {
+        setSpeechResults(allResults);
+        // 缓存所有结果
+        allResults.forEach(result => {
+          AudioController.cacheSpeechResult({
+            id: result.id,
+            audio_url: result.audio_url
+          });
+        });
+      }
+
+      // 设置当前音频
+      setAudioUrl(newAudioUrl);
+      setSpeechId(speechResult.id);
+      setStatus('completed');
+      onAudioUrlChange?.(newAudioUrl);
+      
+      toast.success('TTS音频生成成功');
+    } catch (error) {
+      console.error('保存TTS结果失败:', error);
+      toast.error('保存音频失败');
+    }
+  };
+
   const handleUploadSuccess = async (newAudioUrl: string, newSpeechId: string) => {
     try {
       // 更新本地状态
@@ -325,40 +378,61 @@ export function AudioRecognizer({
 
       {/* 音频处理区域 */}
       <div className="space-y-4 px-4 flex-1 flex flex-col">
-        {/* 智慧语音识别/上传音频按钮 - 只在没有完成的记录时显示 */}
+        {/* 音频操作按钮组 - 只在没有完成的记录时显示 */}
         {!speechId && (
-          <HoverBorderGradient
-            containerClassName="w-full rounded-lg mt-4"
-            onClick={() => !status.startsWith('process') && setIsUploadDialogOpen(true)}
-            className={cn(
-              "w-full flex items-center justify-center gap-2 py-2 transition-all duration-300",
-              status.startsWith('process') && "cursor-not-allowed"
-            )}
-          >
-            {status.startsWith('process') ? (
-              <>
-                <Wand2 className="h-4 w-4 animate-pulse" />
-                <span className="relative">
-                  正在处理中
-                  <span className="absolute -right-4 animate-bounce-dots">...</span>
-                </span>
-              </>
-            ) : (
-              <>
-                <Upload className="h-4 w-4" />
-                上传音频
-              </>
-            )}
-          </HoverBorderGradient>
+          <div className="flex gap-2 mt-4">
+            {/* TTS生成音频按钮 */}
+            <HoverBorderGradient
+              containerClassName="flex-1 rounded-lg"
+              onClick={() => setIsTTSDialogOpen(true)}
+              className="w-full flex items-center justify-center gap-2 py-2 transition-all duration-300"
+            >
+              <Volume2 className="h-4 w-4" />
+              TTS生成音频
+            </HoverBorderGradient>
+            
+            {/* 上传音频按钮 */}
+            <HoverBorderGradient
+              containerClassName="flex-1 rounded-lg"
+              onClick={() => !status.startsWith('process') && setIsUploadDialogOpen(true)}
+              className={cn(
+                "w-full flex items-center justify-center gap-2 py-2 transition-all duration-300",
+                status.startsWith('process') && "cursor-not-allowed"
+              )}
+            >
+              {status.startsWith('process') ? (
+                <>
+                  <Wand2 className="h-4 w-4 animate-pulse" />
+                  <span className="relative">
+                    正在处理中
+                    <span className="absolute -right-4 animate-bounce-dots">...</span>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4" />
+                  上传音频
+                </>
+              )}
+            </HoverBorderGradient>
+          </div>
         )}
 
-        {/* 上传对话框 */}
+        {/* 对话框组件 */}
         <AudioUploader
           bookId={bookId}
           onUploadSuccess={handleUploadSuccess}
           onUploadError={handleUploadError}
           isOpen={isUploadDialogOpen}
           onOpenChange={setIsUploadDialogOpen}
+        />
+        
+        <TTSGenerator
+          bookId={bookId}
+          bookContent={bookContent}
+          isOpen={isTTSDialogOpen}
+          onOpenChange={setIsTTSDialogOpen}
+          onGenerateSuccess={handleTTSGenerateSuccess}
         />
 
         {/* 句子播放器和历史记录 */}

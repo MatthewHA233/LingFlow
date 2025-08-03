@@ -1,10 +1,27 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Upload, Play, Pause, Check, X, Loader2, Volume2, Sparkles, Target, Zap, Music, Clock, FileAudio, RefreshCw, ChevronLeft } from 'lucide-react'
+import { Upload, Play, Pause, Check, X, Loader2, Volume2, Sparkles, Target, Zap, Music, Clock, FileAudio, RefreshCw, ChevronLeft, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
+import { Slider } from '@/components/ui/slider'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { supabase } from '@/lib/supabase-client'
 import { HoverBorderGradient } from '@/components/ui/hover-border-gradient'
 import { cn } from '@/lib/utils'
@@ -12,9 +29,25 @@ import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Confetti } from '@/components/ui/confetti'
 import AudioProcessingOrb from '@/components/ui/audio-processing-orb'
+import { TTSGenerator } from '@/components/tts/TTSGenerator'
+import { VoiceSelector } from '@/components/tts/VoiceSelector'
+import { getVoiceInfo } from '@/types/tts'
 
 // 测试模式开关 - 只能在代码中开启
 const DEBUG_MODE = false
+
+// 情感标签的中文映射
+const emotionLabels: Record<string, string> = {
+  'happy': '开心',
+  'sad': '悲伤',
+  'angry': '愤怒',
+  'surprised': '惊讶',
+  'fear': '恐惧',
+  'hate': '厌恶',
+  'excited': '兴奋',
+  'coldness': '冷漠',
+  'neutral': '中性'
+}
 
 interface AudioProcessingPanelProps {
   bookId: string
@@ -31,6 +64,8 @@ type ProcessingStage =
   | 'processing'
   | 'completed'
   | 'error'
+  | 'tts_selecting'
+  | 'tts_generating'
 
 interface AudioRecord {
   id: string
@@ -216,6 +251,18 @@ export function AudioProcessingPanel({
   const [isLoadingAudios, setIsLoadingAudios] = useState(false)
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null)
   
+  // TTS相关状态
+  const [ttsText, setTtsText] = useState<string>('')
+  const [ttsVoiceType, setTtsVoiceType] = useState<string>('en_female_candice_emo_v2_mars_bigtts') // 使用英文多情感音色
+  const [ttsSelectedBlocks, setTtsSelectedBlocks] = useState<string[]>([])
+  const [ttsProgress, setTtsProgress] = useState<number>(0)
+  const [ttsChunks, setTtsChunks] = useState<Array<{text: string, blockIds: string[]}>>([])
+  const [showVoiceSelector, setShowVoiceSelector] = useState(false)
+  const [ttsSpeedRatio, setTtsSpeedRatio] = useState(1.0)
+  const [ttsEnableEmotion, setTtsEnableEmotion] = useState(false)
+  const [ttsEmotion, setTtsEmotion] = useState('neutral')
+  const [ttsEmotionScale, setTtsEmotionScale] = useState(3)
+  
   const audioRef = useRef<HTMLAudioElement>(null)
 
   // 加载书籍的所有音频记录
@@ -342,6 +389,185 @@ export function AudioProcessingPanel({
     }))
   }
 
+  // 开始TTS选择
+  const startTTSSelection = useCallback(() => {
+    console.log('🎤 TTS选择开始，当前stage:', stage)
+    console.log('🎤 selectedAudio:', selectedAudio)
+    setStage('tts_selecting')
+    console.log('🎤 设置stage为tts_selecting')
+    setTtsSelectedBlocks([])
+    setTtsText('')
+    
+    // 发送事件启用TTS选择模式
+    console.log('🎤 发送start-tts-selection事件')
+    window.dispatchEvent(new CustomEvent('start-tts-selection', {
+      detail: { mode: 'tts' }
+    }))
+    
+    toast.info('请选择要生成语音的语境块', {
+      duration: 3000,
+      position: 'top-center'
+    })
+  }, [stage, selectedAudio])
+
+  // 处理TTS生成
+  const handleTTSGenerate = async () => {
+    if (!ttsText) return
+    
+    setStage('tts_generating')
+    setTtsProgress(0)
+    
+    try {
+      // 获取用户session
+      const session = await supabase.auth.getSession()
+      const token = session.data.session?.access_token
+      
+      if (!token) {
+        throw new Error('请先登录')
+      }
+      
+      // 清理文本
+      const cleanedText = cleanTextForRevAI(ttsText)
+      
+      // 计算清理后文本的UTF-8字节长度
+      const textBytes = new TextEncoder().encode(cleanedText).length
+      
+      // 如果文本超过1024字节，需要分块处理
+      if (textBytes > 1024) {
+        // 实现文本分块逻辑
+        const chunks = splitTextIntoChunks(cleanedText, ttsSelectedBlocks)
+        setTtsChunks(chunks)
+        
+        // 批量处理TTS
+        await processTTSChunks(chunks, token)
+      } else {
+        // 单次TTS调用
+        const response = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            text: cleanedText,
+            voiceType: ttsVoiceType,
+            bookId,
+            speedRatio: ttsSpeedRatio,
+            emotion: ttsEnableEmotion ? ttsEmotion : undefined,
+            enableEmotion: ttsEnableEmotion,
+            emotionScale: ttsEnableEmotion ? ttsEmotionScale : undefined
+          })
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'TTS生成失败')
+        }
+        
+        const data = await response.json()
+        
+        if (data.success) {
+          toast.success('TTS音频生成成功！')
+          
+          // 刷新音频列表
+          await loadAudioRecords()
+          
+          // 重置状态
+          setStage('idle')
+          setTtsSelectedBlocks([])
+          setTtsText('')
+          window.dispatchEvent(new CustomEvent('disable-tts-selection'))
+        }
+      }
+    } catch (error) {
+      console.error('TTS生成失败:', error)
+      toast.error(`TTS生成失败: ${(error as Error).message}`)
+      setStage('tts_selecting')
+    }
+  }
+
+  // 将文本分块（确保每块不超过1024字节）
+  const splitTextIntoChunks = (text: string, blockIds: string[]): Array<{text: string, blockIds: string[]}> => {
+    const chunks: Array<{text: string, blockIds: string[]}> = []
+    const maxBytes = 1024
+    
+    // 简单的分块策略：按句子分割
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text]
+    let currentChunk = ''
+    let currentBlockIds: string[] = []
+    
+    for (const sentence of sentences) {
+      const testChunk = currentChunk + (currentChunk ? ' ' : '') + sentence
+      const testBytes = new TextEncoder().encode(testChunk).length
+      
+      if (testBytes > maxBytes && currentChunk) {
+        // 当前块已满，保存并开始新块
+        chunks.push({ text: currentChunk, blockIds: currentBlockIds })
+        currentChunk = sentence
+        currentBlockIds = []
+      } else {
+        currentChunk = testChunk
+      }
+    }
+    
+    // 保存最后一块
+    if (currentChunk) {
+      chunks.push({ text: currentChunk, blockIds: currentBlockIds })
+    }
+    
+    return chunks
+  }
+
+  // 批量处理TTS分块
+  const processTTSChunks = async (chunks: Array<{text: string, blockIds: string[]}>, token: string) => {
+    const totalChunks = chunks.length
+    const maxConcurrent = 10
+    let completedChunks = 0
+    
+    // 使用并发限制处理chunks
+    for (let i = 0; i < chunks.length; i += maxConcurrent) {
+      const batch = chunks.slice(i, i + maxConcurrent)
+      
+      await Promise.all(batch.map(async (chunk) => {
+        const response = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            text: chunk.text,
+            voiceType: ttsVoiceType,
+            bookId,
+            speedRatio: ttsSpeedRatio,
+            emotion: ttsEnableEmotion ? ttsEmotion : undefined,
+            enableEmotion: ttsEnableEmotion,
+            emotionScale: ttsEnableEmotion ? ttsEmotionScale : undefined
+          })
+        })
+        
+        if (!response.ok) {
+          throw new Error('TTS分块生成失败')
+        }
+        
+        completedChunks++
+        setTtsProgress((completedChunks / totalChunks) * 100)
+      }))
+    }
+    
+    // TODO: 实现音频合并逻辑
+    toast.success('TTS音频生成成功！')
+    
+    // 刷新音频列表
+    await loadAudioRecords()
+    
+    // 重置状态
+    setStage('idle')
+    setTtsSelectedBlocks([])
+    setTtsText('')
+    window.dispatchEvent(new CustomEvent('disable-tts-selection'))
+  }
+
   // 处理语境块选择
   const handleBlockSelection = useCallback((blockId: string, blockContent: string) => {
     if (stage === 'selecting_start') {
@@ -432,6 +658,33 @@ export function AudioProcessingPanel({
       window.removeEventListener('context-block-selected', handleBlockSelect as EventListener)
     }
   }, [handleBlockSelection])
+
+  // 监听TTS语境块选择事件
+  useEffect(() => {
+    const handleTTSBlockSelect = (event: CustomEvent) => {
+      const { blockIds, texts } = event.detail
+      setTtsSelectedBlocks(blockIds)
+      setTtsText(texts.join(' '))
+    }
+
+    window.addEventListener('tts-blocks-selected', handleTTSBlockSelect as EventListener)
+    return () => {
+      window.removeEventListener('tts-blocks-selected', handleTTSBlockSelect as EventListener)
+    }
+  }, [])
+
+  // 监听来自ReaderContent的start-tts-selection事件
+  useEffect(() => {
+    const handleStartTTSFromReader = (event: CustomEvent) => {
+      console.log('📚 AudioProcessingPanel收到来自ReaderContent的start-tts-selection事件')
+      startTTSSelection()
+    }
+
+    window.addEventListener('start-tts-selection', handleStartTTSFromReader as EventListener)
+    return () => {
+      window.removeEventListener('start-tts-selection', handleStartTTSFromReader as EventListener)
+    }
+  }, [startTTSSelection])
 
   // 清理文本，移除多余标点符号，只保留纯净的英文文本
   const cleanTextForRevAI = (rawText: string): string => {
@@ -1850,6 +2103,7 @@ export function AudioProcessingPanel({
   }, [selectedAudio, stage, playAudioPrompt])
 
   const renderMainContent = () => {
+    console.log('🎨 渲染内容，当前stage:', stage)
     switch (stage) {
       case 'idle':
         return (
@@ -2009,17 +2263,33 @@ export function AudioProcessingPanel({
                     
                     <div className="flex gap-2">
                       {!selectedRange ? (
-                        <button className="bg-slate-800 no-underline group cursor-pointer relative shadow-2xl shadow-zinc-900 rounded-full p-px text-xs font-semibold leading-6 text-white inline-block flex-1"
-                                onClick={startBlockSelection}>
-                          <span className="absolute inset-0 overflow-hidden rounded-full">
-                            <span className="absolute inset-0 rounded-full bg-[image:radial-gradient(75%_100%_at_50%_0%,rgba(249,115,22,0.6)_0%,rgba(249,115,22,0)_75%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-                          </span>
-                          <div className="relative flex space-x-2 items-center z-10 rounded-full bg-zinc-950 py-1.5 px-3 ring-1 ring-white/10 justify-center">
-                            <Target className="w-3 h-3" />
-                            <span>选择语境范围</span>
-                          </div>
-                          <span className="absolute -bottom-0 left-[1.125rem] h-px w-[calc(100%-2.25rem)] bg-gradient-to-r from-orange-400/0 via-orange-400/90 to-orange-400/0 transition-opacity duration-500 group-hover:opacity-40" />
-                        </button>
+                        <>
+                          {/* TTS生成音频按钮 */}
+                          <button className="bg-slate-800 no-underline group cursor-pointer relative shadow-2xl shadow-zinc-900 rounded-full p-px text-xs font-semibold leading-6 text-white inline-block flex-1"
+                                  onClick={startTTSSelection}>
+                            <span className="absolute inset-0 overflow-hidden rounded-full">
+                              <span className="absolute inset-0 rounded-full bg-[image:radial-gradient(75%_100%_at_50%_0%,rgba(59,130,246,0.6)_0%,rgba(59,130,246,0)_75%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+                            </span>
+                            <div className="relative flex space-x-2 items-center z-10 rounded-full bg-zinc-950 py-1.5 px-3 ring-1 ring-white/10 justify-center">
+                              <Volume2 className="w-3 h-3" />
+                              <span>TTS生成音频</span>
+                            </div>
+                            <span className="absolute -bottom-0 left-[1.125rem] h-px w-[calc(100%-2.25rem)] bg-gradient-to-r from-blue-400/0 via-blue-400/90 to-blue-400/0 transition-opacity duration-500 group-hover:opacity-40" />
+                          </button>
+                          
+                          {/* 选择语境范围按钮 */}
+                          <button className="bg-slate-800 no-underline group cursor-pointer relative shadow-2xl shadow-zinc-900 rounded-full p-px text-xs font-semibold leading-6 text-white inline-block flex-1"
+                                  onClick={startBlockSelection}>
+                            <span className="absolute inset-0 overflow-hidden rounded-full">
+                              <span className="absolute inset-0 rounded-full bg-[image:radial-gradient(75%_100%_at_50%_0%,rgba(249,115,22,0.6)_0%,rgba(249,115,22,0)_75%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+                            </span>
+                            <div className="relative flex space-x-2 items-center z-10 rounded-full bg-zinc-950 py-1.5 px-3 ring-1 ring-white/10 justify-center">
+                              <Target className="w-3 h-3" />
+                              <span>选择语境范围</span>
+                            </div>
+                            <span className="absolute -bottom-0 left-[1.125rem] h-px w-[calc(100%-2.25rem)] bg-gradient-to-r from-orange-400/0 via-orange-400/90 to-orange-400/0 transition-opacity duration-500 group-hover:opacity-40" />
+                          </button>
+                        </>
                       ) : (
                         <>
                           <button className="bg-slate-800 no-underline group cursor-pointer relative shadow-2xl shadow-zinc-900 rounded-full p-px text-xs font-semibold leading-6 text-white inline-block flex-1"
@@ -2600,6 +2870,310 @@ export function AudioProcessingPanel({
               </div>
             </div>
           </div>
+        )
+
+      case 'tts_selecting':
+        return (
+          <motion.div 
+            className="space-y-3"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            {/* TTS选择头部 - 更紧凑 */}
+            <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-lg border border-blue-500/20">
+              <motion.div 
+                className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center flex-shrink-0"
+                animate={{ 
+                  rotate: [0, 360],
+                }}
+                transition={{
+                  duration: 20,
+                  repeat: Infinity,
+                  ease: "linear"
+                }}
+              >
+                <Volume2 className="w-5 h-5 text-white" />
+              </motion.div>
+              
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-blue-100">TTS语音生成</h3>
+                <p className="text-xs text-blue-200/70 mt-0.5">
+                  点击左侧语境块选择要生成语音的文本
+                </p>
+              </div>
+            </div>
+
+            {/* 已选择的文本预览 - 更紧凑 */}
+            <AnimatePresence>
+              {ttsText && (
+                <motion.div 
+                  className="bg-gray-800/50 backdrop-blur-sm p-3 rounded-lg border border-gray-700"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-xs font-medium text-gray-300">
+                      已选择文本
+                    </h4>
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                      {new TextEncoder().encode(cleanTextForRevAI(ttsText)).length} 字节
+                    </Badge>
+                  </div>
+                  <ScrollArea className="max-h-24">
+                    <p className="text-xs text-gray-400 leading-relaxed">
+                      {ttsText}
+                    </p>
+                  </ScrollArea>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* TTS设置卡片 */}
+            <Card className="border-gray-700 bg-gray-800/50 backdrop-blur-sm">
+              <CardContent className="p-3 space-y-3">
+                {/* 语音选择 - 使用新的选择器 */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-gray-300">语音音色</Label>
+                  <Popover open={showVoiceSelector} onOpenChange={setShowVoiceSelector}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-between h-9 text-xs border-gray-600 bg-gray-700/50 hover:bg-gray-700"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Volume2 className="w-3.5 h-3.5" />
+                          {getVoiceInfo(ttsVoiceType)?.name || '选择音色'}
+                        </span>
+                        <ChevronDown className="h-3.5 w-3.5 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 bg-transparent border-0" align="end" sideOffset={5}>
+                      <VoiceSelector
+                        selectedVoice={ttsVoiceType}
+                        onSelect={(voiceId) => {
+                          setTtsVoiceType(voiceId)
+                          setShowVoiceSelector(false)
+                          // 如果选择的是多情感音色，自动开启情感并设置默认值
+                          const voiceInfo = getVoiceInfo(voiceId)
+                          if (voiceInfo?.emotions && voiceInfo.emotions.length > 0) {
+                            setTtsEnableEmotion(true)
+                            setTtsEmotionScale(5)
+                            // 设置默认情感为第一个
+                            if (voiceInfo.emotions.length > 0) {
+                              setTtsEmotion(voiceInfo.emotions[0])
+                            }
+                          }
+                        }}
+                        onClose={() => setShowVoiceSelector(false)}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* 语速调节 */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium text-gray-300">语速</Label>
+                    <span className="text-xs text-gray-500">{ttsSpeedRatio.toFixed(1)}x</span>
+                  </div>
+                  <Slider
+                    value={[ttsSpeedRatio]}
+                    onValueChange={([value]) => setTtsSpeedRatio(value)}
+                    min={0.5}
+                    max={2.0}
+                    step={0.1}
+                    className="h-1"
+                  />
+                </div>
+
+                {/* 情感设置 - 如果支持 */}
+                {getVoiceInfo(ttsVoiceType)?.emotions && getVoiceInfo(ttsVoiceType)!.emotions!.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-medium text-gray-300">情感表达</Label>
+                      <Switch
+                        checked={ttsEnableEmotion}
+                        onCheckedChange={setTtsEnableEmotion}
+                        className="h-4 w-8"
+                      />
+                    </div>
+                    
+                    {ttsEnableEmotion && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="space-y-2"
+                      >
+                        <Select value={ttsEmotion} onValueChange={setTtsEmotion}>
+                          <SelectTrigger className="h-8 text-xs border-gray-600 bg-gray-700/50">
+                            <SelectValue placeholder="选择情感" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {getVoiceInfo(ttsVoiceType)!.emotions!.map(emotion => (
+                              <SelectItem key={emotion} value={emotion}>
+                                {emotionLabels[emotion] || emotion}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        
+                        {/* 情感强度 */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-[10px] text-gray-400">情感强度</Label>
+                            <span className="text-[10px] text-gray-500">{ttsEmotionScale}</span>
+                          </div>
+                          <Slider
+                            value={[ttsEmotionScale]}
+                            onValueChange={([value]) => setTtsEmotionScale(value)}
+                            min={1}
+                            max={5}
+                            step={1}
+                            className="h-1"
+                          />
+                        </div>
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* 操作按钮 - 更紧凑 */}
+            <div className="flex gap-2">
+              <Button
+                className="flex-1 h-9 text-xs bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
+                onClick={handleTTSGenerate}
+                disabled={!ttsText}
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                生成音频
+              </Button>
+              
+              <Button
+                variant="outline"
+                className="h-9 text-xs border-gray-600"
+                onClick={() => {
+                  setStage('idle')
+                  setTtsSelectedBlocks([])
+                  setTtsText('')
+                  setShowVoiceSelector(false)
+                  window.dispatchEvent(new CustomEvent('disable-tts-selection'))
+                }}
+              >
+                取消
+              </Button>
+            </div>
+          </motion.div>
+        )
+
+      case 'tts_generating':
+        return (
+          <motion.div 
+            className="space-y-4"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            {/* 生成状态卡片 */}
+            <Card className="border-gray-700 bg-gradient-to-br from-blue-500/10 to-cyan-500/10">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-4">
+                  {/* 动画图标 */}
+                  <motion.div 
+                    className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center flex-shrink-0"
+                    animate={{ 
+                      rotate: 360,
+                    }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                      ease: "linear"
+                    }}
+                  >
+                    <Volume2 className="w-6 h-6 text-white" />
+                  </motion.div>
+                  
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-blue-100">正在生成语音</h3>
+                    <p className="text-xs text-blue-200/70 mt-0.5">
+                      {getVoiceInfo(ttsVoiceType)?.name || ttsVoiceType}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 进度条 */}
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400">处理进度</span>
+                    <span className="text-blue-300">{Math.round(ttsProgress)}%</span>
+                  </div>
+                  <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                    <motion.div 
+                      className="h-full bg-gradient-to-r from-blue-500 to-cyan-600"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${ttsProgress}%` }}
+                      transition={{ duration: 0.3 }}
+                    />
+                  </div>
+                </div>
+
+                {/* 处理详情 */}
+                {ttsChunks.length > 1 && (
+                  <div className="mt-3 pt-3 border-t border-gray-700">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-400">分块处理</span>
+                      <span className="text-gray-300">
+                        {Math.ceil(ttsProgress * ttsChunks.length / 100)} / {ttsChunks.length} 块
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* 正在处理的文本预览 */}
+            <Card className="border-gray-700 bg-gray-800/50">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-medium text-gray-400">正在处理的文本</h4>
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                    {new TextEncoder().encode(cleanTextForRevAI(ttsText)).length} 字节
+                  </Badge>
+                </div>
+                <ScrollArea className="max-h-20">
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    {ttsText.length > 200 ? ttsText.substring(0, 200) + '...' : ttsText}
+                  </p>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+
+            {/* 加载动画 */}
+            <div className="flex justify-center">
+              <div className="flex gap-1">
+                {[0, 1, 2].map((i) => (
+                  <motion.div
+                    key={i}
+                    className="w-2 h-2 rounded-full bg-blue-500"
+                    animate={{
+                      scale: [1, 1.5, 1],
+                      opacity: [0.5, 1, 0.5],
+                    }}
+                    transition={{
+                      duration: 1.5,
+                      repeat: Infinity,
+                      delay: i * 0.2,
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          </motion.div>
         )
 
       case 'error':
