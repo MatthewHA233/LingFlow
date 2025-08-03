@@ -1,6 +1,7 @@
 // TTS 音色类型定义
 export interface VoiceInfo {
-  id: string;           // voice_type
+  id: string;           // voice_type (用于API调用)
+  uniqueKey: string;    // 唯一标识符 (用于React渲染)
   name: string;         // 音色名称
   category: string;     // 分类
   language: string;     // 语种
@@ -16,6 +17,7 @@ export type VoiceCategory = string;
 
 // 情感映射
 export const emotionLabels: Record<string, string> = {
+  // 中文音色情感
   'happy': '开心',
   'sad': '悲伤',
   'angry': '愤怒',
@@ -25,25 +27,26 @@ export const emotionLabels: Record<string, string> = {
   'excited': '兴奋',
   'coldness': '冷漠',
   'neutral': '中性',
-  'affectionate': '深情',
-  'asmr': 'ASMR',
-  'chat': '对话/闲聊',
-  'warm': '温暖',
-  'authoritative': '权威',
   'depressed': '沮丧',
   'lovey-dovey': '撒娇',
   'shy': '害羞',
   'comfort': '安慰鼓励',
-  'tension': '焦急',
+  'tension': '咆哮/焦急',
   'tender': '温柔',
-  'storytelling': '讲故事',
+  'storytelling': '讲故事/自然讲述',
   'radio': '情感电台',
   'magnetic': '磁性',
   'advertising': '广告营销',
   'vocal-fry': '气泡音',
+  'asmr': '低语(ASMR)',
   'news': '新闻播报',
   'entertainment': '娱乐八卦',
-  'dialect': '方言'
+  'dialect': '方言',
+  // 英文音色情感
+  'chat': '对话/闲聊',
+  'warm': '温暖',
+  'affectionate': '深情',
+  'authoritative': '权威'
 };
 
 // 存储加载的音色数据
@@ -143,16 +146,35 @@ export async function loadVoicesFromCSV(): Promise<void> {
           '恐惧': 'fear',
           '厌恶': 'hate',
           '激动': 'excited',
+          '兴奋': 'excited',
           '冷漠': 'coldness',
           '中性': 'neutral',
-          '深情': 'affectionate',
-          'ASMR': 'asmr',
-          '对话/闲聊': 'chat',
-          '温暖': 'warm',
-          '权威': 'authoritative',
           '沮丧': 'depressed',
-          '兴奋': 'excited',
-          '愉悦': 'happy'
+          '撒娇': 'lovey-dovey',
+          '害羞': 'shy',
+          '安慰鼓励': 'comfort',
+          '咆哮': 'tension',
+          '焦急': 'tension',
+          '温柔': 'tender',
+          '讲故事': 'storytelling',
+          '自然讲述': 'storytelling',
+          '情感电台': 'radio',
+          '磁性': 'magnetic',
+          '广告营销': 'advertising',
+          '气泡音': 'vocal-fry',
+          '低语': 'asmr',
+          'ASMR': 'asmr',
+          '新闻播报': 'news',
+          '娱乐八卦': 'entertainment',
+          '方言': 'dialect',
+          // 英文音色情感
+          '愉悦': 'happy',
+          '对话/闲聊': 'chat',
+          '对话': 'chat',
+          '闲聊': 'chat',
+          '温暖': 'warm',
+          '深情': 'affectionate',
+          '权威': 'authoritative'
         };
         
         // 使用正则分割，支持中文逗号、中文顿号、英文逗号等
@@ -162,12 +184,19 @@ export async function loadVoicesFromCSV(): Promise<void> {
           const trimmed = emotion.trim();
           if (!trimmed) continue;
           
-          // 转换为英文参数或保持原样
-          const mapped = emotionMap[trimmed] || trimmed.toLowerCase();
-          
-          // 避免重复
-          if (!emotionList.includes(mapped)) {
-            emotionList.push(mapped);
+          // 如果在映射表中找到了对应的英文参数，使用英文参数
+          // 否则保持原样（可能本身就是英文参数）
+          if (emotionMap[trimmed]) {
+            const mapped = emotionMap[trimmed];
+            if (!emotionList.includes(mapped)) {
+              emotionList.push(mapped);
+            }
+          } else {
+            // 检查是否已经是英文参数
+            const lowerTrimmed = trimmed.toLowerCase();
+            if (!emotionList.includes(lowerTrimmed)) {
+              emotionList.push(lowerTrimmed);
+            }
           }
         }
       }
@@ -191,6 +220,7 @@ export async function loadVoicesFromCSV(): Promise<void> {
       
       voicesData.push({
         id: voiceType,
+        uniqueKey: `${voiceType}_${i}_${Date.now()}`, // 生成唯一key
         name,
         category,
         language,
@@ -245,6 +275,63 @@ export function getVoiceCategories(): VoiceCategory[] {
   const allVoices = getAllVoices();
   const categories = new Set(allVoices.map(voice => voice.category));
   return Array.from(categories).sort();
+}
+
+// 根据语言获取音色（支持多语言音色）
+export function getVoicesByLanguage(language: string): VoiceInfo[] {
+  const allVoices = getAllVoices();
+  return allVoices.filter(voice => {
+    // 将语言字段按逗号分割（处理"中文，美式英语"这种情况）
+    const languages = voice.language.split(/[，,]/).map(lang => lang.trim().toLowerCase());
+    const targetLang = language.toLowerCase();
+    
+    // 检查是否包含目标语言
+    return languages.some(lang => {
+      // 精确匹配或者包含匹配
+      return lang === targetLang || lang.includes(targetLang) || targetLang.includes(lang);
+    });
+  });
+}
+
+// 获取按语言分组的音色（多情感音色置顶）
+export function getVoicesByLanguageWithEmotionFirst(language: string): VoiceInfo[] {
+  const voices = getVoicesByLanguage(language);
+  
+  // 去重：如果同一个voice_type出现多次，优先保留多情感分类的
+  const voiceMap = new Map<string, VoiceInfo>();
+  
+  // 先处理非多情感的音色
+  voices.forEach(voice => {
+    if (!voice.category.includes('多情感') && !voice.category.includes('英文多情感')) {
+      voiceMap.set(voice.id, voice);
+    }
+  });
+  
+  // 再处理多情感的音色（会覆盖同ID的非多情感音色）
+  voices.forEach(voice => {
+    if (voice.category.includes('多情感') || voice.category.includes('英文多情感')) {
+      voiceMap.set(voice.id, voice);
+    }
+  });
+  
+  // 转换为数组
+  const uniqueVoices = Array.from(voiceMap.values());
+  
+  // 分离多情感音色和普通音色
+  const emotionVoices = uniqueVoices.filter(voice => 
+    voice.category.includes('多情感') || 
+    voice.category.includes('英文多情感') ||
+    (voice.emotions && voice.emotions.length > 0)
+  );
+  
+  const normalVoices = uniqueVoices.filter(voice => 
+    !voice.category.includes('多情感') && 
+    !voice.category.includes('英文多情感') &&
+    (!voice.emotions || voice.emotions.length === 0)
+  );
+  
+  // 多情感音色在前，普通音色在后
+  return [...emotionVoices, ...normalVoices];
 }
 
 // 根据ID获取音色信息

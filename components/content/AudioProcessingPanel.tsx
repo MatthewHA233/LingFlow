@@ -31,23 +31,10 @@ import { Confetti } from '@/components/ui/confetti'
 import AudioProcessingOrb from '@/components/ui/audio-processing-orb'
 import { TTSGenerator } from '@/components/tts/TTSGenerator'
 import { VoiceSelector } from '@/components/tts/VoiceSelector'
-import { getVoiceInfo, loadVoicesFromCSV } from '@/types/tts'
+import { getVoiceInfo, loadVoicesFromCSV, emotionLabels } from '@/types/tts'
 
 // 测试模式开关 - 只能在代码中开启
 const DEBUG_MODE = false
-
-// 情感标签的中文映射
-const emotionLabels: Record<string, string> = {
-  'happy': '开心',
-  'sad': '悲伤',
-  'angry': '愤怒',
-  'surprised': '惊讶',
-  'fear': '恐惧',
-  'hate': '厌恶',
-  'excited': '兴奋',
-  'coldness': '冷漠',
-  'neutral': '中性'
-}
 
 interface AudioProcessingPanelProps {
   bookId: string
@@ -2945,13 +2932,13 @@ export function AudioProcessingPanel({
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
-                        className="w-full justify-between h-9 text-xs border-gray-600 bg-gray-700/50 hover:bg-gray-700"
+                        className="w-full justify-between h-9 text-xs border-gray-600 bg-gray-700/50 hover:bg-gray-700 text-gray-200 hover:text-white"
                       >
-                        <span className="flex items-center gap-2">
-                          <Volume2 className="w-3.5 h-3.5" />
+                        <span className="flex items-center gap-2 text-gray-200">
+                          <Volume2 className="w-3.5 h-3.5 text-gray-300" />
                           {getVoiceInfo(ttsVoiceType)?.name || '选择音色'}
                         </span>
-                        <ChevronDown className="h-3.5 w-3.5 opacity-50" />
+                        <ChevronDown className="h-3.5 w-3.5 opacity-50 text-gray-400" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0 bg-transparent border-0" align="end" sideOffset={5}>
@@ -3013,23 +3000,43 @@ export function AudioProcessingPanel({
                         className="space-y-2"
                       >
                         <Select value={ttsEmotion} onValueChange={setTtsEmotion}>
-                          <SelectTrigger className="h-8 text-xs border-gray-600 bg-gray-700/50">
-                            <SelectValue placeholder="选择情感" />
+                          <SelectTrigger className="h-8 text-xs border-purple-500/30 bg-gradient-to-r from-purple-900/20 to-pink-900/20 hover:from-purple-800/30 hover:to-pink-800/30 transition-all">
+                            <SelectValue placeholder="选择情感表达" />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="bg-gray-900/95 backdrop-blur-xl border-purple-500/30">
                             {getVoiceInfo(ttsVoiceType)!.emotions!.map(emotion => (
-                              <SelectItem key={emotion} value={emotion}>
-                                {emotionLabels[emotion] || emotion}
+                              <SelectItem 
+                                key={emotion} 
+                                value={emotion}
+                                className="text-xs text-gray-200 hover:bg-purple-500/20 hover:text-white focus:bg-purple-500/30 focus:text-white data-[highlighted]:text-white cursor-pointer transition-colors"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div className="w-2 h-2 rounded-full bg-gradient-to-r from-purple-400 to-pink-400" />
+                                  <span>{emotionLabels[emotion] || emotion}</span>
+                                </div>
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                         
                         {/* 情感强度 */}
-                        <div className="space-y-1">
+                        <div className="space-y-1.5 p-2 rounded-lg bg-gradient-to-r from-purple-900/10 to-pink-900/10 border border-purple-500/20">
                           <div className="flex items-center justify-between">
-                            <Label className="text-[10px] text-gray-400">情感强度</Label>
-                            <span className="text-[10px] text-gray-500">{ttsEmotionScale}</span>
+                            <Label className="text-[10px] text-purple-300 font-medium">情感强度</Label>
+                            <div className="flex items-center gap-1">
+                              {[1, 2, 3, 4, 5].map((level) => (
+                                <div
+                                  key={level}
+                                  className={cn(
+                                    "w-1.5 h-1.5 rounded-full transition-all",
+                                    level <= ttsEmotionScale
+                                      ? "bg-gradient-to-r from-purple-400 to-pink-400"
+                                      : "bg-gray-600"
+                                  )}
+                                />
+                              ))}
+                              <span className="text-[10px] text-purple-300 ml-1 font-medium">{ttsEmotionScale}</span>
+                            </div>
                           </div>
                           <Slider
                             value={[ttsEmotionScale]}
@@ -3037,7 +3044,7 @@ export function AudioProcessingPanel({
                             min={1}
                             max={5}
                             step={1}
-                            className="h-1"
+                            className="h-1 [&_[role=slider]]:h-3 [&_[role=slider]]:w-3 [&_[role=slider]]:bg-gradient-to-r [&_[role=slider]]:from-purple-400 [&_[role=slider]]:to-pink-400 [&_[role=slider]]:border-purple-500/50 [&_[role=slider]]:shadow-lg [&_[role=slider]]:shadow-purple-500/20"
                           />
                         </div>
                       </motion.div>
