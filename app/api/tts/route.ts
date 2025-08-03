@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createBigModelTTSService } from '@/lib/services/tts-service-bigmodel';
-import { TTSSynthesizeOptions, VoiceType, AudioEncoding } from '@/types/tts';
+import { TTSSynthesizeOptions, cleanVoiceIdForAPI } from '@/types/tts';
 import { rateLimit } from '@/lib/rate-limit';
 import { uploadToOSS } from '@/lib/oss-client';
 
@@ -37,7 +37,7 @@ interface TTSRequestBody {
   emotion?: string;
   enableEmotion?: boolean;
   emotionScale?: number;
-  encoding?: AudioEncoding;
+  encoding?: string;
   rate?: number;
   loudnessRatio?: number;
   withTimestamp?: boolean;
@@ -120,10 +120,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 6. 验证音色类型
-    if (voiceType && !Object.values(VoiceType).includes(voiceType as VoiceType)) {
+    // 6. 验证音色类型 (只验证是否存在)
+    if (!voiceType || typeof voiceType !== 'string') {
       return NextResponse.json(
-        { error: '不支持的音色类型' },
+        { error: '缺少必需参数: voiceType' },
         { status: 400 }
       );
     }
@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
       appid: process.env.DOUBAO_TTS_APPID!,
       token: process.env.DOUBAO_TTS_TOKEN!,
       cluster: 'volcano_tts',
-      defaultVoiceType: VoiceType.ZH_MALE_CONVERSATION
+      defaultVoiceType: 'zh_male_conversation_wvae_bigtts'
     };
     
     // 调试日志
@@ -181,9 +181,9 @@ export async function POST(req: NextRequest) {
     // 11. 合成语音
     const synthesizeOptions: TTSSynthesizeOptions = {
       text,
-      voiceType: voiceType || ttsConfig.defaultVoiceType,
+      voiceType: cleanVoiceIdForAPI(voiceType || ttsConfig.defaultVoiceType),
       speedRatio: speedRatio || 1.0,
-      encoding: encoding || AudioEncoding.MP3,
+      encoding: encoding || 'mp3',
       userId,
       // 大模型特有参数
       emotion,
@@ -250,7 +250,7 @@ export async function POST(req: NextRequest) {
             audio,
             duration,
             format: 'base64',
-            encoding: synthesizeOptions.encoding || AudioEncoding.MP3
+            encoding: synthesizeOptions.encoding || 'mp3'
           }
         };
         
@@ -263,7 +263,7 @@ export async function POST(req: NextRequest) {
             audio,
             duration,
             format: 'base64',
-            encoding: synthesizeOptions.encoding || AudioEncoding.MP3
+            encoding: synthesizeOptions.encoding || 'mp3'
           }
         };
         

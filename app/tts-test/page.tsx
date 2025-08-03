@@ -12,7 +12,8 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { useSession } from '@/hooks/use-session'
-import { VoiceType, AudioEncoding, VOICE_INFO_MAP, getVoicesByCategory, getVoiceCategories, getVoiceInfo } from '@/types/tts'
+import { getVoicesByCategory, getVoiceCategories, getVoiceInfo, loadVoicesFromCSV } from '@/types/tts'
+import { useEffect } from 'react'
 
 // 获取音频 MIME 类型
 const getMimeType = (encoding: string): string => {
@@ -28,8 +29,34 @@ const getMimeType = (encoding: string): string => {
 export default function TTSTestPage() {
   const { session } = useSession()
   const [text, setText] = useState('')
-  const [voiceType, setVoiceType] = useState<string>(VoiceType.ZH_MALE_CONVERSATION)
-  const [selectedCategory, setSelectedCategory] = useState<string>('推荐')
+  
+  // 加载音色数据
+  useEffect(() => {
+    const loadVoices = async () => {
+      setIsLoadingVoices(true)
+      try {
+        await loadVoicesFromCSV()
+        // 加载完成后，选择默认分类的第一个音色
+        const categories = getVoiceCategories()
+        if (categories.length > 0) {
+          const defaultCategory = categories[0]
+          setSelectedCategory(defaultCategory)
+          const voices = getVoicesByCategory(defaultCategory)
+          if (voices.length > 0) {
+            setVoiceType(voices[0].id)
+          }
+        }
+      } catch (error) {
+        console.error('加载音色失败:', error)
+      } finally {
+        setIsLoadingVoices(false)
+      }
+    }
+    loadVoices()
+  }, [])
+  const [voiceType, setVoiceType] = useState<string>('')
+  const [selectedCategory, setSelectedCategory] = useState<string>('')
+  const [isLoadingVoices, setIsLoadingVoices] = useState(true)
 
   // 当分类改变时，自动选择该分类下的第一个音色
   const handleCategoryChange = (category: string) => {
@@ -61,7 +88,7 @@ export default function TTSTestPage() {
     // 如果新音色支持当前情感，保持不变
   }
   const [speedRatio, setSpeedRatio] = useState(1.0)
-  const [encoding, setEncoding] = useState<AudioEncoding>(AudioEncoding.MP3)
+  const [encoding, setEncoding] = useState<string>('mp3')
   const [isLoading, setIsLoading] = useState(false)
   const [audioUrl, setAudioUrl] = useState('')
   const [error, setError] = useState('')
@@ -414,8 +441,14 @@ export default function TTSTestPage() {
                   {/* 音色分类选择 */}
                   <div>
                     <Label className="text-base font-medium text-gray-200 mb-4 block">音色分类</Label>
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                      {getVoiceCategories().map(category => (
+                    {isLoadingVoices ? (
+                      <div className="flex items-center justify-center h-20">
+                        <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
+                        <span className="ml-2 text-sm text-gray-400">加载音色数据中...</span>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                        {getVoiceCategories().map(category => (
                         <button
                           key={category}
                           onClick={() => handleCategoryChange(category)}
@@ -429,6 +462,7 @@ export default function TTSTestPage() {
                         </button>
                       ))}
                     </div>
+                    )}
                   </div>
 
                   {/* 具体音色选择 */}
@@ -629,30 +663,30 @@ export default function TTSTestPage() {
                 <CardContent className="space-y-3">
                   <div>
                     <Label className="text-sm font-medium text-gray-200">音频格式</Label>
-                    <Select value={encoding} onValueChange={(value) => setEncoding(value as AudioEncoding)}>
+                    <Select value={encoding} onValueChange={(value) => setEncoding(value)}>
                       <SelectTrigger className="mt-2 border-2 border-gray-600 bg-gray-700 text-gray-100 focus:border-orange-500">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value={AudioEncoding.MP3}>
+                        <SelectItem value="mp3">
                           <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                             MP3 (推荐)
                           </div>
                         </SelectItem>
-                        <SelectItem value={AudioEncoding.WAV}>
+                        <SelectItem value="wav">
                           <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                             WAV (无损)
                           </div>
                         </SelectItem>
-                        <SelectItem value={AudioEncoding.PCM}>
+                        <SelectItem value="pcm">
                           <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
                             PCM (原始)
                           </div>
                         </SelectItem>
-                        <SelectItem value={AudioEncoding.OGG_OPUS}>
+                        <SelectItem value="ogg_opus">
                           <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
                             OGG Opus

@@ -31,7 +31,7 @@ import { Confetti } from '@/components/ui/confetti'
 import AudioProcessingOrb from '@/components/ui/audio-processing-orb'
 import { TTSGenerator } from '@/components/tts/TTSGenerator'
 import { VoiceSelector } from '@/components/tts/VoiceSelector'
-import { getVoiceInfo } from '@/types/tts'
+import { getVoiceInfo, loadVoicesFromCSV } from '@/types/tts'
 
 // 测试模式开关 - 只能在代码中开启
 const DEBUG_MODE = false
@@ -292,9 +292,13 @@ export function AudioProcessingPanel({
     }
   }, [bookId, selectedAudio])
 
-  // 组件初始化时加载音频记录
+  // 组件初始化时加载音频记录和音色数据
   useEffect(() => {
     loadAudioRecords()
+    // 预加载音色数据
+    loadVoicesFromCSV().catch(error => {
+      console.error('预加载音色数据失败:', error)
+    })
   }, [loadAudioRecords])
 
   // 监听音频上传完成事件，重新加载音频列表

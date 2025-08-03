@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
-import { CheckCircle, X, Mic, Sparkles, Globe, User, Volume2, Zap } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { CheckCircle, X, Mic, Sparkles, Globe, User, Volume2, Zap, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { getVoicesByCategory, getVoiceCategories, getVoiceInfo, VoiceInfo } from '@/types/tts';
+import { getVoicesByCategory, getVoiceCategories, getVoiceInfo, VoiceInfo, loadVoicesFromCSV, VoiceCategory } from '@/types/tts';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 
@@ -42,16 +42,40 @@ const emotionLabels: Record<string, string> = {
 };
 
 export function VoiceSelector({ selectedVoice, onSelect, onClose }: VoiceSelectorProps) {
-  // 只保留指定的分类
-  const categories = ['英文多情感', '日语西语', '多情感'];
-  
-  // 默认选择英文多情感分类
-  const [selectedCategory, setSelectedCategory] = useState('英文多情感');
+  const [isLoading, setIsLoading] = useState(true);
+  const [categories, setCategories] = useState<VoiceCategory[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<VoiceCategory>('');
+  const [voicesInCategory, setVoicesInCategory] = useState<VoiceInfo[]>([]);
 
-  // 获取当前分类下的音色
-  const voicesInCategory = useMemo(() => {
-    return getVoicesByCategory(selectedCategory);
-  }, [selectedCategory]);
+  // 加载音色数据
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        await loadVoicesFromCSV();
+        const loadedCategories = getVoiceCategories();
+        setCategories(loadedCategories);
+        // 设置默认选中第一个分类
+        if (loadedCategories.length > 0) {
+          const defaultCategory = loadedCategories[0];
+          setSelectedCategory(defaultCategory);
+          setVoicesInCategory(getVoicesByCategory(defaultCategory));
+        }
+      } catch (error) {
+        console.error('加载音色数据失败:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  // 当分类改变时更新音色列表
+  useEffect(() => {
+    if (!isLoading) {
+      setVoicesInCategory(getVoicesByCategory(selectedCategory));
+    }
+  }, [selectedCategory, isLoading]);
 
   // 获取性别标签颜色
   const getGenderColor = (gender: 'male' | 'female') => {
@@ -74,9 +98,17 @@ export function VoiceSelector({ selectedVoice, onSelect, onClose }: VoiceSelecto
         </Button>
       </div>
       
-      {/* 分类选择 - 更紧凑 */}
-      <div className="flex gap-1 mb-2 overflow-x-auto pb-1 scrollbar-hide">
-        {categories.map(category => (
+      {/* 加载状态 */}
+      {isLoading ? (
+        <div className="flex items-center justify-center h-[300px]">
+          <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+          <span className="ml-2 text-xs text-gray-400">加载音色数据中...</span>
+        </div>
+      ) : (
+        <>
+          {/* 分类选择 - 更紧凑 */}
+          <div className="flex gap-1 mb-2 overflow-x-auto pb-1 scrollbar-hide">
+            {categories.map(category => (
           <button
             key={category}
             onClick={() => setSelectedCategory(category)}
@@ -87,7 +119,7 @@ export function VoiceSelector({ selectedVoice, onSelect, onClose }: VoiceSelecto
                 : "hover:bg-white/5 text-gray-400 hover:text-white border border-transparent"
             )}
           >
-            <span className="scale-75">{categoryIcons[category]}</span>
+            <span className="scale-75">{categoryIcons[category] || <Volume2 className="w-3.5 h-3.5" />}</span>
             <span>{category}</span>
           </button>
         ))}
@@ -171,6 +203,8 @@ export function VoiceSelector({ selectedVoice, onSelect, onClose }: VoiceSelecto
           })}
         </div>
       </ScrollArea>
+        </>
+      )}
     </div>
   );
 }
