@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Upload, Play, Pause, Check, X, Loader2, Volume2, Sparkles, Target, Zap, Music, Clock, FileAudio, RefreshCw, ChevronLeft, ChevronDown } from 'lucide-react'
+import { Upload, Play, Pause, Check, X, Loader2, Volume2, Sparkles, Target, Zap, Music, Clock, FileAudio, RefreshCw, ChevronLeft, ChevronDown, SkipBack, SkipForward } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -76,13 +76,17 @@ interface SelectedRange {
 const AudioRectangle = ({ 
   audio, 
   isSelected, 
-  isPlaying, 
-  onClick 
+  isPlaying,
+  progress,
+  onClick,
+  onPlayPause 
 }: { 
   audio: AudioRecord
   isSelected: boolean
   isPlaying: boolean
-  onClick: () => void 
+  progress?: number
+  onClick: () => void
+  onPlayPause?: (e: React.MouseEvent | { type: 'seek', seekPercent: number }) => void 
 }) => {
   const formatDuration = (seconds?: number) => {
     if (!seconds) return '--:--'
@@ -122,6 +126,33 @@ const AudioRectangle = ({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
+      {/* 播放进度条 - 底部可交互进度条 */}
+      {(isPlaying || (progress !== undefined && progress > 0)) && (
+        <div 
+          className="absolute bottom-0 left-0 right-0 h-3 group/progress cursor-pointer z-20"
+          onClick={(e) => {
+            e.stopPropagation()
+            const rect = e.currentTarget.getBoundingClientRect()
+            const percent = ((e.clientX - rect.left) / rect.width) * 100
+            onPlayPause?.({
+              type: 'seek',
+              seekPercent: percent,
+              stopPropagation: () => {}
+            } as any)
+          }}
+        >
+          {/* 进度条背景 */}
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-700/30 group-hover/progress:h-1 transition-all duration-200" />
+          {/* 进度条填充 */}
+          <div 
+            className="absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 group-hover/progress:h-1 transition-all duration-200 shadow-lg shadow-purple-500/30"
+            style={{
+              width: `${progress || 0}%`,
+              transition: 'width 0.1s linear'
+            }}
+          />
+        </div>
+      )}
       {/* 背景渐变动画 */}
       <div className={cn(
         "absolute inset-0 rounded-lg opacity-0 transition-opacity duration-300",
@@ -129,27 +160,6 @@ const AudioRectangle = ({
         isSelected && "opacity-100"
       )} />
       
-      {/* 播放涟漪效果 */}
-      <AnimatePresence>
-        {isPlaying && (
-          <motion.div
-            className="absolute inset-0 rounded-lg"
-            initial={{ scale: 1, opacity: 0.8 }}
-            animate={{ 
-              scale: [1, 1.05, 1],
-              opacity: [0.8, 0.3, 0.8]
-            }}
-            exit={{ scale: 1, opacity: 0 }}
-            transition={{
-              duration: 2,
-              repeat: Infinity,
-              ease: "easeInOut"
-            }}
-          >
-            <div className="absolute inset-0 rounded-lg border-2 border-primary/40" />
-          </motion.div>
-        )}
-      </AnimatePresence>
       
       {/* 内容区域 */}
       <div className="relative z-10">
@@ -162,13 +172,14 @@ const AudioRectangle = ({
                 ? "bg-primary text-primary-foreground shadow-lg" 
                 : "bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary"
             )}
-            whileHover={{ rotate: 360 }}
-            transition={{ duration: 0.6 }}
+            onClick={onPlayPause}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
           >
             {isPlaying ? (
-              <Volume2 className="w-4 h-4" />
+              <Pause className="w-3 h-3" />
             ) : (
-              <FileAudio className="w-4 h-4" />
+              <Play className="w-3 h-3 ml-0.5" />
             )}
           </motion.div>
           
@@ -251,6 +262,8 @@ export function AudioProcessingPanel({
   const [ttsEmotionScale, setTtsEmotionScale] = useState(3)
   
   const audioRef = useRef<HTMLAudioElement>(null)
+  const [currentAudioTime, setCurrentAudioTime] = useState(0)
+  const [audioDuration, setAudioDuration] = useState(0)
 
   // 加载书籍的所有音频记录
   const loadAudioRecords = useCallback(async () => {
@@ -352,15 +365,30 @@ export function AudioProcessingPanel({
 
   // 选择音频
   const handleAudioSelect = (audio: AudioRecord) => {
+    const isNewAudio = selectedAudio?.id !== audio.id
+    
     setSelectedAudio(audio)
     setStage('uploaded')
     setSelectedRange(null) // 重置选择范围
     
+    // 如果正在播放其他音频，先停止
+    if (playingAudioId && playingAudioId !== audio.id) {
+      audioRef.current?.pause()
+      setPlayingAudioId(null)
+    }
+    
     // 获取音频时长
     if (audio.audio_url && audioRef.current) {
-      audioRef.current.src = audio.audio_url
+      // 只有切换到新音频时才更换源
+      if (isNewAudio) {
+        audioRef.current.src = audio.audio_url
+        audioRef.current.currentTime = 0
+        setCurrentAudioTime(0)
+      }
       audioRef.current.onloadedmetadata = () => {
-        // 可以在这里更新音频时长到数据库
+        if (audioRef.current) {
+          setAudioDuration(audioRef.current.duration)
+        }
       }
     }
   }
@@ -368,6 +396,12 @@ export function AudioProcessingPanel({
   // 开始选择语境块
   const startBlockSelection = async () => {
     if (!selectedAudio) return
+
+    // 停止当前播放
+    if (playingAudioId) {
+      audioRef.current?.pause()
+      setPlayingAudioId(null)
+    }
 
     setStage('selecting_start')
     
@@ -380,10 +414,45 @@ export function AudioProcessingPanel({
     }))
   }
 
+  // 试听音频 - 播放/暂停（保持进度）
+  const startAudioPreview = useCallback(() => {
+    if (!selectedAudio || !audioRef.current) {
+      toast.error('请先选择音频', {
+        duration: 2000,
+        position: 'top-center'
+      })
+      return
+    }
+
+    // 如果正在播放当前音频，则暂停（保持进度）
+    if (playingAudioId === selectedAudio.id) {
+      audioRef.current.pause()
+      setPlayingAudioId(null)
+    } else {
+      // 恢复播放（从上次暂停的位置继续）
+      setPlayingAudioId(selectedAudio.id)
+      audioRef.current.play().catch(error => {
+        console.error('播放失败:', error)
+        toast.error('播放失败，请重试', {
+          duration: 2000,
+          position: 'top-center'
+        })
+        setPlayingAudioId(null)
+      })
+    }
+  }, [selectedAudio, playingAudioId])
+
   // 开始TTS选择
   const startTTSSelection = useCallback(() => {
     console.log('🎤 TTS选择开始，当前stage:', stage)
     console.log('🎤 selectedAudio:', selectedAudio)
+    
+    // 停止当前播放
+    if (playingAudioId) {
+      audioRef.current?.pause()
+      setPlayingAudioId(null)
+    }
+    
     setStage('tts_selecting')
     console.log('🎤 设置stage为tts_selecting')
     setTtsSelectedBlocks([])
@@ -2189,7 +2258,22 @@ export function AudioProcessingPanel({
                             audio={audio}
                             isSelected={selectedAudio?.id === audio.id}
                             isPlaying={playingAudioId === audio.id}
+                            progress={selectedAudio?.id === audio.id && audioDuration ? (currentAudioTime / audioDuration) * 100 : 0}
                             onClick={() => handleAudioSelect(audio)}
+                            onPlayPause={(e) => {
+                              e.stopPropagation()
+                              if (selectedAudio?.id !== audio.id) {
+                                handleAudioSelect(audio)
+                              }
+                              if (!audioRef.current) return
+                              if (playingAudioId === audio.id) {
+                                audioRef.current.pause()
+                                setPlayingAudioId(null)
+                              } else {
+                                audioRef.current.play()
+                                setPlayingAudioId(audio.id)
+                              }
+                            }}
                           />
                         </motion.div>
                       ))
@@ -2255,15 +2339,24 @@ export function AudioProcessingPanel({
                     <div className="flex gap-2">
                       {!selectedRange ? (
                         <>
-                          {/* TTS生成音频按钮 */}
+                          {/* 试听音频按钮 */}
                           <button className="bg-slate-800 no-underline group cursor-pointer relative shadow-2xl shadow-zinc-900 rounded-full p-px text-xs font-semibold leading-6 text-white inline-block flex-1"
-                                  onClick={startTTSSelection}>
+                                  onClick={startAudioPreview}>
                             <span className="absolute inset-0 overflow-hidden rounded-full">
                               <span className="absolute inset-0 rounded-full bg-[image:radial-gradient(75%_100%_at_50%_0%,rgba(59,130,246,0.6)_0%,rgba(59,130,246,0)_75%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
                             </span>
                             <div className="relative flex space-x-2 items-center z-10 rounded-full bg-zinc-950 py-1.5 px-3 ring-1 ring-white/10 justify-center">
-                              <Volume2 className="w-3 h-3" />
-                              <span>TTS生成音频</span>
+                              {playingAudioId === selectedAudio?.id ? (
+                                <>
+                                  <Pause className="w-3 h-3" />
+                                  <span>暂停播放</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Play className="w-3 h-3" />
+                                  <span>试听音频</span>
+                                </>
+                              )}
                             </div>
                             <span className="absolute -bottom-0 left-[1.125rem] h-px w-[calc(100%-2.25rem)] bg-gradient-to-r from-blue-400/0 via-blue-400/90 to-blue-400/0 transition-opacity duration-500 group-hover:opacity-40" />
                           </button>
@@ -2344,7 +2437,59 @@ export function AudioProcessingPanel({
                           audio={audio}
                           isSelected={selectedAudio?.id === audio.id}
                           isPlaying={playingAudioId === audio.id}
+                          progress={playingAudioId === audio.id && audioDuration ? (currentAudioTime / audioDuration) * 100 : 0}
                           onClick={() => handleAudioSelect(audio)}
+                          onPlayPause={(e: any) => {
+                            // 处理进度条点击
+                            if (e.type === 'seek' && e.seekPercent !== undefined) {
+                              if (selectedAudio?.id !== audio.id) {
+                                handleAudioSelect(audio)
+                                setTimeout(() => {
+                                  if (audioRef.current && audioDuration) {
+                                    const newTime = (e.seekPercent / 100) * audioDuration
+                                    audioRef.current.currentTime = newTime
+                                    setCurrentAudioTime(newTime)
+                                    audioRef.current.play()
+                                    setPlayingAudioId(audio.id)
+                                  }
+                                }, 100)
+                              } else if (audioRef.current && audioDuration) {
+                                const newTime = (e.seekPercent / 100) * audioDuration
+                                audioRef.current.currentTime = newTime
+                                setCurrentAudioTime(newTime)
+                                if (playingAudioId !== audio.id) {
+                                  audioRef.current.play()
+                                  setPlayingAudioId(audio.id)
+                                }
+                              }
+                              return
+                            }
+                            
+                            // 处理播放/暂停按钮点击
+                            e.stopPropagation()
+                            
+                            if (selectedAudio?.id !== audio.id) {
+                              // 切换到新音频
+                              handleAudioSelect(audio)
+                              setTimeout(() => {
+                                if (audioRef.current) {
+                                  audioRef.current.currentTime = 0
+                                  audioRef.current.play()
+                                  setPlayingAudioId(audio.id)
+                                }
+                              }, 100)
+                            } else if (!audioRef.current) {
+                              return
+                            } else if (playingAudioId === audio.id) {
+                              // 暂停当前音频（保持进度）
+                              audioRef.current.pause()
+                              setPlayingAudioId(null)
+                            } else {
+                              // 恢复播放当前音频（从上次位置）
+                              audioRef.current.play()
+                              setPlayingAudioId(audio.id)
+                            }
+                          }}
                         />
                       </motion.div>
                     ))}
@@ -2851,7 +2996,22 @@ export function AudioProcessingPanel({
                             audio={audio}
                             isSelected={selectedAudio?.id === audio.id}
                             isPlaying={playingAudioId === audio.id}
+                            progress={selectedAudio?.id === audio.id && audioDuration ? (currentAudioTime / audioDuration) * 100 : 0}
                             onClick={() => handleAudioSelect(audio)}
+                            onPlayPause={(e) => {
+                              e.stopPropagation()
+                              if (selectedAudio?.id !== audio.id) {
+                                handleAudioSelect(audio)
+                              }
+                              if (!audioRef.current) return
+                              if (playingAudioId === audio.id) {
+                                audioRef.current.pause()
+                                setPlayingAudioId(null)
+                              } else {
+                                audioRef.current.play()
+                                setPlayingAudioId(audio.id)
+                              }
+                            }}
                           />
                         </motion.div>
                       ))
@@ -3067,7 +3227,7 @@ export function AudioProcessingPanel({
               
               <Button
                 variant="outline"
-                className="h-9 text-xs border-gray-600"
+                className="h-9 text-xs border-gray-600 hover:bg-gradient-to-r hover:from-red-600/20 hover:to-orange-600/20 hover:border-red-500/50 transition-all duration-200"
                 onClick={() => {
                   setStage('idle')
                   setTtsSelectedBlocks([])
@@ -3241,6 +3401,23 @@ export function AudioProcessingPanel({
         ref={audioRef}
         src={selectedAudio?.audio_url}
         preload="metadata"
+        onTimeUpdate={() => {
+          if (audioRef.current) {
+            setCurrentAudioTime(audioRef.current.currentTime)
+          }
+        }}
+        onLoadedMetadata={() => {
+          if (audioRef.current) {
+            setAudioDuration(audioRef.current.duration)
+          }
+        }}
+        onEnded={() => {
+          setPlayingAudioId(null)
+          toast.info('播放完成', {
+            duration: 1500,
+            position: 'top-center'
+          })
+        }}
       />
       
       <div className="p-4">

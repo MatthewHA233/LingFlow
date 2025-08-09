@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { useSession } from '@/hooks/use-session'
 import { getVoicesByCategory, getVoiceCategories, getVoiceInfo, loadVoicesFromCSV } from '@/types/tts'
@@ -111,6 +112,9 @@ export default function TTSTestPage() {
   // 试听功能状态
   const [playingVoice, setPlayingVoice] = useState<string>('')
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null)
+  
+  // 文件命名选项
+  const [usePreviewNaming, setUsePreviewNaming] = useState(false)
 
   // 示例文本
   const exampleTexts = [
@@ -283,13 +287,52 @@ export default function TTSTestPage() {
 
     console.log('开始下载音频:', audioUrl) // 调试信息
     try {
+      let fileName: string
+      const voiceInfo = getVoiceInfo(voiceType)
+      
+      if (usePreviewNaming) {
+        // 使用试听样本命名规则（不带时间戳）
+        if (voiceInfo) {
+          // 如果有情感，添加情感后缀
+          if (enableEmotion && emotion && emotion !== 'neutral') {
+            const emotionLabel = emotionLabels[emotion] || emotion
+            fileName = `${voiceType}_${voiceInfo.name}_${emotionLabel}.${encoding}`
+          } else {
+            fileName = `${voiceType}_${voiceInfo.name}.${encoding}`
+          }
+        } else {
+          fileName = `${voiceType}.${encoding}`
+        }
+      } else {
+        // 原始命名规则（带时间戳）
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
+        
+        let baseFileName: string
+        if (voiceInfo) {
+          // 如果有情感，添加情感后缀
+          if (enableEmotion && emotion && emotion !== 'neutral') {
+            const emotionLabel = emotionLabels[emotion] || emotion
+            baseFileName = `${voiceType}_${voiceInfo.name}_${emotionLabel}`
+          } else {
+            baseFileName = `${voiceType}_${voiceInfo.name}`
+          }
+        } else {
+          baseFileName = voiceType
+        }
+        
+        fileName = `${baseFileName}_${timestamp}.${encoding}`
+      }
+      
+      // 清理文件名中的特殊字符
+      fileName = fileName.replace(/[<>:"/\\|?*]/g, '_')
+      
       const a = document.createElement('a')
       a.href = audioUrl
-      a.download = `tts_bigmodel_${Date.now()}.${encoding}`
+      a.download = fileName
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
-      console.log('下载完成') // 调试信息
+      console.log('下载完成，文件名:', fileName) // 调试信息
     } catch (err) {
       console.error('下载错误:', err) // 调试信息
       setError('下载失败')
@@ -303,9 +346,9 @@ export default function TTSTestPage() {
     }
   }
 
-  // 试听音色功能 - 使用CSV中的URL
-  const handlePlayVoiceDemo = async (voiceType: string, demoUrl?: string) => {
-    const playKey = demoUrl ? `${voiceType}-${demoUrl}` : voiceType
+  // 试听音色功能 - 使用OSS CDN
+  const handlePlayVoiceDemo = async (voiceType: string, demoIndex: number = 0) => {
+    const playKey = `${voiceType}-${demoIndex}`
     
     // 如果点击的是正在播放的音色，停止播放
     if (playingVoice === playKey) {
@@ -328,22 +371,51 @@ export default function TTSTestPage() {
     setPlayingVoice(playKey)
 
     try {
-      // 如果没有传入URL，从音色信息中获取
-      if (!demoUrl) {
-        const voiceInfo = getVoiceInfo(voiceType)
-        if (!voiceInfo?.demoUrls || voiceInfo.demoUrls.length === 0) {
-          console.warn(`音色 ${voiceType} 没有试听URL`)
-          setPlayingVoice('')
-          return
-        }
-        demoUrl = voiceInfo.demoUrls[0].url
-      }
-      
-      if (!demoUrl) {
-        console.warn(`音色没有试听URL`)
+      const voiceInfo = getVoiceInfo(voiceType)
+      if (!voiceInfo) {
+        console.warn(`找不到音色信息: ${voiceType}`)
         setPlayingVoice('')
         return
       }
+      
+      // 构建OSS CDN URL
+      const OSS_DOMAIN = 'https://assets.lingflow.cn'
+      let fileName: string
+      
+      // 获取demo信息
+      const demoInfo = voiceInfo.demoUrls && voiceInfo.demoUrls[demoIndex] 
+        ? voiceInfo.demoUrls[demoIndex] 
+        : voiceInfo.demoUrls?.[0]
+      
+      if (demoInfo) {
+        // 检查是否为日西语等特殊音色
+        if (demoInfo.name && (
+          /[\u3040-\u309f\u30a0-\u30ff]/.test(demoInfo.name) || // 日文
+          demoInfo.name.includes('Javier') || 
+          demoInfo.name.includes('Álvaro') ||
+          demoInfo.name.includes('Roberto') ||
+          demoInfo.name.includes('Esmeralda')
+        )) {
+          // 日西语音色：直接使用demo name作为文件名
+          fileName = `${voiceType}_${demoInfo.name}`
+        } else if (voiceInfo.demoUrls && voiceInfo.demoUrls.length > 1) {
+          // 中英双语音色：直接使用demo的名称
+          fileName = `${voiceType}_${demoInfo.name}`
+        } else {
+          // 单语音色：只用音色名
+          fileName = `${voiceType}_${voiceInfo.name}`
+        }
+      } else {
+        // 默认情况
+        fileName = `${voiceType}_${voiceInfo.name}`
+      }
+      
+      // 处理文件名（移除特殊字符）
+      fileName = fileName.replace(/[<>:"/\\|?*]/g, '_')
+      
+      // 判断文件扩展名（日西语音色可能是wav）
+      const ext = demoInfo?.url && demoInfo.url.includes('.wav') ? '.wav' : '.mp3'
+      const demoUrl = `${OSS_DOMAIN}/tts_voice_demos/${fileName}${ext}`
       
       // 创建音频对象并播放
       const audio = new Audio(demoUrl)
@@ -563,17 +635,17 @@ export default function TTSTestPage() {
                                 }`}>
                                   {voice.name}
                                 </h3>
-                                {/* 试听按钮 - 使用CSV中的URL */}
+                                {/* 试听按钮 - 使用OSS CDN */}
                                 {voice.demoUrls && voice.demoUrls.length > 0 && (
                                   <>
                                     {voice.demoUrls.map((demo, index) => {
-                                      const playKey = `${voice.id}-${demo.url}`
+                                      const playKey = `${voice.id}-${index}`
                                       return (
                                         <button
                                           key={index}
                                           onClick={(e) => {
                                             e.stopPropagation()
-                                            handlePlayVoiceDemo(voice.id, demo.url)
+                                            handlePlayVoiceDemo(voice.id, index)
                                           }}
                                           className={`w-6 h-6 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 ${
                                             playingVoice === playKey
@@ -673,14 +745,30 @@ export default function TTSTestPage() {
                     </Button>
 
                     {audioUrl && (
-                      <Button
-                        variant="outline"
-                        onClick={handleDownload}
-                        className="h-12 px-6 border-2 border-gray-600 bg-gray-700 text-gray-200 hover:border-green-500 hover:bg-green-900/50 transition-colors"
-                      >
-                        <Download className="h-4 w-4 mr-2" />
-                        下载
-                      </Button>
+                      <div className="flex items-center gap-4">
+                        <Button
+                          variant="outline"
+                          onClick={handleDownload}
+                          className="h-12 px-6 border-2 border-gray-600 bg-gray-700 text-gray-200 hover:border-green-500 hover:bg-green-900/50 transition-colors"
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          下载
+                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="usePreviewNaming"
+                            checked={usePreviewNaming}
+                            onCheckedChange={(checked) => setUsePreviewNaming(!!checked)}
+                            className="border-gray-600 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                          />
+                          <label
+                            htmlFor="usePreviewNaming"
+                            className="text-sm text-gray-300 cursor-pointer select-none"
+                          >
+                            试听样本命名
+                          </label>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </CardContent>

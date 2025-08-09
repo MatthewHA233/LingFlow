@@ -16,7 +16,8 @@
       "Bash(cut:*)",
       "Bash(cmd /c:*)",
       "WebFetch(domain:mcs.volceapplog.com)",
-      "WebFetch(domain:lf3-static.bytednsdoc.com)"
+      "WebFetch(domain:lf3-static.bytednsdoc.com)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": []
   }

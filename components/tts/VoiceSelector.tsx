@@ -1,11 +1,16 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { CheckCircle, X, Mic, Sparkles, Globe, User, Volume2, Zap, Loader2, Play, Pause } from 'lucide-react';
+import { CheckCircle, X, Mic, Sparkles, Globe, User, Volume2, Zap, Loader2, Play, Pause, UserCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { getVoicesByCategory, getVoiceCategories, getVoiceInfo, VoiceInfo, loadVoicesFromCSV, VoiceCategory, getVoicesByLanguageWithEmotionFirst } from '@/types/tts';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface VoiceSelectorProps {
   selectedVoice: string;
@@ -191,20 +196,56 @@ export function VoiceSelector({ selectedVoice, onSelect, onClose }: VoiceSelecto
       currentAudio.currentTime = 0;
     }
     
-    // 获取试听URL
-    let demoUrl: string | undefined;
-    if (voiceInfo.demoUrls && voiceInfo.demoUrls.length > 0) {
-      if (demoIndex < voiceInfo.demoUrls.length) {
-        demoUrl = voiceInfo.demoUrls[demoIndex].url;
-      } else {
-        demoUrl = voiceInfo.demoUrls[0].url;
-      }
+    // 构建OSS CDN URL
+    const OSS_DOMAIN = 'https://assets.lingflow.cn';
+    let demoUrl: string;
+    let fileName: string;
+    
+    // 根据试听文本获取对应的名称
+    let demoName: string = voiceInfo.name;
+    if (Array.isArray(voiceInfo.demoText) && voiceInfo.demoText[demoIndex]) {
+      demoName = voiceInfo.demoText[demoIndex].name;
     }
     
-    if (!demoUrl) {
-      console.warn(`音色 ${voiceInfo.name} 没有试听URL`);
-      return;
+    // 检查是否为日西语等特殊音色（name中包含日文或特殊字符）
+    if (demoName && (
+      /[\u3040-\u309f\u30a0-\u30ff]/.test(demoName) || // 日文
+      demoName.includes('Javier') || 
+      demoName.includes('Álvaro') ||
+      demoName.includes('Roberto') ||
+      demoName.includes('Esmeralda')
+    )) {
+      // 日西语音色：直接使用demo name作为文件名
+      fileName = `${voiceInfo.id}_${demoName}`;
+    } else if (Array.isArray(voiceInfo.demoText) && voiceInfo.demoText.length > 1) {
+      // 中英双语音色：直接使用demo的名称
+      fileName = `${voiceInfo.id}_${demoName}`;
+    } else {
+      // 单语音色：只用音色名
+      fileName = `${voiceInfo.id}_${voiceInfo.name}`;
     }
+    
+    // 处理文件名（移除特殊字符）
+    fileName = fileName.replace(/[<>:"/\\|?*]/g, '_');
+    
+    // 判断文件扩展名（日西语音色可能是wav，通过demoUrls判断）
+    let ext = '.mp3';
+    if (voiceInfo.demoUrls && voiceInfo.demoUrls[demoIndex]) {
+      const demoInfo = voiceInfo.demoUrls[demoIndex];
+      ext = demoInfo.url && demoInfo.url.includes('.wav') ? '.wav' : '.mp3';
+    } else if (demoName && (
+      /[\u3040-\u309f\u30a0-\u30ff]/.test(demoName) ||
+      demoName.includes('Javier') || 
+      demoName.includes('Álvaro') ||
+      demoName.includes('Roberto') ||
+      demoName.includes('Esmeralda')
+    )) {
+      // 日西语音色通常是wav
+      ext = '.wav';
+    }
+    
+    // 构建完整URL
+    demoUrl = `${OSS_DOMAIN}/tts_voice_demos/${fileName}${ext}`;
     
     // 设置新的播放状态和试听文本
     setPlayingVoice(playKey);
@@ -371,7 +412,7 @@ export function VoiceSelector({ selectedVoice, onSelect, onClose }: VoiceSelecto
           variant="ghost"
           size="icon"
           onClick={handleClose}
-          className="text-gray-400 hover:text-white h-5 w-5"
+          className="h-5 w-5 text-gray-400 hover:text-white transition-all duration-200 hover:bg-gradient-to-r hover:from-red-500/20 hover:to-pink-500/20 hover:border hover:border-red-500/30"
         >
           <X className="h-3 w-3" />
         </Button>
@@ -414,82 +455,95 @@ export function VoiceSelector({ selectedVoice, onSelect, onClose }: VoiceSelecto
             
             const isSelected = selectedVoice === voice.id;
             const hasEmotions = voiceInfo.emotions && voiceInfo.emotions.length > 0;
+            const isMale = voiceInfo.gender === 'male';
             
             return (
               <div
                 key={voice.uniqueKey || `${selectedLanguage}-${index}`}
                 className={cn(
-                  "p-2 rounded-md cursor-pointer transition-all duration-200 border relative overflow-hidden",
-                  isSelected
-                    ? hasEmotions 
-                      ? "bg-gradient-to-br from-purple-600/30 via-pink-600/30 to-blue-600/30 border-purple-400/50"
-                      : "bg-blue-600/20 border-blue-500/30"
-                    : hasEmotions
-                      ? "bg-gradient-to-br from-purple-900/20 via-pink-900/20 to-blue-900/20 border-purple-700/30 hover:from-purple-800/30 hover:via-pink-800/30 hover:to-blue-800/30 hover:border-purple-600/40"
-                      : "hover:bg-white/5 border-gray-800 hover:border-gray-700"
+                  "p-2 rounded-md cursor-pointer transition-all duration-200 border-2 relative overflow-hidden",
+                  // 多情感音色的特殊样式
+                  hasEmotions ? (
+                    isSelected
+                      ? "bg-gradient-to-br from-purple-600/30 via-pink-600/30 to-blue-600/30 border-purple-400"
+                      : "bg-gradient-to-br from-purple-900/20 via-pink-900/20 to-blue-900/20 border-purple-700/30 hover:from-purple-800/30 hover:via-pink-800/30 hover:to-blue-800/30 hover:border-purple-600/40"
+                  ) : (
+                    // 普通音色根据性别调整边框颜色
+                    isSelected
+                      ? isMale
+                        ? "bg-blue-600/10 border-blue-500"
+                        : "bg-pink-600/10 border-pink-500"
+                      : isMale
+                        ? "hover:bg-blue-500/5 border-blue-700/40 hover:border-blue-500/60"
+                        : "hover:bg-pink-500/5 border-pink-700/40 hover:border-pink-500/60"
+                  )
                 )}
                 onClick={() => onSelect(voice.id)}
               >
-                {/* 头像和试听按钮放在右上角 */}
-                <div className="absolute top-1 right-1 flex items-center gap-1">
-                  {/* 头像 */}
-                  <Avatar className="h-6 w-6">
-                    <AvatarFallback 
-                      className={cn(
-                        "text-[9px] font-medium",
-                        getAvatarInfo(voiceInfo).bgColor,
-                        getAvatarInfo(voiceInfo).textColor
-                      )}
-                    >
-                      {getAvatarInfo(voiceInfo).initial}
-                    </AvatarFallback>
-                  </Avatar>
-                  
-                  {/* 试听按钮 - 处理双语音色 */}
-                  {voiceInfo.demoUrls && voiceInfo.demoUrls.length > 0 && (
+                {/* 试听按钮放在右上角 */}
+                <div className="absolute top-1 right-1">
+                  {/* 试听按钮 - 根据是否有试听文本来判断 */}
+                  {voiceInfo.demoText && (
                     <>
-                      {voiceInfo.demoUrls.length > 1 && (selectedLanguage === 'american' || selectedLanguage === 'british' || selectedLanguage === 'australian') ? (
+                      {Array.isArray(voiceInfo.demoText) && voiceInfo.demoText.length > 1 && (selectedLanguage === 'american' || selectedLanguage === 'british' || selectedLanguage === 'australian') ? (
                         // 双语音色在英语分类下：显示两个按钮
                         <div className="flex gap-1">
-                          {voiceInfo.demoUrls.slice(0, 2).map((demo, idx) => {
+                          {voiceInfo.demoText.slice(0, 2).map((demo, idx) => {
                             const isPlaying = playingVoice === `${voice.id}-${idx}`;
                             const isChineseDemo = /[\u4e00-\u9fa5]/.test(demo.name);
                             return (
-                              <Button
-                                key={idx}
-                                variant="ghost"
-                                size="icon"
-                                className={cn(
-                                  "h-7 w-7 p-0 hover:bg-white/10 relative transition-all",
-                                  isChineseDemo ? "" : "border border-gray-600/50",
-                                  isPlaying && "bg-blue-500/10 animate-pulse"
-                                )}
-                                onClick={(e) => handlePlayDemo(e, voiceInfo, idx)}
-                                title={demo.name}
-                              >
-                                <div className={cn(
-                                  "transition-transform duration-200",
-                                  isPlaying && "scale-110"
-                                )}>
-                                  {isPlaying ? (
-                                    <Pause className="h-4 w-4 text-blue-400" />
-                                  ) : (
-                                    <Play className={cn(
-                                      "h-4 w-4 transition-colors hover:text-white",
-                                      isChineseDemo ? "text-gray-100" : "text-blue-400"
-                                    )} />
-                                  )}
-                                </div>
-                                {/* 小标签区分中英文 */}
-                                <span className={cn(
-                                  "absolute -bottom-1 -right-1 text-[7px] font-bold px-0.5 rounded",
-                                  isChineseDemo 
-                                    ? "text-gray-400 bg-gray-800/50" 
-                                    : "text-blue-400 bg-blue-900/50"
-                                )}>
-                                  {isChineseDemo ? "中" : "英"}
-                                </span>
-                              </Button>
+                              <TooltipProvider key={idx} delayDuration={0}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className={cn(
+                                        "h-7 w-7 p-0 hover:bg-white/10 relative transition-all",
+                                        !isChineseDemo && (isMale ? "border border-blue-600/50" : "border border-pink-600/50"),
+                                        isPlaying && (isMale ? "bg-blue-500/10" : "bg-pink-500/10"),
+                                        isPlaying && "animate-pulse"
+                                      )}
+                                      onClick={(e) => handlePlayDemo(e, voiceInfo, idx)}
+                                    >
+                                      <div className={cn(
+                                        "transition-transform duration-200",
+                                        isPlaying && "scale-110"
+                                      )}>
+                                        {isPlaying ? (
+                                          <Pause className={cn(
+                                            "h-4 w-4",
+                                            isChineseDemo ? "text-gray-100" : (isMale ? "text-blue-400" : "text-pink-400")
+                                          )} />
+                                        ) : (
+                                          <Play className={cn(
+                                            "h-4 w-4 transition-colors",
+                                            isChineseDemo ? "text-gray-100" : (isMale ? "text-blue-400" : "text-pink-400")
+                                          )} />
+                                        )}
+                                      </div>
+                                      {/* 小标签区分中英文 */}
+                                      <span className={cn(
+                                        "absolute -bottom-1 -right-1 text-[7px] font-bold px-0.5",
+                                        isChineseDemo 
+                                          ? "text-gray-400" 
+                                          : (isMale ? "text-blue-400" : "text-pink-400")
+                                      )}>
+                                        {isChineseDemo ? "中" : "英"}
+                                      </span>
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent 
+                                    side="top" 
+                                    className="bg-gray-800/95 backdrop-blur-sm border-gray-700 text-gray-200"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <Volume2 className="h-3.5 w-3.5 text-purple-400" />
+                                      <span className="text-xs font-medium">{demo.name} 试听</span>
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             );
                           })}
                         </div>
@@ -498,7 +552,7 @@ export function VoiceSelector({ selectedVoice, onSelect, onClose }: VoiceSelecto
                         (() => {
                           // 计算当前语言分类应该使用的 demoIndex
                           let demoIndex = 0;
-                          if (voiceInfo.demoUrls && voiceInfo.demoUrls.length > 1) {
+                          if (Array.isArray(voiceInfo.demoText) && voiceInfo.demoText.length > 1) {
                             if (selectedLanguage === 'japanese') {
                               demoIndex = 0;
                             } else if (selectedLanguage === 'spanish') {
@@ -508,27 +562,55 @@ export function VoiceSelector({ selectedVoice, onSelect, onClose }: VoiceSelecto
                           const playKey = `${voice.id}-${demoIndex}`;
                           const isPlaying = playingVoice === playKey;
                           
+                          // 获取要显示的音色名称
+                          let displayName = voiceInfo.name;
+                          if (Array.isArray(voiceInfo.demoText) && voiceInfo.demoText[demoIndex]) {
+                            displayName = voiceInfo.demoText[demoIndex].name;
+                          }
+                          
                           return (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className={cn(
-                                "h-7 w-7 p-0 hover:bg-white/10 transition-all",
-                                isPlaying && "bg-blue-500/10 animate-pulse"
-                              )}
-                              onClick={(e) => handlePlayDemo(e, voiceInfo, demoIndex)}
-                            >
-                              <div className={cn(
-                                "transition-transform duration-200",
-                                isPlaying && "scale-110"
-                              )}>
-                                {isPlaying ? (
-                                  <Pause className="h-4 w-4 text-blue-400" />
-                                ) : (
-                                  <Play className="h-4 w-4 text-blue-400 hover:text-white transition-colors" />
-                                )}
-                              </div>
-                            </Button>
+                            <TooltipProvider delayDuration={0}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className={cn(
+                                      "h-7 w-7 p-0 hover:bg-white/10 transition-all",
+                                      isPlaying && (isMale ? "bg-blue-500/10" : "bg-pink-500/10"),
+                                      isPlaying && "animate-pulse"
+                                    )}
+                                    onClick={(e) => handlePlayDemo(e, voiceInfo, demoIndex)}
+                                  >
+                                    <div className={cn(
+                                      "transition-transform duration-200",
+                                      isPlaying && "scale-110"
+                                    )}>
+                                      {isPlaying ? (
+                                        <Pause className={cn(
+                                          "h-4 w-4",
+                                          isMale ? "text-blue-400" : "text-pink-400"
+                                        )} />
+                                      ) : (
+                                        <Play className={cn(
+                                          "h-4 w-4",
+                                          isMale ? "text-blue-400" : "text-pink-400"
+                                        )} />
+                                      )}
+                                    </div>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent 
+                                  side="top" 
+                                  className="bg-gray-800/95 backdrop-blur-sm border-gray-700 text-gray-200"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <Volume2 className="h-3.5 w-3.5 text-purple-400" />
+                                    <span className="text-xs font-medium">{displayName} 试听</span>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           );
                         })()
                       )}
@@ -592,10 +674,28 @@ export function VoiceSelector({ selectedVoice, onSelect, onClose }: VoiceSelecto
                   </Badge>
                 )}
                 
-                {/* 选中标记移到左下角 */}
-                {isSelected && (
-                  <CheckCircle className="h-3 w-3 text-blue-500 absolute bottom-1.5 right-1.5" />
-                )}
+                {/* 右下角图标区域 */}
+                <div className="absolute bottom-1 right-1 flex items-center gap-1">
+                  {/* 选中标记在左 */}
+                  {isSelected && (
+                    <CheckCircle className={cn(
+                      "h-3 w-3",
+                      isMale ? "text-blue-500" : "text-pink-500"
+                    )} />
+                  )}
+                  {/* 性别符号在右 */}
+                  {isMale ? (
+                    <svg className="h-3.5 w-3.5 text-blue-400" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <circle cx="10" cy="14" r="5" stroke="currentColor" strokeWidth="2"/>
+                      <path d="M13.5 10.5L18 6M18 6H14M18 6V10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  ) : (
+                    <svg className="h-3.5 w-3.5 text-pink-400" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <circle cx="12" cy="9" r="5" stroke="currentColor" strokeWidth="2"/>
+                      <path d="M12 14V19M12 19H9M12 19H15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </div>
               </div>
             );
           })}
