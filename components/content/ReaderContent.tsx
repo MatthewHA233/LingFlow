@@ -2529,7 +2529,7 @@ export function ReaderContent({ book, targetBlockId }: ReaderContentProps) {
                 onClick={() => {
                   console.log('点击TTS生成按钮 - 启动TTS选择流程');
                   // 触发AudioProcessingPanel的TTS选择流程
-                  window.dispatchEvent(new CustomEvent('start-tts-selection', {
+                  window.dispatchEvent(new CustomEvent('request-tts-generation', {
                     detail: { bookId: book.id }
                   }));
                   // 打开音频处理面板

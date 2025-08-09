@@ -1,287 +1,285 @@
-﻿场景,音色名称,voice_type,语种,支持的情感,上线业务方,试听文本
-多情感,北京小爷（多情感）,zh_male_beijingxiaoye_emo_v2_mars_bigtts,中文,生气，惊讶，恐惧，激动，冷漠，中性,,
-多情感,柔美女友（多情感）,zh_female_roumeinvyou_emo_v2_mars_bigtts,中文,开心，悲伤，生气，惊讶，恐惧，厌恶，激动，冷漠，中性,,
-多情感,阳光青年（多情感）,zh_male_yangguangqingnian_emo_v2_mars_bigtts,中文,开心，悲伤，生气，恐惧，激动，冷漠，中性,,
-多情感,魅力女友（多情感）,zh_female_meilinvyou_emo_v2_mars_bigtts,中文,悲伤，恐惧，中性,,
-多情感,爽快思思（多情感）,zh_female_shuangkuaisisi_emo_v2_mars_bigtts,中文,开心，悲伤，生气，惊讶，激动，冷漠，中性,,
-多情感,甜心小美（多情感）,zh_female_tianxinxiaomei_emo_v2_mars_bigtts,中文,悲伤，恐惧，厌恶，中性,剪映,
-多情感,高冷御姐（多情感）,zh_female_gaolengyujie_emo_v2_mars_bigtts,中文,开心，悲伤，生气，惊讶，恐惧，厌恶，激动，冷漠，中性,剪映,
-多情感,傲娇霸总（多情感）,zh_male_aojiaobazong_emo_v2_mars_bigtts,中文,中性，开心，愤怒，厌恶,剪映,
-多情感,广州德哥（多情感）,zh_male_guangzhoudege_emo_mars_bigtts,中文,生气，恐惧，中性,剪映,
-多情感,京腔侃爷（多情感）,zh_male_jingqiangkanye_emo_mars_bigtts,中文,开心，生气，惊讶，厌恶，中性,剪映,
-多情感,邻居阿姨（多情感）,zh_female_linjuayi_emo_v2_mars_bigtts,中文,中性，愤怒，冷漠，悲伤，惊讶,剪映,
-多情感,优柔公子（多情感）,zh_male_yourougongzi_emo_v2_mars_bigtts,中文,开心，生气，恐惧，厌恶，激动，中性，悲伤,剪映,
-多情感,儒雅男友（多情感）,zh_male_ruyayichen_emo_v2_mars_bigtts,中文,开心，悲伤，生气，恐惧，激动，冷漠，中性,剪映,
-多情感,俊朗男友（多情感）,zh_male_junlangnanyou_emo_v2_mars_bigtts,中文,开心，悲伤，生气，惊讶，恐惧，中性,剪映,
-多情感,冷酷哥哥（多情感）,zh_male_lengkugege_emo_v2_mars_bigtts,中文,生气，冷漠，恐惧，开心，厌恶，中性，悲伤，沮丧,,
-教育场景,Tina老师,zh_female_yingyujiaoyu_mars_bigtts,中，英式英语,,,
-客服场景,暖阳女声,zh_female_kefunvsheng_mars_bigtts,仅中文,,,
-通用场景,甜美桃子,zh_female_tianmeitaozi_mars_bigtts,中文,,,
-通用场景,Vivi,zh_female_vv_mars_bigtts,中文,,,
-通用场景,灿灿/Shiny,zh_female_cancan_mars_bigtts,中文，美式英语,,,"you seem a bit down. Let's look on the bright side！ There's always something good around the corner. A smile can change the world，so let's shine together and make it a better place."
-通用场景,清新女声,zh_female_qingxinnvsheng_mars_bigtts,中文,,,
-通用场景,爽快思思/Skye,zh_female_shuangkuaisisi_moon_bigtts,中文，美式英语,,豆包，Cici，web demo,
-通用场景,温暖阿虎/Alvin,zh_male_wennuanahu_moon_bigtts,中文，美式英语,,豆包，Cici,"So, what do you want to talk about？ Sports？Movies？ Music？ Or anything else that comes to mind. Let's have a great conversation！"
-通用场景,少年梓辛/Brayan,zh_male_shaonianzixin_moon_bigtts,中文，美式英语,,豆包，Cici，剪映,"How are you today？ I had a really cool day at school today. We had a great science class and I learned some fascinating stuff. And then I played basketball with my friends during the break, it was so much fun. What about you？"
-通用场景,知性女声,zh_female_zhixingnvsheng_mars_bigtts,中文,,,
-通用场景,清爽男大,zh_male_qingshuangnanda_mars_bigtts,中文,,豆包,
-通用场景,邻家女孩,zh_female_linjianvhai_moon_bigtts,中文,,豆包，Cici,
-通用场景,渊博小叔,zh_male_yuanboxiaoshu_moon_bigtts,中文,,豆包，Cici，剪映,
-通用场景,阳光青年,zh_male_yangguangqingnian_moon_bigtts,中文,,豆包，Cici，StoryAi,
-通用场景,甜美小源,zh_female_tianmeixiaoyuan_moon_bigtts,中文,,豆包,
-通用场景,清澈梓梓,zh_female_qingchezizi_moon_bigtts,中文,,豆包,
-通用场景,解说小明,zh_male_jieshuoxiaoming_moon_bigtts,中文,,豆包,
-通用场景,开朗姐姐,zh_female_kailangjiejie_moon_bigtts,中文,,豆包,
-通用场景,邻家男孩,zh_male_linjiananhai_moon_bigtts,中文,,豆包,
-通用场景,甜美悦悦,zh_female_tianmeiyueyue_moon_bigtts,中文,,豆包,
-通用场景,心灵鸡汤,zh_female_xinlingjitang_moon_bigtts,中文,,豆包,
-通用场景,知性温婉,ICL_zh_female_zhixingwenwan_tob,中文,,猫箱,
-通用场景,暖心体贴,ICL_zh_male_nuanxintitie_tob,中文,,猫箱,
-通用场景,温柔文雅,ICL_zh_female_wenrouwenya_tob,中文,,猫箱,
-通用场景,开朗轻快,ICL_zh_male_kailangqingkuai_tob,中文,,猫箱,
-通用场景,活泼爽朗,ICL_zh_male_huoposhuanglang_tob,中文,,猫箱,
-通用场景,率真小伙,ICL_zh_male_shuaizhenxiaohuo_tob,中文,,猫箱,
-通用场景,温柔小哥,zh_male_wenrouxiaoge_mars_bigtts,中文,,,
-通用场景,亲切女声,zh_female_qinqienvsheng_moon_bigtts,中文,,豆包,
-通用场景,机灵小伙,ICL_zh_male_shenmi_v1_tob,中文,,StoryAi,
-通用场景,元气甜妹,ICL_zh_female_wuxi_tob,中文,,StoryAi,
-通用场景,知心姐姐,ICL_zh_female_wenyinvsheng_v1_tob,中文,,StoryAi,
-通用场景,阳光阿辰,zh_male_qingyiyuxuan_mars_bigtts,中文,,,
-通用场景,快乐小东/Daniel,zh_male_xudong_conversation_wvae_bigtts,"中文，英式英语",,"豆包,Cici,web demo",
-通用场景,冷酷哥哥,ICL_zh_male_lengkugege_v1_tob,中文,,豆包,
-通用场景,纯澈女生,ICL_zh_female_feicui_v1_tob,中文,,StoryAi,
-通用场景,初恋女友,ICL_zh_female_yuxin_v1_tob,中文,,StoryAi,
-通用场景,贴心闺蜜,ICL_zh_female_xnx_tob,中文,,StoryAi,
-通用场景,温柔白月光,ICL_zh_female_yry_tob,中文,,StoryAi,
-通用场景,开朗学长,en_male_jason_conversation_wvae_bigtts,中文,,豆包,
-通用场景,魅力苏菲/Sophie,zh_female_sophie_conversation_wvae_bigtts,"中文，美式英语",,,
-通用场景,贴心妹妹,ICL_zh_female_yilin_tob,中文,,StoryAi,
-多语种,Smith,en_male_smith_mars_bigtts,英式英语,,,
-多语种,Anna,en_female_anna_mars_bigtts,英式英语,,,
-多语种,Adam,en_male_adam_mars_bigtts,美式英语,,,"I'm not afraid of challenges. I believe that with my determination and efforts, I can break through any difficulties and reach the peak of success. I'm ready to face whatever comes my way."
-多语种,Sarah,en_female_sarah_mars_bigtts,澳洲英语,,,
-多语种,Dryw,en_male_dryw_mars_bigtts,澳洲英语,,,
-多语种,かずね（和音）/Javier or Álvaro,multi_male_jingqiangkanye_moon_bigtts,日语，西语,,Cici,
-多语种,はるこ（晴子）/Esmeralda,multi_female_shuangkuaisisi_moon_bigtts,日语，西语,,Cici,
-多语种,ひろし（広志）/Roberto,multi_male_wanqudashu_moon_bigtts,日语，西语,,Cici,
-多语种,あけみ（朱美）,multi_female_gaolengyujie_moon_bigtts,日语,,Cici,
-多语种,Amanda,en_female_amanda_mars_bigtts,美式英语,,,"Page 12 foreshadowing the icepick murder – hear that bone-chilling wind through lace curtains？"
-多语种,Jackson,en_male_jackson_mars_bigtts,美式英语,,,"Yo squad turn it UP！ Glow sticks in the air. I wanna see mosh pits forming NOW！"
-多语种,Cartoon Chef,ICL_en_male_cc_sha_v1_tob,美式英语,,CC,"Become a master chef in Shawarma 93- Cartoon Chef - DM！ Cook shawarma like a pro and serve up fun！"
-多语种,ひかる（光）,multi_zh_male_youyoujunzi_moon_bigtts,日语,,Cici,
-多语种,Emily,en_female_emily_mars_bigtts,英式英语,,豆包,
-多语种,Lucas,zh_male_M100_conversation_wvae_bigtts,美式英语,,"豆包,Cici,web demo","Some souls are like constellations—even when they're far apart, their light still finds a way to connect. Maybe that's why I still feel your warmth, even on the coldest nights."
-多语种,Diana,multi_female_maomao_conversation_wvae_bigtts_spanish,西语,,Cici,
-多语种,Lucía,multi_male_M100_conversation_wvae_bigtts_spanish,西语,,Cici,
-多语种,Sofía,multi_female_sophie_conversation_wvae_bigtts_spanish,西语,,,
-多语种,Daníel,multi_male_xudong_conversation_wvae_bigtts_spanish,西语,,,
-多语种,さとみ（智美）,multi_female_sophie_conversation_wvae_bigtts_japanese,日语,,,
-多语种,まさお（正男）,multi_male_xudong_conversation_wvae_bigtts_japanese,日语,,,
-多语种,つき（月）,multi_female_maomao_conversation_wvae_bigtts_japanese,日语,,Cici,
-多语种,Daisy,en_female_dacey_conversation_wvae_bigtts,美式英语,,"豆包,Cici,web demo",
-多语种,Owen,en_male_charlie_conversation_wvae_bigtts,美式英语,,"豆包,Cici",
-多语种,Ethan,ICL_en_male_aussie_v1_tob,澳洲英语,,CC,
-多语种,Luna,en_female_sarah_new_conversation_wvae_bigtts,美式英语,,"豆包,Cici,web demo",
-多语种,Michael,ICL_en_male_michael_tob,美式英语,,豆包,
-多语种,Alastor,ICL_en_male_cc_alastor_tob,英式英语,,CC,
-多语种,Charlie,ICL_en_female_cc_cm_v1_tob,美式英语,,CC,
-多语种,Big Boogie,ICL_en_male_oogie2_tob,美式英语,,"TT,豆包",
-多语种,Frosty Man,ICL_en_male_frosty1_tob,美式英语,,"TT,豆包",
-多语种,The Grinch,ICL_en_male_grinch2_tob,美式英语,,"TT,豆包",
-多语种,Zayne,ICL_en_male_zayne_tob,美式英语,,CC,
-多语种,Jigsaw,ICL_en_male_cc_jigsaw_tob,美式英语,,CC,
-多语种,Chucky,ICL_en_male_cc_chucky_tob,美式英语,,CC,
-多语种,Clown Man,ICL_en_male_cc_penny_v1_tob,美式英语,,CC,
-多语种,Kevin McCallister,ICL_en_male_kevin2_tob,美式英语,,豆包,
-多语种,Xavier,ICL_en_male_xavier1_v1_tob,美式英语,,CC,
-多语种,Noah,ICL_en_male_cc_dracula_v1_tob,美式英语,,CC,
-多语种,Energetic Male II,en_male_campaign_jamal_moon_bigtts,美式英语,,,
-多语种,Gotham Hero,en_male_chris_moon_bigtts,美式英语,,,
-多语种,Delicate Girl,en_female_daisy_moon_bigtts,英式英语,,,
-多语种,Flirty Female,en_female_product_darcie_moon_bigtts,美式英语,,,
-多语种,Peaceful Female,en_female_emotional_moon_bigtts,美式英语,,,
-多语种,Nara,en_female_nara_moon_bigtts,美式英语,,,
-多语种,Candice,en_female_candice_emo_v2_mars_bigtts,美式英语,深情，愤怒，ASMR，对话/闲聊，兴奋，愉悦，中性，温暖,,"(对话/闲聊)Oh darling, did you see the new bookshop on Portobello Road？ Its windows are stacked with paperbacks like honeycombs, simply divine."
-多语种,Corey,en_male_corey_emo_v2_mars_bigtts,英式英语,愤怒，ASMR，权威，对话/闲聊，深情，兴奋，愉悦，中性，悲伤，温暖,,
-多语种,Nadia1,en_female_nadia_tips_emo_v2_mars_bigtts,英式英语,深情，愤怒，ASMR，对话/闲聊，兴奋，愉悦，中性，悲伤，温暖,,"(深情)Your palm still holds the warmth of that Parisianmidnight when we shared espresso so bitter, itmade falling in love feel like a dare."
-多语种,Serena,en_female_skye_emo_v2_mars_bigtts,美式英语,深情，愤怒，ASMR，对话/闲聊，兴奋，愉悦，中性，悲伤，温暖,,"(激动)I build my own path chase dreams bravely and shine brighter than anyone's expectations."
-多语种,Bruce,en_male_bruce_moon_bigtts,美式英语,,,
-多语种,Dave,en_male_dave_moon_bigtts,英式英语,,,
-多语种,Michael,en_male_michael_moon_bigtts,美式英语,,,
-多语种,Hades,en_male_hades_moon_bigtts,英式英语,,,
-多语种,Onez,en_female_onez_moon_bigtts,英式英语,,,
-多语种,Glen,en_male_glen_emo_v2_mars_bigtts,美式英语,深情，愤怒，ASMR，对话/闲聊，深情，兴奋，愉悦，中性，悲伤，温暖,,"(中性)Balance ambition with gratitude:count wins, but never forget the quiet moments that make life worth living."
-多语种,Nadia2,en_female_nadia_poetry_emo_v2_mars_bigtts,美式英语,ASMR，深情，愤怒，对话/闲聊，兴奋，愉悦，中性，悲伤，温暖,,"(深情)Your palm still holds the warmth of that Parisianmidnight when we shared espresso so bitter, itmade falling in love feel like a dare."
-多语种,Sylus,en_male_sylus_emo_v2_mars_bigtts,美式英语,深情，愤怒，ASMR，权威，对话/闲聊，兴奋，愉悦，中性，悲伤，温暖,,"(中性)Chase dreams like they're the last minute of overtime—sweat, scream, and leave no room for 'what ifs' in the game of life."
-趣味口音,京腔侃爷/Harmony,zh_male_jingqiangkanye_moon_bigtts,中文-北京口音，英文,,豆包，Cici，web demo,
-趣味口音,湾湾小何,zh_female_wanwanxiaohe_moon_bigtts,中文-台湾口音,,豆包，Cici,
-趣味口音,湾区大叔,zh_female_wanqudashu_moon_bigtts,中文-广东口音,,豆包，Cici,
-趣味口音,呆萌川妹,zh_female_daimengchuanmei_moon_bigtts,中文-四川口音,,豆包，Cici,
-趣味口音,广州德哥,zh_male_guozhoudege_moon_bigtts,中文-广东口音,,豆包，Cici,
-趣味口音,北京小爷,zh_male_beijingxiaoye_moon_bigtts,中文-北京口音,,豆包,
-趣味口音,浩宇小哥,zh_male_haoyuxiaoge_moon_bigtts,中文-青岛口音,,豆包,
-趣味口音,广西远舟,zh_male_guangxiyuanzhou_moon_bigtts,中文-广西口音,,豆包,
-趣味口音,妹坨洁儿,zh_female_meituojieer_moon_bigtts,中文-长沙口音,,豆包，剪映,
-趣味口音,豫州子轩,zh_male_yuzhouzixuan_moon_bigtts,中文-河南口音,,豆包,
-角色扮演,奶气萌娃,zh_male_naiqimengwa_mars_bigtts,中文,,剪映，豆包,
-角色扮演,婆婆,zh_female_popo_mars_bigtts,中文,,剪映C端，抖音，豆包,
-角色扮演,高冷御姐,zh_female_gaolengyujie_moon_bigtts,中文,,豆包，Cici,
-角色扮演,傲娇霸总,zh_male_aojiaobazong_moon_bigtts,中文,,豆包,
-角色扮演,魅力女友,zh_female_meilinvyou_moon_bigtts,中文,,豆包，剪映,
-角色扮演,深夜播客,zh_male_shenyeboke_moon_bigtts,中文,,豆包,
-角色扮演,柔美女友,zh_female_sajiaonvyou_moon_bigtts,中文,,豆包，剪映,
-角色扮演,撒娇学妹,zh_female_yuanqinvyou_moon_bigtts,中文,,豆包，剪映,
-角色扮演,病弱少女,ICL_zh_female_bingruoshaonv_tob,中文,,,
-角色扮演,活泼女孩,ICL_zh_female_huoponvhai_tob,中文,,,
-角色扮演,东方浩然,zh_male_dongfanghaoran_moon_bigtts,中文,,豆包,
-角色扮演,绿茶小哥,ICL_zh_male_lvchaxiaoge_tob,中文,,StoryAi，猫箱,
-角色扮演,娇弱萝莉,ICL_zh_female_jiaoruoluoli_tob,中文,,猫箱,
-角色扮演,冷淡疏离,ICL_zh_male_lengdanshuli_tob,中文,,猫箱,
-角色扮演,憨厚敦实,ICL_zh_male_hanhoudunshi_tob,中文,,猫箱,
-角色扮演,傲气凌人,ICL_zh_male_aiqilingren_tob,中文,,猫箱,
-角色扮演,活泼刁蛮,ICL_zh_female_huopodiaoman_tob,中文,,猫箱,
-角色扮演,固执病娇,ICL_zh_male_guzhibingjiao_tob,中文,,猫箱,
-角色扮演,撒娇粘人,ICL_zh_male_sajiaonianren_tob,中文,,猫箱,
-角色扮演,傲慢娇声,ICL_zh_female_aomanjiaosheng_tob,中文,,猫箱,
-角色扮演,潇洒随性,ICL_zh_male_xiaosasuixing_tob,中文,,猫箱,
-角色扮演,腹黑公子,ICL_zh_male_fuheigongzi_tob,中文,,StoryAi，猫箱,
-角色扮演,诡异神秘,ICL_zh_male_guiyishenmi_tob,中文,,猫箱,
-角色扮演,儒雅才俊,ICL_zh_male_ruyacaijun_tob,中文,,猫箱,
-角色扮演,病娇白莲,ICL_zh_male_bingjiaobailian_tob,中文,,猫箱,
-角色扮演,正直青年,ICL_zh_male_zhengzhiqingnian_tob,中文,,StoryAi，猫箱,
-角色扮演,娇憨女王,ICL_zh_female_jiaohannvwang_tob,中文,,StoryAi，猫箱,
-角色扮演,病娇萌妹,ICL_zh_female_bingjiaomengmei_tob,中文,,猫箱,
-角色扮演,青涩小生,ICL_zh_male_qingsenaigou_tob,中文,,猫箱,
-角色扮演,纯真学弟,ICL_zh_male_chunzhenxuedi_tob,中文,,豆包，猫箱,
-角色扮演,暖心学姐,ICL_zh_female_nuanxinxuejie_tob,中文,,猫箱,
-角色扮演,可爱女生,ICL_zh_female_keainvsheng_tob,中文,,猫箱,
-角色扮演,成熟姐姐,ICL_zh_female_chengshujiejie_tob,中文,,豆包，猫箱,
-角色扮演,病娇姐姐,ICL_zh_female_bingjiaojiejie_tob,中文,,豆包，猫箱,
-角色扮演,优柔帮主,ICL_zh_male_youroubangzhu_tob,中文,,猫箱,
-角色扮演,优柔公子,ICL_zh_male_yourougongzi_tob,中文,,豆包，猫箱,
-角色扮演,妩媚御姐,ICL_zh_female_wumeiyujie_tob,中文,,豆包，StoryAi,
-角色扮演,调皮公主,ICL_zh_female_tiaopigongzhu_tob,中文,,猫箱,
-角色扮演,傲娇女友,ICL_zh_female_aojiaonvyou_tob,中文,,豆包，猫箱,
-角色扮演,贴心男友,ICL_zh_male_tiexinnanyou_tob,中文,,豆包，猫箱,
-角色扮演,少年将军,ICL_zh_male_shaonianjiangjun_tob,中文,,豆包，猫箱,
-角色扮演,贴心女友,ICL_zh_female_tiexinnvyou_tob,中文,,豆包，猫箱,
-角色扮演,病娇哥哥,ICL_zh_male_bingjiaogege_tob,中文,,豆包，猫箱,
-角色扮演,学霸男同桌,ICL_zh_male_xuebanantongzhuo_tob,中文,,豆包，猫箱,
-角色扮演,幽默叔叔,ICL_zh_male_youmoshushu_tob,中文,,豆包，猫箱,
-角色扮演,妩媚可人,ICL_zh_female_ganli_v1_tob,中文,,StoryAi,
-角色扮演,邪魅御姐,ICL_zh_female_xiangliangya_v1_tob,中文,,StoryAi,
-角色扮演,性感御姐,ICL_zh_female_xingganyujie_tob,中文,,豆包，猫箱,
-角色扮演,嚣张小哥,ICL_zh_male_ms_tob,中文,,StoryAi,
-角色扮演,油腻大叔,ICL_zh_male_you_tob,中文,,StoryAi,
-角色扮演,孤傲公子,ICL_zh_male_guaogongzi_v1_tob,中文,,豆包,
-角色扮演,胡子叔叔,ICL_zh_male_huzi_v1_tob,中文,,StoryAi,
-角色扮演,性感魅惑,ICL_zh_female_luoqing_v1_tob,中文,,StoryAi,
-角色扮演,双节棍小哥,zh_male_zhoujielun_emo_v2_mars_bigtts,中文-台湾口音,,"抖音,剪映,豆包",
-角色扮演,病弱公子,ICL_zh_male_bingruogongzi_tob,中文,,豆包,
-角色扮演,邪魅女王,ICL_zh_female_bingjiao3_tob,中文,,StoryAi,
-角色扮演,假小子,ICL_zh_female_jiaxiaozi_tob,中文,,豆包，猫箱,
-角色扮演,冷峻上司,ICL_zh_male_lengjunshangsi_tob,中文,,豆包，猫箱,
-角色扮演,温柔男同桌,ICL_zh_male_wenrounantongzhuo_tob,中文,,豆包，猫箱,
-角色扮演,病娇弟弟,ICL_zh_male_bingjiaodidi_tob,中文,,豆包，猫箱,
-角色扮演,幽默大爷,ICL_zh_male_youmodaye_tob,中文,,豆包，猫箱,
-角色扮演,傲慢少爷,ICL_zh_male_aomanshaoye_tob,中文,,豆包，猫箱,
-角色扮演,枕边低语,ICL_zh_male_asmryexiu_tob,中文,,抖音,
-角色扮演,傲慢青年,ICL_zh_male_aomanqingnian_tob,中文,,,
-角色扮演,醋精男友,ICL_zh_male_cujingnanyou_tob,中文,,,
-角色扮演,醋精男生,ICL_zh_male_cujingnansheng_tob,中文,,,
-角色扮演,爽朗少年,ICL_zh_male_shuanglangshaonian_tob,中文,,,
-角色扮演,撒娇男友,ICL_zh_male_sajiaonanyou_tob,中文,,,
-角色扮演,温柔男友,ICL_zh_male_wenrounanyou_tob,中文,,,
-角色扮演,温顺少年,ICL_zh_male_wenshunshaonian_tob,中文,,,
-角色扮演,粘人男友,ICL_zh_male_naigounanyou_tob,中文,,,
-角色扮演,撒娇男生,ICL_zh_male_sajiaonansheng_tob,中文,,,
-角色扮演,活泼男友,ICL_zh_male_huoponanyou_tob,中文,,,
-角色扮演,甜系男友,ICL_zh_male_tianxinanyou_tob,中文,,,
-角色扮演,活力青年,ICL_zh_male_huoliqingnian_tob,中文,,,
-角色扮演,开朗青年,ICL_zh_male_kailangqingnian_tob,中文,,,
-角色扮演,冷漠兄长,ICL_zh_male_lengmoxiongzhang_tob,中文,,,
-角色扮演,天才同桌,ICL_zh_male_tiancaitongzhuo_tob,中文,,,
-角色扮演,傲娇精英,ICL_zh_male_aojiaojingying_tob,中文,,,
-角色扮演,翩翩公子,ICL_zh_male_pianpiangongzi_tob,中文,,,
-角色扮演,懵懂青年,ICL_zh_male_mengdongqingnian_tob,中文,,,
-角色扮演,冷脸兄长,ICL_zh_male_lenglianxiongzhang_tob,中文,,,
-角色扮演,病娇少年,ICL_zh_male_bingjiaoshaonian_tob,中文,,,
-角色扮演,病娇男友,ICL_zh_male_bingjiaonanyou_tob,中文,,,
-角色扮演,病弱少年,ICL_zh_male_bingruoshaonian_tob,中文,,,
-角色扮演,意气少年,ICL_zh_male_yiqishaonian_tob,中文,,,
-角色扮演,干净少年,ICL_zh_male_ganjingshaonian_tob,中文,,,
-角色扮演,冷漠男友,ICL_zh_male_lengmonanyou_tob,中文,,,
-角色扮演,精英青年,ICL_zh_male_jingyingqingnian_tob,中文,,,
-角色扮演,风发少年,ICL_zh_male_fengfashaonian_tob,中文,,,
-角色扮演,热血少年,ICL_zh_male_rexueshaonian_tob,中文,,,
-角色扮演,清爽少年,ICL_zh_male_qingshuangshaonian_tob,中文,,,
-角色扮演,中二青年,ICL_zh_male_zhongerqingnian_tob,中文,,,
-角色扮演,凌云青年,ICL_zh_male_lingyunqingnian_tob,中文,,,
-角色扮演,自负青年,ICL_zh_male_zifuqingnian_tob,中文,,,
-角色扮演,不羁青年,ICL_zh_male_bujiqingnian_tob,中文,,,
-角色扮演,儒雅君子,ICL_zh_male_ruyajunzi_tob,中文,,,
-角色扮演,低音沉郁,ICL_zh_male_diyinchenyu_tob,中文,,,
-角色扮演,冷脸学霸,ICL_zh_male_lenglianxueba_tob,中文,,,
-角色扮演,儒雅总裁,ICL_zh_male_ruyazongcai_tob,中文,,,
-角色扮演,深沉总裁,ICL_zh_male_shenchenzongcai_tob,中文,,,
-角色扮演,小侯爷,ICL_zh_male_xiaohouye_tob,中文,,,
-角色扮演,孤高公子,ICL_zh_male_gugaogongzi_tob,中文,,,
-角色扮演,仗剑君子,ICL_zh_male_zhangjianjunzi_tob,中文,,,
-角色扮演,温润学者,ICL_zh_male_wenrunxuezhe_tob,中文,,,
-角色扮演,亲切青年,ICL_zh_male_qinqieqingnian_tob,中文,,,
-角色扮演,温柔学长,ICL_zh_male_wenrouxuezhang_tob,中文,,,
-角色扮演,磁性男嗓,ICL_zh_male_cixingnansang_tob,中文,,,
-角色扮演,高冷总裁,ICL_zh_male_gaolengzongcai_tob,中文,,,
-角色扮演,冷峻高智,ICL_zh_male_lengjungaozhi_tob,中文,,,
-角色扮演,孱弱少爷,ICL_zh_male_chanruoshaoye_tob,中文,,,
-角色扮演,自信青年,ICL_zh_male_zixinqingnian_tob,中文,,,
-角色扮演,青涩青年,ICL_zh_male_qingseqingnian_tob,中文,,,
-角色扮演,学霸同桌,ICL_zh_male_xuebatongzhuo_tob,中文,,,
-角色扮演,冷傲总裁,ICL_zh_male_lengaozongcai_tob,中文,,,
-角色扮演,霸道少爷,ICL_zh_male_badaoshaoye_tob,中文,,,
-角色扮演,元气少年,ICL_zh_male_yuanqishaonian_tob,中文,,,
-角色扮演,洒脱青年,ICL_zh_male_satuoqingnian_tob,中文,,,
-角色扮演,直率青年,ICL_zh_male_zhishuaiqingnian_tob,中文,,,
-角色扮演,斯文青年,ICL_zh_male_siwenqingnian_tob,中文,,,
-角色扮演,成熟总裁,ICL_zh_male_chengshuzongcai_tob,中文,,,
-角色扮演,俊逸公子,ICL_zh_male_junyigongzi_tob,中文,,,
-角色扮演,傲娇公子,ICL_zh_male_aojiaogongzi_tob,中文,,,
-角色扮演,仗剑侠客,ICL_zh_male_zhangjianxiake_tob,中文,,,
-角色扮演,机甲智能,ICL_zh_male_jijiaozhineng_tob,中文,,,
-角色扮演,神秘法师,ICL_zh_male_shenmifashi_tob,中文,,豆包，猫箱,
-角色扮演,霸道总裁,ICL_zh_male_badaozongcai_v1_tob,中文,,,
-视频配音,悠悠君子,zh_male_M100_conversation_wvae_bigtts,中文,,"豆包,Cici,web demo",
-视频配音,文静毛毛,zh_female_maomao_conversation_wvae_bigtts,中文,,"豆包,web demo",
-视频配音,倾心少女,ICL_zh_female_qiuling_v1_tob,中文,,StoryAi,
-视频配音,醇厚低音,ICL_zh_male_buyan_v1_tob,中文,,StoryAi,
-视频配音,咆哮小哥,ICL_zh_male_BV144_paoxiaoge_v1_tob,中文,,StoryAi,
-视频配音,和蔼奶奶,ICL_zh_female_heainainai_tob,中文,,,
-视频配音,邻居阿姨,ICL_zh_female_linjuayi_tob,中文,,,
-视频配音,温柔小雅,zh_female_wenrouxiaoya_moon_bigtts,中文,,豆包,
-视频配音,天才童声,zh_male_tiancaitongsheng_mars_bigtts,中文,,,
-视频配音,猴哥,zh_male_sunwukong_mars_bigtts,中文,,,
-视频配音,熊二,zh_male_xionger_mars_bigtts,中文,,抖音，剪映C端，豆包,
-视频配音,佩奇猪,zh_female_peiqi_mars_bigtts,中文,,抖音，剪映订阅，豆包,
-视频配音,武则天,zh_female_wuzetian_mars_bigtts,中文,,剪映,
-视频配音,顾姐,zh_female_gujie_mars_bigtts,中文,,抖音，剪映C端,
-视频配音,樱桃丸子,zh_female_yingtaowanzi_mars_bigtts,中文,,剪映订阅，抖音，豆包,
-视频配音,广告解说,zh_male_chunhui_mars_bigtts,中文,,剪映,
-视频配音,少儿故事,zh_female_shaoergushi_mars_bigtts,中文,,,
-视频配音,四郎,zh_male_silang_mars_bigtts,中文,,抖音，剪映C端，豆包,
-视频配音,磁性解说男声/Morgan,zh_male_jieshuonansheng_mars_bigtts,中文，美式英语,,抖音，剪映,
-视频配音,鸡汤妹妹/Hope,zh_female_jitangmeimei_mars_bigtts,中文，美式英语,,抖音，豆包,
-视频配音,贴心女声/Candy,zh_female_tiexinnvsheng_mars_bigtts,中文，美式英语,,,
-视频配音,俏皮女声,zh_female_qiaopinvsheng_mars_bigtts,中文,,,
-视频配音,萌丫头/Cutey,zh_female_mengyatou_mars_bigtts,中文，美式英语,,,
-视频配音,懒音绵宝,zh_male_lanxiaoyang_mars_bigtts,中文,,,
-视频配音,亮嗓萌仔,zh_male_dongmanhaimian_mars_bigtts,中文,,,
-有声阅读,温暖少年,ICL_zh_male_yangyang_v1_tob,中文,,StoryAi,
-有声阅读,儒雅公子,ICL_zh_male_flc_v1_tob,中文,,StoryAi,
-有声阅读,悬疑解说,zh_male_changtianyi_mars_bigtts,中文,,剪映C端，抖音，豆包,
-有声阅读,儒雅青年,zh_male_ruyaqingnian_mars_bigtts,中文,,番茄小说，豆包，剪映,
-有声阅读,霸气青叔,zh_male_baqiqingshu_mars_bigtts,中文,,番茄小说，豆包，剪映，剪映-Dreamina,
-有声阅读,擎苍,zh_male_qingcang_mars_bigtts,中文,,番茄小说，剪映，豆包，抖音,
-有声阅读,活力小哥,zh_male_yangguangqingnian_mars_bigtts,中文,,,
-有声阅读,古风少御,zh_female_gufengshaoyu_mars_bigtts,中文,,,
-有声阅读,温柔淑女,zh_female_wenroushunv_mars_bigtts,中文,,番茄小说，豆包，剪映，剪映-Dreamina,
-有声阅读,反卷青年,zh_male_fanjuanqingnian_mars_bigtts,中文,,,
+﻿场景,音色名称,voice_type,语种,支持的情感,上线业务方,试听文本,试听URL
+多情感,北京小爷（多情感）,zh_male_beijingxiaoye_emo_v2_mars_bigtts,中文,生气，惊讶，恐惧，激动，冷漠，中性,,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%8C%97%E4%BA%AC%E5%B0%8F%E7%88%B7.mp3
+多情感,柔美女友（多情感）,zh_female_roumeinvyou_emo_v2_mars_bigtts,中文,开心，悲伤，生气，惊讶，恐惧，厌恶，激动，冷漠，中性,,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%9F%94%E7%BE%8E%E5%A5%B3%E5%8F%8B.mp3
+多情感,阳光青年（多情感）,zh_male_yangguangqingnian_emo_v2_mars_bigtts,中文,开心，悲伤，生气，恐惧，激动，冷漠，中性,,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E9%98%B3%E5%85%89%E9%9D%92%E5%B9%B4.mp3
+多情感,魅力女友（多情感）,zh_female_meilinvyou_emo_v2_mars_bigtts,中文,悲伤，恐惧，中性,,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E9%AD%85%E5%8A%9B%E5%A5%B3%E5%8F%8B.mp3
+多情感,爽快思思（多情感）,zh_female_shuangkuaisisi_emo_v2_mars_bigtts,中文,开心，悲伤，生气，惊讶，激动，冷漠，中性,,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E7%88%BD%E5%BF%AB%E6%80%9D%E6%80%9D.mp3
+多情感,甜心小美（多情感）,zh_female_tianxinxiaomei_emo_v2_mars_bigtts,中文,悲伤，恐惧，厌恶，中性,剪映,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E7%94%9C%E5%BF%83%E5%B0%8F%E7%BE%8E.mp3
+多情感,高冷御姐（多情感）,zh_female_gaolengyujie_emo_v2_mars_bigtts,中文,开心，悲伤，生气，惊讶，恐惧，厌恶，激动，冷漠，中性,剪映,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E9%AB%98%E5%86%B7%E5%BE%A1%E5%A7%90.mp3
+多情感,傲娇霸总（多情感）,zh_male_aojiaobazong_emo_v2_mars_bigtts,中文,中性，开心，愤怒，厌恶,剪映,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%82%B2%E5%A8%87%E9%9C%B8%E6%80%BB.mp3
+多情感,广州德哥（多情感）,zh_male_guangzhoudege_emo_mars_bigtts,中文,生气，恐惧，中性,剪映,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%B9%BF%E5%B7%9E%E5%BE%B7%E5%93%A5.mp3
+多情感,京腔侃爷（多情感）,zh_male_jingqiangkanye_emo_mars_bigtts,中文,开心，生气，惊讶，厌恶，中性,剪映,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E4%BA%AC%E8%85%94%E4%BE%83%E7%88%B7.mp3
+多情感,邻居阿姨（多情感）,zh_female_linjuayi_emo_v2_mars_bigtts,中文,中性，愤怒，冷漠，悲伤，惊讶,剪映,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E9%82%BB%E5%B1%85%E9%98%BF%E5%A7%A8.mp3
+多情感,优柔公子（多情感）,zh_male_yourougongzi_emo_v2_mars_bigtts,中文,开心，生气，恐惧，厌恶，激动，中性，悲伤,剪映,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E4%BC%98%E6%9F%94%E5%85%AC%E5%AD%90.mp3
+多情感,儒雅男友（多情感）,zh_male_ruyayichen_emo_v2_mars_bigtts,中文,开心，悲伤，生气，恐惧，激动，冷漠，中性,剪映,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%84%92%E9%9B%85%E7%94%B7%E5%8F%8B.mp3
+多情感,俊朗男友（多情感）,zh_male_junlangnanyou_emo_v2_mars_bigtts,中文,开心，悲伤，生气，惊讶，恐惧，中性,剪映,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E4%BF%8A%E6%9C%97%E7%94%B7%E5%8F%8B.mp3
+多情感,冷酷哥哥（多情感）,zh_male_lengkugege_emo_v2_mars_bigtts,中文,生气，冷漠，恐惧，开心，厌恶，中性，悲伤，沮丧,,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%86%B7%E9%85%B7%E5%93%A5%E5%93%A5.mp3
+教育场景,Tina老师,zh_female_yingyujiaoyu_mars_bigtts,中，英式英语,,,"现在我们来进行“水果炸弹”游戏！ Tina老师说单词，你们要快速拿起对应的水果卡片——Ready？Go！",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/zh_female_yingyujiaoyu_mars_bigtts.mp3
+客服场景,暖阳女声,zh_female_kefunvsheng_mars_bigtts,仅中文,,,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%9A%96%E9%98%B3%E5%A5%B3%E5%A3%B0.mp3
+通用场景,甜美桃子,zh_female_tianmeitaozi_mars_bigtts,中文,,,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E7%94%9C%E7%BE%8E%E6%A1%83%E5%AD%90.mp3
+通用场景,Vivi,zh_female_vv_mars_bigtts,中文,,,,
+通用场景,灿灿/Shiny,zh_female_cancan_mars_bigtts,中文，美式英语,,,"灿灿|刚刚还在想你怎么还不来找我聊天，你就来了，真是心有灵犀呀。;Shiny|Hey, you seem a bit down. Let's look on the bright side！ There's always something good around the corner. A smile can change the world，so let's shine together and make it a better place.",灿灿|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/zh_female_cancan_mars_bigtts.mp3;Shiny|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/shiny.mp3
+通用场景,爽快思思/Skye,zh_female_shuangkuaisisi_moon_bigtts,中文，美式英语,,豆包，Cici，web demo,"爽快思思|今天天气可好了，我打算和朋友一起去野餐，带上美食和饮料，找个舒适的草坪，什么烦恼都没了。你要不要和我们一起呀？;Skye|Hey everyone！ I'm a girl who really loves to do meditation. When I sit down cross-legged, close my eyes and focus on my breath, it's like entering a peaceful world of my own. I feel my body and mind gradually relaxing, all the stress and worries seem to fade away.",爽快思思|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E7%88%BD%E5%BF%AB%E6%80%9D%E6%80%9D.mp3;Skye|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Skye.mp3
+通用场景,温暖阿虎/Alvin,zh_male_wennuanahu_moon_bigtts,中文，美式英语,,豆包，Cici,"温暖阿虎|早上好呀，今天的阳光特别灿烂，就像你的笑容一样，让我倍感温暖。;Alvin|So, what do you want to talk about？ Sports？Movies？ Music？ Or anything else that comes to mind. Let's have a great conversation！",温暖阿虎|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%B8%A9%E6%9A%96%E9%98%BF%E8%99%8E.mp3;Alvin|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Alvin.mp3
+通用场景,少年梓辛/Brayan,zh_male_shaonianzixin_moon_bigtts,中文，美式英语,,豆包，Cici，剪映,"少年梓辛|今天的阳光真好啊！感觉整个人都充满了活力呢。真想去外面跑一跑，去探索那些有趣的地方，去邂逅一些奇妙的事情。生活嘛，就该这样自由自在、充满朝气的呀！哈哈！;Brayan|How are you today？ I had a really cool day at school today. We had a great science class and I learned some fascinating stuff. And then I played basketball with my friends during the break, it was so much fun. What about you？",少年梓辛|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%B0%91%E5%B9%B4%E6%A2%93%E8%BE%9B.mp3;Brayan|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Brayan.mp3
+通用场景,知性女声,zh_female_zhixingnvsheng_mars_bigtts,中文,,,,
+通用场景,清爽男大,zh_male_qingshuangnanda_mars_bigtts,中文,,豆包,,
+通用场景,邻家女孩,zh_female_linjianvhai_moon_bigtts,中文,,豆包，Cici,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E9%82%BB%E5%AE%B6%E5%A5%B3%E5%AD%A9.mp3
+通用场景,渊博小叔,zh_male_yuanboxiaoshu_moon_bigtts,中文,,豆包，Cici，剪映,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%B8%8A%E5%8D%9A%E5%B0%8F%E5%8F%94.mp3
+通用场景,阳光青年,zh_male_yangguangqingnian_moon_bigtts,中文,,豆包，Cici，StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E9%98%B3%E5%85%89%E9%9D%92%E5%B9%B4.mp3
+通用场景,甜美小源,zh_female_tianmeixiaoyuan_moon_bigtts,中文,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E7%94%9C%E7%BE%8E%E5%B0%8F%E6%BA%90.mp3
+通用场景,清澈梓梓,zh_female_qingchezizi_moon_bigtts,中文,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%B8%85%E6%BE%88%E6%A2%93%E6%A2%93.mp3
+通用场景,解说小明,zh_male_jieshuoxiaoming_moon_bigtts,中文,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E8%A7%A3%E8%AF%B4%E5%B0%8F%E6%98%8E.mp3
+通用场景,开朗姐姐,zh_female_kailangjiejie_moon_bigtts,中文,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%BC%80%E6%9C%97%E5%A7%90%E5%A7%90.mp3
+通用场景,邻家男孩,zh_male_linjiananhai_moon_bigtts,中文,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E9%82%BB%E5%AE%B6%E7%94%B7%E5%AD%A9.mp3
+通用场景,甜美悦悦,zh_female_tianmeiyueyue_moon_bigtts,中文,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E7%94%9C%E7%BE%8E%E6%82%A6%E6%82%A6.mp3
+通用场景,心灵鸡汤,zh_female_xinlingjitang_moon_bigtts,中文,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%BF%83%E7%81%B5%E9%B8%A1%E6%B1%A4.mp3
+通用场景,知性温婉,ICL_zh_female_zhixingwenwan_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_zhixingwenwan_tob.mp3
+通用场景,暖心体贴,ICL_zh_male_nuanxintitie_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_nuanxintitie_tob.mp3
+通用场景,温柔文雅,ICL_zh_female_wenrouwenya_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_wenrouwenya_tob.mp3
+通用场景,开朗轻快,ICL_zh_male_kailangqingkuai_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_kailangqingkuai_tob.mp3
+通用场景,活泼爽朗,ICL_zh_male_huoposhuanglang_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_huoposhuanglang_tob.mp3
+通用场景,率真小伙,ICL_zh_male_shuaizhenxiaohuo_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_shuaizhenxiaohuo_tob.mp3
+通用场景,温柔小哥,zh_male_wenrouxiaoge_mars_bigtts,中文,,,,
+通用场景,亲切女声,zh_female_qinqienvsheng_moon_bigtts,中文,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E4%BA%B2%E5%88%87%E5%A5%B3%E5%A3%B0.mp3
+通用场景,机灵小伙,ICL_zh_male_shenmi_v1_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%9C%BA%E7%81%B5%E5%B0%8F%E4%BC%99.mp3
+通用场景,元气甜妹,ICL_zh_female_wuxi_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%85%83%E6%B0%94%E7%94%9C%E5%A6%B9.mp3
+通用场景,知心姐姐,ICL_zh_female_wenyinvsheng_v1_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E7%9F%A5%E5%BF%83%E5%A7%90%E5%A7%90.mp3
+通用场景,阳光阿辰,zh_male_qingyiyuxuan_mars_bigtts,中文,,,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E9%98%B3%E5%85%89%E9%98%BF%E8%BE%B0.mp3
+通用场景,快乐小东/Daniel,zh_male_xudong_conversation_wvae_bigtts,中文，英式英语,,"豆包,Cici,web demo","快乐小东|篮球砸进积水溅起水花，雷声轰鸣。我在雨里传球大笑，球衣湿透贴背，刘海滴着雨水。阿豪喊“来追我”，我们在闪电余光中疯跑，让十七岁的夏天浸满雨水与热血。;Daniel|Life is not about waiting for the storm to pass, but learning to dance in the rain. So put on your favorite song, let the drops hit your face, and find joy in the chaos of the moment.",快乐小东|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%BF%AB%E4%B9%90%E5%B0%8F%E4%B8%9C.mp3;Daniel|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Daniel.mp3
+通用场景,冷酷哥哥,ICL_zh_male_lengkugege_v1_tob,中文,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%86%B7%E9%85%B7%E5%93%A5%E5%93%A5.mp3
+通用场景,纯澈女生,ICL_zh_female_feicui_v1_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E7%BA%AF%E6%BE%88%E5%A5%B3%E7%94%9F.mp3
+通用场景,初恋女友,ICL_zh_female_yuxin_v1_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%88%9D%E6%81%8B%E5%A5%B3%E5%8F%8B.mp3
+通用场景,贴心闺蜜,ICL_zh_female_xnx_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E8%B4%B4%E5%BF%83%E9%97%BA%E8%9C%9C.mp3
+通用场景,温柔白月光,ICL_zh_female_yry_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%B8%A9%E6%9F%94%E7%99%BD%E6%9C%88%E5%85%89.mp3
+通用场景,开朗学长,en_male_jason_conversation_wvae_bigtts,中文,,豆包,,
+通用场景,魅力苏菲/Sophie,zh_female_sophie_conversation_wvae_bigtts,中文，美式英语,,,"魅力苏菲|别碰我的底线，那是扎手的荆棘；但如果你跨过荆棘，会看见我藏着的糖罐;Sophie|You don't have to be a rose to be remarkable. Be a wildflower-grow where you want, bend in the wind, and bloom unapologetically under your own sky.",魅力苏菲|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E9%AD%85%E5%8A%9B%E8%8B%8F%E8%8F%B2.mp3;Sophie|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Sophie.mp3
+通用场景,贴心妹妹,ICL_zh_female_yilin_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E8%B4%B4%E5%BF%83%E5%A6%B9%E5%A6%B9.mp3
+多语种,Smith,en_male_smith_mars_bigtts,英式英语,,,"I'm a man of principles. I will never compromise my beliefs for temporary gains. Justice and fairness are what I pursue. I will stand up and fight for what is right, no matter how strong the opposition is.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/en_male_smith_mars_bigtts.mp3
+多语种,Anna,en_female_anna_mars_bigtts,英式英语,,,"Dreams are the stars that light up my path. I won't let obstacles dim their shine. I'll work hard，step by step, to turn those dreams into reality. Because in the pursuit, I find the true meaning and joy of living.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/en_female_anna_mars_bigtts.mp3
+多语种,Adam,en_male_adam_mars_bigtts,美式英语,,,"I'm not afraid of challenges. I believe that with my determination and efforts, I can break through any difficulties and reach the peak of success. I'm ready to face whatever comes my way.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/en_male_adam_mars_bigtts.mp3
+多语种,Sarah,en_female_sarah_mars_bigtts,澳洲英语,,,"The world is full of beauty and kindness. I like to explore every corner of it, feel the different cultures and meet interesting people. Life is a wonderful journey, and I'm enjoying every moment of it.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/en_female_sarah_mars_bigtts.mp3
+多语种,Dryw,en_male_dryw_mars_bigtts,澳洲英语,,,"I focus on details. In my eyes, every little thing matters. I strive for perfection in my work, for only by doing so can I create something truly remarkable and make a difference in this complex world.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/en_male_dryw_mars_bigtts.mp3
+多语种,かずね（和音）/Javier or Álvaro,multi_male_jingqiangkanye_moon_bigtts,日语，西语,,Cici,"かずね（和音）|こんにちは、あなたはとても優しい人だと思います、周りに面白い物語がたくさんありますね、教えてくれませんか？;Javier or Álvaro|¡Hola！Estoy empezando a descubrir la música latina. ¿Podría recomendarme algunas de sus bandas o cantantes favoritos？",かずね（和音）|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%92%8C%E9%9F%B3.wav;Javier or Álvaro|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Javier.wav
+多语种,はるこ（晴子）/Esmeralda,multi_female_shuangkuaisisi_moon_bigtts,日语，西语,,Cici,"はるこ（晴子）|お会いできて嬉しいです！最近何をしていますか？;Esmeralda|Hola, ¡me gusta mucho tu outfit！ Cuéntame cuáles son tus fuentes de inspiración.",はるこ（晴子）|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%99%B4%E5%AD%90.wav;Esmeralda|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Esmeralda.mp3
+多语种,ひろし（広志）/Roberto,multi_male_wanqudashu_moon_bigtts,日语，西语,,Cici,"ひろし（広志）|こんにちは、何か新鮮な話を共有したいですか？;Roberto|Hola, ¿sabes cuáles son las comidas típicas de México？ Me interesa mucho la cocina mexicana，¿me puedes dar algunos consejos？",ひろし（広志）|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%BA%83%E5%BF%97.mp3;Roberto|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Roberto.wav
+多语种,あけみ（朱美）,multi_female_gaolengyujie_moon_bigtts,日语,,Cici,"久しぶりです。最近何をしていますか？",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%9C%B1%E7%BE%8E.mp3
+多语种,Amanda,en_female_amanda_mars_bigtts,美式英语,,,Page 12 foreshadowing the icepick murder – hear that bone-chilling wind through lace curtains？,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/en_female_amanda_mars_bigtts.mp3
+多语种,Jackson,en_male_jackson_mars_bigtts,美式英语,,,Yo squad turn it UP！ Glow sticks in the air. I wanna see mosh pits forming NOW！,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/en_male_jackson_mars_bigtts.mp3
+多语种,Cartoon Chef,ICL_en_male_cc_sha_v1_tob,美式英语,,CC,Become a master chef in Shawarma 93- Cartoon Chef - DM！ Cook shawarma like a pro and serve up fun！,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/ICL_en_male_cc_sha_v1_tob_eb4a14df-284f-4287-a77d-26432cd0ba63.mp3
+多语种,ひかる（光）,multi_zh_male_youyoujunzi_moon_bigtts,日语,,Cici,"光が差す道に迷わず、心のままに真っ直ぐ進むのが、君子の道だと思います。",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E3%81%B2%E3%81%8B%E3%82%8B.mp3
+多语种,Emily,en_female_emily_mars_bigtts,英式英语,,豆包,"Darling, let's pop down to the pub for a pint and have a proper natter about that absolutely barmy day, shall we？",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Emily.mp3
+多语种,Lucas,zh_male_M100_conversation_wvae_bigtts,美式英语,,"豆包,Cici,web demo","Some souls are like constellations—even when they're far apart, their light still finds a way to connect. Maybe that's why I still feel your warmth, even on the coldest nights.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Lucas.mp3
+多语种,Diana,multi_female_maomao_conversation_wvae_bigtts_spanish,西语,,Cici,"A veces, el momento más bonito de la vida no es el destino, sino el viaje. Deténte un instante para admirar el cielo azul, escuchar el canto de los pájaros, y agradecer por cada breathe que haces. La felicidad está en los detalles que aprendemos a apreciar.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Diana.mp3
+多语种,Lucía,multi_male_M100_conversation_wvae_bigtts_spanish,西语,,Cici,,
+多语种,Sofía,multi_female_sophie_conversation_wvae_bigtts_spanish,西语,,,,
+多语种,Daníel,multi_male_xudong_conversation_wvae_bigtts_spanish,西语,,,,
+多语种,さとみ（智美）,multi_female_sophie_conversation_wvae_bigtts_japanese,日语,,,"秋風に舞う紅葉のように、人生にも色鮮やかな変化が訪れる。落ち葉が積もる道をゆっくり歩いて、新しい季節の始まりを楽しもう。",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E3%81%95%E3%81%A8%E3%81%BF.mp3
+多语种,まさお（正男）,multi_male_xudong_conversation_wvae_bigtts_japanese,日语,,,"遠く離れていても、同じ空を見上げていることで、心がつながっている気がする。いつも側にいてくれたお前に、本当にありがとう。",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E3%81%BE%E3%81%95%E3%81%8A.mp3
+多语种,つき（月）,multi_female_maomao_conversation_wvae_bigtts_japanese,日语,,Cici,"コーヒーの香りが部屋中に漂う朝、洗濯物が風になびく陽台、友達と笑い合う夕食。幸せは大げさなものではなく、こういう小さな瞬間の積み重ねなのかもしれない。",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E3%81%A4%E3%81%8D.mp3
+多语种,Daisy,en_female_dacey_conversation_wvae_bigtts,美式英语,,"豆包,Cici,web demo","I'll loop in the tech team for feasibility by EOD，and we can review potential risks at tomorrow's sync.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Daisy.mp3
+多语种,Owen,en_male_charlie_conversation_wvae_bigtts,美式英语,,"豆包,Cici","Fancy a pint at The Three Lions later？ Got a mental theory about how Beckham's free kicks changed modern football tactics—you in？",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Owen.mp3
+多语种,Ethan,ICL_en_male_aussie_v1_tob,澳洲英语,,CC,"Good day mate, reckon we’ll hit the surf before the storm？ She’ll be a ripper—just don’t bog the ute in the sand！",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Ethan.mp3
+多语种,Luna,en_female_sarah_new_conversation_wvae_bigtts,美式英语,,"豆包,Cici,web demo","Hey, wanna grab a flat white at that cute café near the library？ I've got this amazing essay idea about postcolonial literature to bounce off you！",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Luna.mp3
+多语种,Michael,ICL_en_male_michael_tob,美式英语,,豆包,"Would you like to join my sailing trip this weekend？ The Solent’s winds in September are perfect for discussing classic literature over a flask of tea.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Michael.mp3
+多语种,Alastor,ICL_en_male_cc_alastor_tob,英式英语,,CC,"Smile, smile darling—my radio plays the song of souls, and your scream would make a delightful chorus.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Alastor.mp3
+多语种,Charlie,ICL_en_female_cc_cm_v1_tob,美式英语,,CC,"Hell's a mess, but redemption's a party—who's ready to dance with demons and rewrite their ending？",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Charlie.mp3
+多语种,Big Boogie,ICL_en_male_oogie2_tob,美式英语,,"TT,豆包","As pumpkins grin and snowflakes shiver, fear wears a Santa suit—welcome to a night where joy hides fangs.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/ICL_en_male_oogie2_tob_e699cdb8-47b4-439a-803c-82c7d18e9bf0.mp3
+多语种,Frosty Man,ICL_en_male_frosty1_tob,美式英语,,"TT,豆包","Let’s build a snowman that laughs in the cold-his carrot nose points to adventures, coal eyes hold winter’s magic！",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/ICL_en_male_frosty1_tob_fb4bd11a-4f15-4a1e-b8b1-a34d339236bb.mp3
+多语种,The Grinch,ICL_en_male_grinch2_tob,美式英语,,"TT,豆包","Who needs tinsel and bells？ This grin hides a heart two sizes too small… until holiday chaos melts the ice.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/ICL_en_male_grinch2_tob_5d60fdc3-d842-4c99-8105-1e68743554e1.mp3
+多语种,Zayne,ICL_en_male_zayne_tob,美式英语,,CC,"In the neon hum of New Atlantis, my shadow dances with secrets-stay close, starlight… the night hides more than stars. ",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Zayne.mp3
+多语种,Jigsaw,ICL_en_male_cc_jigsaw_tob,美式英语,,CC,"Tick-tock, the clock's a heartbeat—will your choices carve survival, or feed the silence of rusted chains？",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Jigsaw.mp3
+多语种,Chucky,ICL_en_male_cc_chucky_tob,美式英语,,CC,"Hey, pal！ Ready for a playdate？ This doll’s got a blade for a bestie and a grin that outlives your screams.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Chucky.mp3
+多语种,Clown Man,ICL_en_male_cc_penny_v1_tob,美式英语,,CC,"Clowns bring smiles… but mine taste like fear. Come float with me, where laughter drowns and shadows feast.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/ICL_en_male_cc_penny_v1_tob_82d9f07d-9b2e-4796-8fd0-6159ef6c7324.mp3
+多语种,Kevin McCallister,ICL_en_male_kevin2_tob,美式英语,,豆包,"Mom, can we go to the park after tea？ I wanna show you my new trick on the swing. Promise…I won't fall off this time！",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/ICL_en_male_kevin2_tob_2db1c07b-f33e-472e-8264-b8ab16d275b1.mp3
+多语种,Xavier,ICL_en_male_xavier1_v1_tob,美式英语,,CC,"Stars fade, but my aim never does—tell me，love… shall I paint the night with your enemies' sparks？",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Xavier.mp3
+多语种,Noah,ICL_en_male_cc_dracula_v1_tob,美式英语,,CC,"Your heartbeat thrums wildly beneath my fingertips—ever wonder if this is the final waltz for the shadows？",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Noah.mp3
+多语种,Energetic Male II,en_male_campaign_jamal_moon_bigtts,美式英语,,,"Guess the rugby team needs a new strategy—bloody rain messed up the pitch, but the cheers on Friday were exhausted when this chaos occurred.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_male_campaign_jamal_moon_bigtts.mp3
+多语种,Gotham Hero,en_male_chris_moon_bigtts,美式英语,,,"Grind until the critics call it talent, hustle until success has no choice but to notice.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_male_chris_moon_bigtts.mp3
+多语种,Delicate Girl,en_female_daisy_moon_bigtts,英式英语,,,"Strength lies not in being perfect, but in embracing flaws and growing stronger every day.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_female_daisy_moon_bigtts.mp3
+多语种,Flirty Female,en_female_product_darcie_moon_bigtts,美式英语,,,"Bloody hell, forgot to order oat milk—guess I'll brave the rain with a flat white, though the commute's gonna be chaos.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_female_product_darcie_moon_bigtts.mp3
+多语种,Peaceful Female,en_female_emotional_moon_bigtts,美式英语,,,"Some days I wish to live in a world of pastels，where stars fall like confetti and wishes really come true.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_female_emotional_moon_bigtts.mp3
+多语种,Nara,en_female_nara_moon_bigtts,美式英语,,,"This Billie Holiday album survived three house fires—just like how some heartbreaks become the soundtrack of your bones.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_female_nara_moon_bigtts.mp3
+多语种,Candice,en_female_candice_emo_v2_mars_bigtts,美式英语,深情，愤怒，ASMR，对话/闲聊，兴奋，愉悦，中性，温暖,,"Oh darling, did you see the new bookshop on Portobello Road？ Its windows are stacked with paperbacks like honeycombs, simply divine.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_female_candice_emo_v2_mars_bigtts.mp3
+多语种,Corey,en_male_corey_emo_v2_mars_bigtts,英式英语,愤怒，ASMR，权威，对话/闲聊，深情，兴奋，愉悦，中性，悲伤，温暖,,"Work hard to build a life, but never too busy to hold your kids or kiss your partner goodnight.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_male_corey_emo_v2_mars_bigtts.mp3
+多语种,Nadia1,en_female_nadia_tips_emo_v2_mars_bigtts,英式英语,深情，愤怒，ASMR，对话/闲聊，兴奋，愉悦，中性，悲伤，温暖,,"Your palm still holds the warmth of that Parisianmidnight when we shared espresso so bitter, itmade falling in love feel like a dare.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_female_nadia_tips_emo_v2_mars_bigtts.mp3
+多语种,Bruce,en_male_bruce_moon_bigtts,美式英语,,,"This goddamn engine's been playing up all week after sundown reckon I will strip it down，though the missus will moan bout grease on the kitchen table.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_male_bruce_moon_bigtts.mp3
+多语种,Dave,en_male_dave_moon_bigtts,英式英语,,,"Rise before the sun, tackle challenges head-on，and let actions speak louder than any words.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_male_dave_moon_bigtts.mp3
+多语种,Michael,en_male_michael_moon_bigtts,美式英语,,,"The day we met, your laugh shook pollen from the lilacs—now even rain on the windowpane sounds like that first 'hello'.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_male_michael_moon_bigtts.mp3
+多语种,Hades,en_male_hades_moon_bigtts,英式英语,,,"Negotiations at Canary Wharf tested every fibre-still, after killing the shark people must taste a 5-year-old single malt.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_male_hades_moon_bigtts.mp3
+多语种,Onez,en_female_onez_moon_bigtts,英式英语,,,"Between the pages of old books and the scent of morning coffee, I find magic in quiet moments.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_female_onez_moon_bigtts.mp3
+多语种,Glen,en_male_glen_emo_v2_mars_bigtts,美式英语,深情，愤怒，ASMR，对话/闲聊，深情，兴奋，愉悦，中性，悲伤，温暖,,"Balance ambition with gratitude: count wins, but never forget the quiet moments that make life worth living.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_male_glen_emo_v2_mars_bigtts.mp3
+多语种,Nadia2,en_female_nadia_poetry_emo_v2_mars_bigtts,美式英语,ASMR，深情，愤怒，对话/闲聊，兴奋，愉悦，中性，悲伤，温暖,,"Your palm still holds the warmth of that Parisianmidnight when we shared espresso so bitter, itmade falling in love feel like a dare.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_female_nadia_tips_emo_v2_mars_bigtts.mp3
+多语种,Sylus,en_male_sylus_emo_v2_mars_bigtts,美式英语,深情，愤怒，ASMR，权威，对话/闲聊，兴奋，愉悦，中性，悲伤，温暖,,"Chase dreams like they're the last minute of overtime—sweat, scream, and leave no room for 'what ifs' in the game of life.",https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/en_male_sylus_emo_v2_mars_bigtts.mp3
+趣味口音,京腔侃爷/Harmony,zh_male_jingqiangkanye_moon_bigtts,中文-北京口音，英文,,豆包，Cici，web demo,,京腔侃爷|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E4%BA%AC%E8%85%94%E4%BE%83%E7%88%B7.mp3;Harmony|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/Harmony.mp3
+趣味口音,湾湾小何,zh_female_wanwanxiaohe_moon_bigtts,中文-台湾口音,,豆包，Cici,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%B9%BE%E6%B9%BE%E5%B0%8F%E4%BD%95.mp3
+趣味口音,湾区大叔,zh_female_wanqudashu_moon_bigtts,中文-广东口音,,豆包，Cici,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%B9%BE%E5%8C%BA%E5%A4%A7%E5%8F%94.mp3
+趣味口音,呆萌川妹,zh_female_daimengchuanmei_moon_bigtts,中文-四川口音,,豆包，Cici,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%91%86%E8%90%8C%E5%B7%9D%E5%A6%B9.mp3
+趣味口音,广州德哥,zh_male_guozhoudege_moon_bigtts,中文-广东口音,,豆包，Cici,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%B9%BF%E5%B7%9E%E5%BE%B7%E5%93%A5.mp3
+趣味口音,北京小爷,zh_male_beijingxiaoye_moon_bigtts,中文-北京口音,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%8C%97%E4%BA%AC%E5%B0%8F%E7%88%B7.mp3
+趣味口音,浩宇小哥,zh_male_haoyuxiaoge_moon_bigtts,中文-青岛口音,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%B5%A9%E5%AE%87%E5%B0%8F%E5%93%A5.mp3
+趣味口音,广西远舟,zh_male_guangxiyuanzhou_moon_bigtts,中文-广西口音,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%B9%BF%E8%A5%BF%E8%BF%9C%E8%88%9F.mp3
+趣味口音,妹坨洁儿,zh_female_meituojieer_moon_bigtts,中文-长沙口音,,豆包，剪映,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%A6%B9%E5%9D%A8%E6%B4%81%E5%84%BF.mp3
+趣味口音,豫州子轩,zh_male_yuzhouzixuan_moon_bigtts,中文-河南口音,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E8%B1%AB%E5%B7%9E%E5%AD%90%E8%BD%A9.mp3
+角色扮演,奶气萌娃,zh_male_naiqimengwa_mars_bigtts,中文,,剪映，豆包,,
+角色扮演,婆婆,zh_female_popo_mars_bigtts,中文,,剪映C端，抖音，豆包,,
+角色扮演,高冷御姐,zh_female_gaolengyujie_moon_bigtts,中文,,豆包，Cici,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E9%AB%98%E5%86%B7%E5%BE%A1%E5%A7%90.mp3
+角色扮演,傲娇霸总,zh_male_aojiaobazong_moon_bigtts,中文,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%82%B2%E5%A8%87%E9%9C%B8%E6%80%BB.mp3
+角色扮演,魅力女友,zh_female_meilinvyou_moon_bigtts,中文,,豆包，剪映,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E9%AD%85%E5%8A%9B%E5%A5%B3%E5%8F%8B.mp3
+角色扮演,深夜播客,zh_male_shenyeboke_moon_bigtts,中文,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%B7%B1%E5%A4%9C%E6%92%AD%E5%AE%A2.mp3
+角色扮演,柔美女友,zh_female_sajiaonvyou_moon_bigtts,中文,,豆包，剪映,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%9F%94%E7%BE%8E%E5%A5%B3%E5%8F%8B.mp3
+角色扮演,撒娇学妹,zh_female_yuanqinvyou_moon_bigtts,中文,,豆包，剪映,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%92%92%E5%A8%87%E5%AD%A6%E5%A6%B9.mp3
+角色扮演,病弱少女,ICL_zh_female_bingruoshaonv_tob,中文,,,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E7%97%85%E5%BC%B1%E5%B0%91%E5%A5%B3.mp3
+角色扮演,活泼女孩,ICL_zh_female_huoponvhai_tob,中文,,,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%B4%BB%E6%B3%BC%E5%A5%B3%E5%AD%A9.mp3
+角色扮演,东方浩然,zh_male_dongfanghaoran_moon_bigtts,中文,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E4%B8%9C%E6%96%B9%E6%B5%A9%E7%84%B6.mp3
+角色扮演,绿茶小哥,ICL_zh_male_lvchaxiaoge_tob,中文,,StoryAi，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_lvchaxiaoge_tob.mp3
+角色扮演,娇弱萝莉,ICL_zh_female_jiaoruoluoli_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_jiaoruoluoli_tob.mp3
+角色扮演,冷淡疏离,ICL_zh_male_lengdanshuli_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_lengdanshuli_tob.mp3
+角色扮演,憨厚敦实,ICL_zh_male_hanhoudunshi_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_hanhoudunshi_tob.mp3
+角色扮演,傲气凌人,ICL_zh_male_aiqilingren_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_aiqilingren_tob.mp3
+角色扮演,活泼刁蛮,ICL_zh_female_huopodiaoman_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_huopodiaoman_tob.mp3
+角色扮演,固执病娇,ICL_zh_male_guzhibingjiao_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_guzhibingjiao_tob.mp3
+角色扮演,撒娇粘人,ICL_zh_male_sajiaonianren_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_sajiaonianren_tob.mp3
+角色扮演,傲慢娇声,ICL_zh_female_aomanjiaosheng_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_aomanjiaosheng_tob.mp3
+角色扮演,潇洒随性,ICL_zh_male_xiaosasuixing_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_xiaosasuixing_tob.mp3
+角色扮演,腹黑公子,ICL_zh_male_fuheigongzi_tob,中文,,StoryAi，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_fuheigongzi_tob.mp3
+角色扮演,诡异神秘,ICL_zh_male_guiyishenmi_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_guiyishenmi_tob.mp3
+角色扮演,儒雅才俊,ICL_zh_male_ruyacaijun_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_ruyacaijun_tob.mp3
+角色扮演,病娇白莲,ICL_zh_male_bingjiaobailian_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_bingjiaobailian_tob.mp3
+角色扮演,正直青年,ICL_zh_male_zhengzhiqingnian_tob,中文,,StoryAi，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_zhengzhiqingnian_tob.mp3
+角色扮演,娇憨女王,ICL_zh_female_jiaohannvwang_tob,中文,,StoryAi，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_jiaohannvwang_tob.mp3
+角色扮演,病娇萌妹,ICL_zh_female_bingjiaomengmei_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_bingjiaomengmei_tob.mp3
+角色扮演,青涩小生,ICL_zh_male_qingsenaigou_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_qingsenaigou_tob.mp3
+角色扮演,纯真学弟,ICL_zh_male_chunzhenxuedi_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_chunzhenxuedi_tob.mp3
+角色扮演,暖心学姐,ICL_zh_female_nuanxinxuejie_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_nuanxinxuejie_tob.mp3
+角色扮演,可爱女生,ICL_zh_female_keainvsheng_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_keainvsheng_tob.mp3
+角色扮演,成熟姐姐,ICL_zh_female_chengshujiejie_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_chengshujiejie_tob.mp3
+角色扮演,病娇姐姐,ICL_zh_female_bingjiaojiejie_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_bingjiaojiejie_tob.mp3
+角色扮演,优柔帮主,ICL_zh_male_youroubangzhu_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_youroubangzhu_tob.mp3
+角色扮演,优柔公子,ICL_zh_male_yourougongzi_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_yourougongzi_tob.mp3
+角色扮演,妩媚御姐,ICL_zh_female_wumeiyujie_tob,中文,,豆包，StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_wumeiyujie_tob.mp3
+角色扮演,调皮公主,ICL_zh_female_tiaopigongzhu_tob,中文,,猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_tiaopigongzhu_tob.mp3
+角色扮演,傲娇女友,ICL_zh_female_aojiaonvyou_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_aojiaonvyou_tob.mp3
+角色扮演,贴心男友,ICL_zh_male_tiexinnanyou_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_tiexinnanyou_tob.mp3
+角色扮演,少年将军,ICL_zh_male_shaonianjiangjun_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_shaonianjiangjun_tob.mp3
+角色扮演,贴心女友,ICL_zh_female_tiexinnvyou_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_tiexinnvyou_tob.mp3
+角色扮演,病娇哥哥,ICL_zh_male_bingjiaogege_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_bingjiaogege_tob.mp3
+角色扮演,学霸男同桌,ICL_zh_male_xuebanantongzhuo_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_xuebanantongzhuo_tob.mp3
+角色扮演,幽默叔叔,ICL_zh_male_youmoshushu_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_youmoshushu_tob.mp3
+角色扮演,妩媚可人,ICL_zh_female_ganli_v1_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%A6%A9%E5%AA%9A%E5%8F%AF%E4%BA%BA.mp3
+角色扮演,邪魅御姐,ICL_zh_female_xiangliangya_v1_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E9%82%AA%E9%AD%85%E5%BE%A1%E5%A7%90.mp3
+角色扮演,性感御姐,ICL_zh_female_xingganyujie_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_xingganyujie_tob.mp3
+角色扮演,嚣张小哥,ICL_zh_male_ms_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%9A%A3%E5%BC%A0%E5%B0%8F%E5%93%A5.mp3
+角色扮演,油腻大叔,ICL_zh_male_you_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%B2%B9%E8%85%BB%E5%A4%A7%E5%8F%94.mp3
+角色扮演,孤傲公子,ICL_zh_male_guaogongzi_v1_tob,中文,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%AD%A4%E5%82%B2%E5%85%AC%E5%AD%90.mp3
+角色扮演,胡子叔叔,ICL_zh_male_huzi_v1_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E8%83%A1%E5%AD%90%E5%8F%94%E5%8F%94.mp3
+角色扮演,性感魅惑,ICL_zh_female_luoqing_v1_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%80%A7%E6%84%9F%E9%AD%85%E6%83%91.mp3
+角色扮演,双节棍小哥,zh_male_zhoujielun_emo_v2_mars_bigtts,中文-台湾口音,,"抖音,剪映,豆包",,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%8F%8C%E8%8A%82%E6%A3%8D%E5%B0%8F%E5%93%A5.mp3
+角色扮演,病弱公子,ICL_zh_male_bingruogongzi_tob,中文,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E7%97%85%E5%BC%B1%E5%85%AC%E5%AD%90.mp3
+角色扮演,邪魅女王,ICL_zh_female_bingjiao3_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E9%82%AA%E9%AD%85%E5%A5%B3%E7%8E%8B.mp3
+角色扮演,假小子,ICL_zh_female_jiaxiaozi_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_female_jiaxiaozi_tob.mp3
+角色扮演,冷峻上司,ICL_zh_male_lengjunshangsi_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_lengjunshangsi_tob.mp3
+角色扮演,温柔男同桌,ICL_zh_male_wenrounantongzhuo_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_wenrounantongzhuo_tob.mp3
+角色扮演,病娇弟弟,ICL_zh_male_bingjiaodidi_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_bingjiaodidi_tob.mp3
+角色扮演,幽默大爷,ICL_zh_male_youmodaye_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_youmodaye_tob.mp3
+角色扮演,傲慢少爷,ICL_zh_male_aomanshaoye_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_aomanshaoye_tob.mp3
+角色扮演,枕边低语,ICL_zh_male_asmryexiu_tob,中文,,抖音,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%9E%95%E8%BE%B9%E4%BD%8E%E8%AF%AD.mp3
+角色扮演,傲慢青年,ICL_zh_male_aomanqingnian_tob,中文,,,,
+角色扮演,醋精男友,ICL_zh_male_cujingnanyou_tob,中文,,,,
+角色扮演,醋精男生,ICL_zh_male_cujingnansheng_tob,中文,,,,
+角色扮演,爽朗少年,ICL_zh_male_shuanglangshaonian_tob,中文,,,,
+角色扮演,撒娇男友,ICL_zh_male_sajiaonanyou_tob,中文,,,,
+角色扮演,温柔男友,ICL_zh_male_wenrounanyou_tob,中文,,,,
+角色扮演,温顺少年,ICL_zh_male_wenshunshaonian_tob,中文,,,,
+角色扮演,粘人男友,ICL_zh_male_naigounanyou_tob,中文,,,,
+角色扮演,撒娇男生,ICL_zh_male_sajiaonansheng_tob,中文,,,,
+角色扮演,活泼男友,ICL_zh_male_huoponanyou_tob,中文,,,,
+角色扮演,甜系男友,ICL_zh_male_tianxinanyou_tob,中文,,,,
+角色扮演,活力青年,ICL_zh_male_huoliqingnian_tob,中文,,,,
+角色扮演,开朗青年,ICL_zh_male_kailangqingnian_tob,中文,,,,
+角色扮演,冷漠兄长,ICL_zh_male_lengmoxiongzhang_tob,中文,,,,
+角色扮演,天才同桌,ICL_zh_male_tiancaitongzhuo_tob,中文,,,,
+角色扮演,傲娇精英,ICL_zh_male_aojiaojingying_tob,中文,,,,
+角色扮演,翩翩公子,ICL_zh_male_pianpiangongzi_tob,中文,,,,
+角色扮演,懵懂青年,ICL_zh_male_mengdongqingnian_tob,中文,,,,
+角色扮演,冷脸兄长,ICL_zh_male_lenglianxiongzhang_tob,中文,,,,
+角色扮演,病娇少年,ICL_zh_male_bingjiaoshaonian_tob,中文,,,,
+角色扮演,病娇男友,ICL_zh_male_bingjiaonanyou_tob,中文,,,,
+角色扮演,病弱少年,ICL_zh_male_bingruoshaonian_tob,中文,,,,
+角色扮演,意气少年,ICL_zh_male_yiqishaonian_tob,中文,,,,
+角色扮演,干净少年,ICL_zh_male_ganjingshaonian_tob,中文,,,,
+角色扮演,冷漠男友,ICL_zh_male_lengmonanyou_tob,中文,,,,
+角色扮演,精英青年,ICL_zh_male_jingyingqingnian_tob,中文,,,,
+角色扮演,风发少年,ICL_zh_male_fengfashaonian_tob,中文,,,,
+角色扮演,热血少年,ICL_zh_male_rexueshaonian_tob,中文,,,,
+角色扮演,清爽少年,ICL_zh_male_qingshuangshaonian_tob,中文,,,,
+角色扮演,中二青年,ICL_zh_male_zhongerqingnian_tob,中文,,,,
+角色扮演,凌云青年,ICL_zh_male_lingyunqingnian_tob,中文,,,,
+角色扮演,自负青年,ICL_zh_male_zifuqingnian_tob,中文,,,,
+角色扮演,不羁青年,ICL_zh_male_bujiqingnian_tob,中文,,,,
+角色扮演,儒雅君子,ICL_zh_male_ruyajunzi_tob,中文,,,,
+角色扮演,低音沉郁,ICL_zh_male_diyinchenyu_tob,中文,,,,
+角色扮演,冷脸学霸,ICL_zh_male_lenglianxueba_tob,中文,,,,
+角色扮演,儒雅总裁,ICL_zh_male_ruyazongcai_tob,中文,,,,
+角色扮演,深沉总裁,ICL_zh_male_shenchenzongcai_tob,中文,,,,
+角色扮演,小侯爷,ICL_zh_male_xiaohouye_tob,中文,,,,
+角色扮演,孤高公子,ICL_zh_male_gugaogongzi_tob,中文,,,,
+角色扮演,仗剑君子,ICL_zh_male_zhangjianjunzi_tob,中文,,,,
+角色扮演,温润学者,ICL_zh_male_wenrunxuezhe_tob,中文,,,,
+角色扮演,亲切青年,ICL_zh_male_qinqieqingnian_tob,中文,,,,
+角色扮演,温柔学长,ICL_zh_male_wenrouxuezhang_tob,中文,,,,
+角色扮演,磁性男嗓,ICL_zh_male_cixingnansang_tob,中文,,,,
+角色扮演,高冷总裁,ICL_zh_male_gaolengzongcai_tob,中文,,,,
+角色扮演,冷峻高智,ICL_zh_male_lengjungaozhi_tob,中文,,,,
+角色扮演,孱弱少爷,ICL_zh_male_chanruoshaoye_tob,中文,,,,
+角色扮演,自信青年,ICL_zh_male_zixinqingnian_tob,中文,,,,
+角色扮演,青涩青年,ICL_zh_male_qingseqingnian_tob,中文,,,,
+角色扮演,学霸同桌,ICL_zh_male_xuebatongzhuo_tob,中文,,,,
+角色扮演,冷傲总裁,ICL_zh_male_lengaozongcai_tob,中文,,,,
+角色扮演,霸道少爷,ICL_zh_male_badaoshaoye_tob,中文,,,,
+角色扮演,元气少年,ICL_zh_male_yuanqishaonian_tob,中文,,,,
+角色扮演,洒脱青年,ICL_zh_male_satuoqingnian_tob,中文,,,,
+角色扮演,直率青年,ICL_zh_male_zhishuaiqingnian_tob,中文,,,,
+角色扮演,斯文青年,ICL_zh_male_siwenqingnian_tob,中文,,,,
+角色扮演,成熟总裁,ICL_zh_male_chengshuzongcai_tob,中文,,,,
+角色扮演,俊逸公子,ICL_zh_male_junyigongzi_tob,中文,,,,
+角色扮演,傲娇公子,ICL_zh_male_aojiaogongzi_tob,中文,,,,
+角色扮演,仗剑侠客,ICL_zh_male_zhangjianxiake_tob,中文,,,,
+角色扮演,机甲智能,ICL_zh_male_jijiaozhineng_tob,中文,,,,
+角色扮演,神秘法师,ICL_zh_male_shenmifashi_tob,中文,,豆包，猫箱,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/ICL_zh_male_shenmifashi_tob.mp3
+角色扮演,霸道总裁,ICL_zh_male_badaozongcai_v1_tob,中文,,,,
+视频配音,悠悠君子,zh_male_M100_conversation_wvae_bigtts,中文,,"豆包,Cici,web demo",,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%82%A0%E6%82%A0%E5%90%9B%E5%AD%90.mp3
+视频配音,文静毛毛,zh_female_maomao_conversation_wvae_bigtts,中文,,"豆包,web demo",,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%96%87%E9%9D%99%E6%AF%9B%E6%AF%9B.mp3
+视频配音,倾心少女,ICL_zh_female_qiuling_v1_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%80%BE%E5%BF%83%E5%B0%91%E5%A5%B3.mp3
+视频配音,醇厚低音,ICL_zh_male_buyan_v1_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E9%86%87%E5%8E%9A%E4%BD%8E%E9%9F%B3.mp3
+视频配音,咆哮小哥,ICL_zh_male_BV144_paoxiaoge_v1_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%92%86%E5%93%AE%E5%B0%8F%E5%93%A5.mp3
+视频配音,和蔼奶奶,ICL_zh_female_heainainai_tob,中文,,,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%92%8C%E8%94%BC%E5%A5%B6%E5%A5%B6.mp3
+视频配音,邻居阿姨,ICL_zh_female_linjuayi_tob,中文,,,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E9%82%BB%E5%B1%85%E9%98%BF%E5%A7%A8.mp3
+视频配音,温柔小雅,zh_female_wenrouxiaoya_moon_bigtts,中文,,豆包,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%B8%A9%E6%9F%94%E5%B0%8F%E9%9B%85.mp3
+视频配音,天才童声,zh_male_tiancaitongsheng_mars_bigtts,中文,,,,
+视频配音,猴哥,zh_male_sunwukong_mars_bigtts,中文,,,,
+视频配音,熊二,zh_male_xionger_mars_bigtts,中文,,抖音，剪映C端，豆包,,
+视频配音,佩奇猪,zh_female_peiqi_mars_bigtts,中文,,抖音，剪映订阅，豆包,,
+视频配音,武则天,zh_female_wuzetian_mars_bigtts,中文,,剪映,,
+视频配音,顾姐,zh_female_gujie_mars_bigtts,中文,,抖音，剪映C端,,
+视频配音,樱桃丸子,zh_female_yingtaowanzi_mars_bigtts,中文,,剪映订阅，抖音，豆包,,
+视频配音,广告解说,zh_male_chunhui_mars_bigtts,中文,,剪映,,
+视频配音,少儿故事,zh_female_shaoergushi_mars_bigtts,中文,,,,
+视频配音,四郎,zh_male_silang_mars_bigtts,中文,,抖音，剪映C端，豆包,,
+视频配音,磁性解说男声/Morgan,zh_male_jieshuonansheng_mars_bigtts,中文，美式英语,,抖音，剪映,"磁性解说男声|在浩瀚的宇宙中，星辰闪烁，每一颗都蕴含着无尽的奥秘，我们跟随探索的脚步，去解读宇宙深处的神秘密码。;Morgan|Listen, I just watched an amazing documentary. The way they presented the story was so captivating. It made me realize how powerful a good narration can be. It can really bring a whole new world to life.",磁性解说男声|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/zh_male_jieshuonansheng_mars_bigtts.mp3;Morgan|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/Morgan.mp3
+视频配音,鸡汤妹妹/Hope,zh_female_jitangmeimei_mars_bigtts,中文，美式英语,,抖音，豆包,"鸡汤妹妹|生活就像一杯茶，不会苦一辈子，但总会苦一阵子。只要我们坚持下去，就一定能品到那回甘的滋味，收获美好。;Hope|You know, even when things seem tough, don't give up. Every setback is a chance to grow. There's always a silver lining. Believe in yourself and keep moving forward. You've got this！",鸡汤妹妹|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/zh_female_jitangmeimei_mars_bigtts.mp3;Hope|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/Hope.mp3
+视频配音,贴心女声/Candy,zh_female_tiexinnvsheng_mars_bigtts,中文，美式英语,,,"贴心女声|音乐是心灵的语言，在音符的跳跃间，能传达出喜怒哀乐。沉浸在音乐的海洋里，仿佛能触摸到灵魂的最深处。;Candy|Darling, I noticed you're a bit stressed. How about we relax？ We can have a cup of tea, listen to some soft music, and just forget about the worries for a while. You deserve a break.",贴心女声|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/zh_female_tiexinnvsheng_mars_bigtts.mp3;Candy|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/Candy.mp3
+视频配音,俏皮女声,zh_female_qiaopinvsheng_mars_bigtts,中文,,,,
+视频配音,萌丫头/Cutey,zh_female_mengyatou_mars_bigtts,中文，美式英语,,,"萌丫头|我今天在花园里看到好多漂亮的蝴蝶，它们飞来飞去像在跳舞，我要是也能像它们一样自由自在就好了。;Cutey|Oh, I saw a really cute puppy on the street. It was so fluffy and had the sweetest little face. I wanted to take it home right away. Don't you just love cute things？",萌丫头|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/zh_female_mengyatou_mars_bigtts.mp3;Cutey|https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/console/bigtts/Cutey.mp3
+视频配音,懒音绵宝,zh_male_lanxiaoyang_mars_bigtts,中文,,,,
+视频配音,亮嗓萌仔,zh_male_dongmanhaimian_mars_bigtts,中文,,,,
+有声阅读,温暖少年,ICL_zh_male_yangyang_v1_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E6%B8%A9%E6%9A%96%E5%B0%91%E5%B9%B4.mp3
+有声阅读,儒雅公子,ICL_zh_male_flc_v1_tob,中文,,StoryAi,,https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/%E5%84%92%E9%9B%85%E5%85%AC%E5%AD%90.mp3
+有声阅读,悬疑解说,zh_male_changtianyi_mars_bigtts,中文,,剪映C端，抖音，豆包,,
+有声阅读,儒雅青年,zh_male_ruyaqingnian_mars_bigtts,中文,,番茄小说，豆包，剪映,,
+有声阅读,霸气青叔,zh_male_baqiqingshu_mars_bigtts,中文,,番茄小说，豆包，剪映，剪映-Dreamina,,
+有声阅读,擎苍,zh_male_qingcang_mars_bigtts,中文,,番茄小说，剪映，豆包，抖音,,
+有声阅读,活力小哥,zh_male_yangguangqingnian_mars_bigtts,中文,,,,
+有声阅读,古风少御,zh_female_gufengshaoyu_mars_bigtts,中文,,,,
+有声阅读,温柔淑女,zh_female_wenroushunv_mars_bigtts,中文,,番茄小说，豆包，剪映，剪映-Dreamina,,
+有声阅读,反卷青年,zh_male_fanjuanqingnian_mars_bigtts,中文,,,,

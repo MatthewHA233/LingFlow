@@ -1053,9 +1053,9 @@ export function ContextBlocks({
       console.log(`✅ 语境块 ${block.id} 处理完成，清除动画和选择状态`);
     };
 
-    // 添加start-tts-selection事件处理
+    // 添加enable-tts-selection事件处理
     const handleStartTTSSelection = (event: CustomEvent) => {
-      console.log('🎯 ContextBlocks收到start-tts-selection事件', event.detail);
+      console.log('🎯 ContextBlocks收到enable-tts-selection事件', event.detail);
       setIsSelectionMode(true);
       setSelectionType('tts');
       setIsBlockSelectable(true);
@@ -1089,7 +1089,7 @@ export function ContextBlocks({
     window.addEventListener('mark-tts-block-selected', handleMarkTTSBlockSelected as EventListener);
     window.addEventListener('mark-tts-blocks-selected', handleMarkTTSBlocksSelected as EventListener);
     window.addEventListener('reset-tts-selection', handleResetTTSSelection as EventListener);
-    window.addEventListener('start-tts-selection', handleStartTTSSelection as EventListener);
+    window.addEventListener('enable-tts-selection', handleStartTTSSelection as EventListener);
     window.addEventListener('disable-tts-selection', handleDisableTTSSelection as EventListener);
 
     return () => {
@@ -1102,7 +1102,7 @@ export function ContextBlocks({
       window.removeEventListener('mark-tts-block-selected', handleMarkTTSBlockSelected as EventListener);
       window.removeEventListener('mark-tts-blocks-selected', handleMarkTTSBlocksSelected as EventListener);
       window.removeEventListener('reset-tts-selection', handleResetTTSSelection as EventListener);
-      window.removeEventListener('start-tts-selection', handleStartTTSSelection as EventListener);
+      window.removeEventListener('enable-tts-selection', handleStartTTSSelection as EventListener);
       window.removeEventListener('disable-tts-selection', handleDisableTTSSelection as EventListener);
     };
   }, [block.id, selectedRange]);

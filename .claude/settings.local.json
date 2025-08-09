@@ -14,7 +14,9 @@
       "Bash(git commit:*)",
       "Bash(ls:*)",
       "Bash(cut:*)",
-      "Bash(cmd /c:*)"
+      "Bash(cmd /c:*)",
+      "WebFetch(domain:mcs.volceapplog.com)",
+      "WebFetch(domain:lf3-static.bytednsdoc.com)"
     ],
     "deny": []
   }

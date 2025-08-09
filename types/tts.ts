@@ -10,6 +10,15 @@ export interface VoiceInfo {
   emotions?: string[];  // 支持的情感
   accent?: string;      // 口音
   businessParties?: string[]; // 上线业务方
+  features?: string[];  // 特色功能
+  demoText?: string | Array<{  // 试听文本 - 支持单个文本或多语言文本数组
+    name: string;       // 语言名称（对于双语音色）
+    text: string;       // 试听文本内容
+  }>;
+  demoUrls?: Array<{    // 试听URL
+    name: string;       // 显示名称（对于双语音色）
+    url: string;        // 试听URL
+  }>;
 }
 
 // 音色分类 - 动态从 CSV 中获取
@@ -121,6 +130,8 @@ export async function loadVoicesFromCSV(): Promise<void> {
       const language = values[3] || '';
       const emotions = values[4] || '';
       const businessParties = values[5] || '';
+      const demoText = values[6] || '';  // 试听文本
+      const demoUrlsStr = values[7] || '';  // 试听URL列
       
       // 跳过无效数据
       if (!scene || !name || !voiceType) {
@@ -218,6 +229,46 @@ export async function loadVoicesFromCSV(): Promise<void> {
         description += gender === 'male' ? '男声' : '女声';
       }
       
+      // 解析试听URL
+      const demoUrls: Array<{name: string, url: string}> = [];
+      if (demoUrlsStr && demoUrlsStr.trim()) {
+        // 处理双语音色格式: 名称1|URL1;名称2|URL2
+        if (demoUrlsStr.includes('|')) {
+          const parts = demoUrlsStr.split(';');
+          for (const part of parts) {
+            const [partName, partUrl] = part.split('|');
+            if (partName && partUrl) {
+              demoUrls.push({ name: partName.trim(), url: partUrl.trim() });
+            }
+          }
+        } else {
+          // 单一URL，使用音色名称
+          demoUrls.push({ name: name, url: demoUrlsStr.trim() });
+        }
+      }
+      
+      // 解析试听文本 - 支持双语格式
+      let parsedDemoText: string | Array<{name: string, text: string}> | undefined;
+      if (demoText && demoText.trim()) {
+        // 检查是否是双语格式: 名称1|文本1;名称2|文本2
+        if (demoText.includes('|') && demoText.includes(';')) {
+          const textArray: Array<{name: string, text: string}> = [];
+          const parts = demoText.split(';');
+          for (const part of parts) {
+            const [partName, partText] = part.split('|');
+            if (partName && partText) {
+              textArray.push({ name: partName.trim(), text: partText.trim() });
+            }
+          }
+          if (textArray.length > 0) {
+            parsedDemoText = textArray;
+          }
+        } else {
+          // 单一文本
+          parsedDemoText = demoText.trim();
+        }
+      }
+      
       voicesData.push({
         id: voiceType,
         uniqueKey: `${voiceType}_${i}_${Date.now()}`, // 生成唯一key
@@ -228,7 +279,9 @@ export async function loadVoicesFromCSV(): Promise<void> {
         description,
         emotions: emotionList.length > 0 ? emotionList : undefined,
         businessParties: businessParties && businessParties.trim() ? 
-          businessParties.split(/[，、,]/).map(s => s.trim()).filter(Boolean) : undefined
+          businessParties.split(/[，、,]/).map(s => s.trim()).filter(Boolean) : undefined,
+        demoText: parsedDemoText,
+        demoUrls: demoUrls.length > 0 ? demoUrls : undefined
       });
     }
     
@@ -258,10 +311,6 @@ function handleLoadFailure() {
 
 // 获取所有音色
 export function getAllVoices(): VoiceInfo[] {
-  if (!isLoaded) {
-    console.warn('警告：音色数据尚未加载');
-    return [];
-  }
   return [...voicesData];
 }
 
@@ -285,10 +334,10 @@ export function getVoicesByLanguage(language: string): VoiceInfo[] {
     const languages = voice.language.split(/[，,]/).map(lang => lang.trim().toLowerCase());
     const targetLang = language.toLowerCase();
     
-    // 检查是否包含目标语言
+    // 检查是否包含目标语言 - 只使用精确匹配或语言字段包含目标语言
     return languages.some(lang => {
-      // 精确匹配或者包含匹配
-      return lang === targetLang || lang.includes(targetLang) || targetLang.includes(lang);
+      // 只允许精确匹配或语言字段包含目标语言（不允许反向包含）
+      return lang === targetLang || lang.includes(targetLang);
     });
   });
 }
@@ -297,34 +346,14 @@ export function getVoicesByLanguage(language: string): VoiceInfo[] {
 export function getVoicesByLanguageWithEmotionFirst(language: string): VoiceInfo[] {
   const voices = getVoicesByLanguage(language);
   
-  // 去重：如果同一个voice_type出现多次，优先保留多情感分类的
-  const voiceMap = new Map<string, VoiceInfo>();
-  
-  // 先处理非多情感的音色
-  voices.forEach(voice => {
-    if (!voice.category.includes('多情感') && !voice.category.includes('英文多情感')) {
-      voiceMap.set(voice.id, voice);
-    }
-  });
-  
-  // 再处理多情感的音色（会覆盖同ID的非多情感音色）
-  voices.forEach(voice => {
-    if (voice.category.includes('多情感') || voice.category.includes('英文多情感')) {
-      voiceMap.set(voice.id, voice);
-    }
-  });
-  
-  // 转换为数组
-  const uniqueVoices = Array.from(voiceMap.values());
-  
-  // 分离多情感音色和普通音色
-  const emotionVoices = uniqueVoices.filter(voice => 
+  // 分离多情感音色和普通音色（不进行去重，保留所有语言匹配的音色）
+  const emotionVoices = voices.filter(voice => 
     voice.category.includes('多情感') || 
     voice.category.includes('英文多情感') ||
     (voice.emotions && voice.emotions.length > 0)
   );
   
-  const normalVoices = uniqueVoices.filter(voice => 
+  const normalVoices = voices.filter(voice => 
     !voice.category.includes('多情感') && 
     !voice.category.includes('英文多情感') &&
     (!voice.emotions || voice.emotions.length === 0)

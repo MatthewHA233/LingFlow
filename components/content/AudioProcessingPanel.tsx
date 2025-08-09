@@ -389,9 +389,9 @@ export function AudioProcessingPanel({
     setTtsSelectedBlocks([])
     setTtsText('')
     
-    // 发送事件启用TTS选择模式
-    console.log('🎤 发送start-tts-selection事件')
-    window.dispatchEvent(new CustomEvent('start-tts-selection', {
+    // 发送事件启用TTS选择模式 - 使用不同的事件名称避免循环
+    console.log('🎤 发送enable-tts-selection事件')
+    window.dispatchEvent(new CustomEvent('enable-tts-selection', {
       detail: { mode: 'tts' }
     }))
     
@@ -664,16 +664,16 @@ export function AudioProcessingPanel({
     }
   }, [])
 
-  // 监听来自ReaderContent的start-tts-selection事件
+  // 监听来自ReaderContent的request-tts-generation事件
   useEffect(() => {
     const handleStartTTSFromReader = (event: CustomEvent) => {
-      console.log('📚 AudioProcessingPanel收到来自ReaderContent的start-tts-selection事件')
+      console.log('📚 AudioProcessingPanel收到来自ReaderContent的request-tts-generation事件')
       startTTSSelection()
     }
 
-    window.addEventListener('start-tts-selection', handleStartTTSFromReader as EventListener)
+    window.addEventListener('request-tts-generation', handleStartTTSFromReader as EventListener)
     return () => {
-      window.removeEventListener('start-tts-selection', handleStartTTSFromReader as EventListener)
+      window.removeEventListener('request-tts-generation', handleStartTTSFromReader as EventListener)
     }
   }, [startTTSSelection])
 

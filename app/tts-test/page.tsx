@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, Play, Download, Volume2, Mic, Sparkles, Headphones, Settings, FileAudio, Palette } from 'lucide-react'
+import { Loader2, Play, Download, Volume2, Mic, Sparkles, Headphones, Settings, FileAudio, Palette, PlayCircle } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Label } from '@/components/ui/label'
@@ -107,6 +107,10 @@ export default function TTSTestPage() {
   const [disableMarkdownFilter, setDisableMarkdownFilter] = useState(false)
   const [enableLatexTn, setEnableLatexTn] = useState(false)
   const [explicitLanguage, setExplicitLanguage] = useState('auto')
+  
+  // 试听功能状态
+  const [playingVoice, setPlayingVoice] = useState<string>('')
+  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null)
 
   // 示例文本
   const exampleTexts = [
@@ -299,6 +303,76 @@ export default function TTSTestPage() {
     }
   }
 
+  // 试听音色功能 - 使用CSV中的URL
+  const handlePlayVoiceDemo = async (voiceType: string, demoUrl?: string) => {
+    const playKey = demoUrl ? `${voiceType}-${demoUrl}` : voiceType
+    
+    // 如果点击的是正在播放的音色，停止播放
+    if (playingVoice === playKey) {
+      if (currentAudio) {
+        currentAudio.pause()
+        currentAudio.currentTime = 0
+        setCurrentAudio(null)
+      }
+      setPlayingVoice('')
+      return
+    }
+    
+    // 停止之前的音频播放
+    if (currentAudio) {
+      currentAudio.pause()
+      currentAudio.currentTime = 0
+    }
+    
+    // 设置新的播放状态
+    setPlayingVoice(playKey)
+
+    try {
+      // 如果没有传入URL，从音色信息中获取
+      if (!demoUrl) {
+        const voiceInfo = getVoiceInfo(voiceType)
+        if (!voiceInfo?.demoUrls || voiceInfo.demoUrls.length === 0) {
+          console.warn(`音色 ${voiceType} 没有试听URL`)
+          setPlayingVoice('')
+          return
+        }
+        demoUrl = voiceInfo.demoUrls[0].url
+      }
+      
+      if (!demoUrl) {
+        console.warn(`音色没有试听URL`)
+        setPlayingVoice('')
+        return
+      }
+      
+      // 创建音频对象并播放
+      const audio = new Audio(demoUrl)
+      
+      audio.onended = () => {
+        // 播放结束后清理状态
+        setPlayingVoice('')
+        setCurrentAudio(null)
+      }
+      
+      audio.onerror = () => {
+        console.warn(`音色 ${voiceType} 的试听音频无法播放: ${demoUrl}`)
+        setPlayingVoice('')
+        setCurrentAudio(null)
+      }
+      
+      // 保存当前音频实例
+      setCurrentAudio(audio)
+      
+      await audio.play()
+      console.log(`成功播放音色试听: ${voiceType} - ${demoUrl}`)
+      
+    } catch (error) {
+      console.warn(`播放音色 ${voiceType} 试听失败:`, error)
+      setPlayingVoice('')
+      setCurrentAudio(null)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       {/* 顶部装饰 */}
@@ -483,11 +557,38 @@ export default function TTSTestPage() {
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
-                              <h3 className={`font-medium text-sm ${
-                                voiceType === voice.id ? 'text-purple-300' : 'text-gray-200'
-                              }`}>
-                                {voice.name}
-                              </h3>
+                              <div className="flex items-center gap-2">
+                                <h3 className={`font-medium text-sm ${
+                                  voiceType === voice.id ? 'text-purple-300' : 'text-gray-200'
+                                }`}>
+                                  {voice.name}
+                                </h3>
+                                {/* 试听按钮 - 使用CSV中的URL */}
+                                {voice.demoUrls && voice.demoUrls.length > 0 && (
+                                  <>
+                                    {voice.demoUrls.map((demo, index) => {
+                                      const playKey = `${voice.id}-${demo.url}`
+                                      return (
+                                        <button
+                                          key={index}
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            handlePlayVoiceDemo(voice.id, demo.url)
+                                          }}
+                                          className={`w-6 h-6 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 ${
+                                            playingVoice === playKey
+                                              ? 'bg-green-500 text-white animate-pulse'
+                                              : 'bg-gray-600 text-gray-300 hover:bg-blue-500 hover:text-white'
+                                          }`}
+                                          title={`试听: ${demo.name}`}
+                                        >
+                                          <PlayCircle className="w-3.5 h-3.5" />
+                                        </button>
+                                      )
+                                    })}
+                                  </>
+                                )}
+                              </div>
                               <p className="text-xs text-gray-400 mt-1">
                                 {voice.language} • {voice.gender === 'male' ? '男声' : '女声'}
                                 {voice.accent && ` • ${voice.accent}`}
@@ -527,7 +628,7 @@ export default function TTSTestPage() {
                                 <div>
                                   <span className="text-xs font-semibold text-pink-400 mb-1 block">特色功能：</span>
                                   <div className="flex flex-wrap gap-1">
-                                    {voice.features.slice(0, 2).map(feature => (
+                                    {voice.features.slice(0, 2).map((feature: string) => (
                                       <span key={feature} className="px-2 py-1 bg-pink-900/50 text-pink-300 text-xs rounded-full border border-pink-600">
                                         {feature}
                                       </span>
@@ -896,7 +997,7 @@ export default function TTSTestPage() {
               </Card>
 
               {/* 情感合成卡片 */}
-              {getVoiceInfo(voiceType)?.emotions && getVoiceInfo(voiceType).emotions!.length > 0 && (
+              {getVoiceInfo(voiceType)?.emotions && getVoiceInfo(voiceType)?.emotions && getVoiceInfo(voiceType)!.emotions!.length > 0 && (
                 <Card className="border border-gray-700 shadow-lg bg-gray-800/80 backdrop-blur-sm">
                   <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-lg text-gray-100">
@@ -916,7 +1017,7 @@ export default function TTSTestPage() {
                         <div>
                           <Label className="font-medium text-sm text-gray-200">启用情感合成</Label>
                           <p className="text-xs text-gray-400">
-                            支持 {getVoiceInfo(voiceType).emotions!.length} 种情感
+                            支持 {getVoiceInfo(voiceType)?.emotions?.length || 0} 种情感
                           </p>
                         </div>
                       </div>
