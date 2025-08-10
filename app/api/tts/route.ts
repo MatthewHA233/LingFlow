@@ -205,7 +205,7 @@ export async function POST(req: NextRequest) {
       let result;
       
       // 始终返回 Base64 编码的音频数据，由前端创建 Blob URL
-      const { audio, duration } = await ttsService.synthesizeToBase64(synthesizeOptions);
+      const { audio, duration, timestamps } = await ttsService.synthesizeToBase64(synthesizeOptions);
       
       // 12. 如果提供了bookId，则上传到OSS并保存到数据库
       if (bookId) {
@@ -250,7 +250,8 @@ export async function POST(req: NextRequest) {
             audio,
             duration,
             format: 'base64',
-            encoding: synthesizeOptions.encoding || 'mp3'
+            encoding: synthesizeOptions.encoding || 'mp3',
+            timestamps
           }
         };
         
@@ -263,7 +264,8 @@ export async function POST(req: NextRequest) {
             audio,
             duration,
             format: 'base64',
-            encoding: synthesizeOptions.encoding || 'mp3'
+            encoding: synthesizeOptions.encoding || 'mp3',
+            timestamps
           }
         };
         

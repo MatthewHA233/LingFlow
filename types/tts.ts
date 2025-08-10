@@ -368,11 +368,45 @@ export function getVoiceInfo(voiceId: string): VoiceInfo | null {
   return getAllVoices().find(voice => voice.id === voiceId) || null;
 }
 
-// TTS API 响应类型
+// 豆包API返回的单词时间戳结构
+export interface WordTimestamp {
+  word: string;           // 单词
+  start_time: number;     // 开始时间（毫秒）
+  end_time: number;       // 结束时间（毫秒）
+  confidence: number;     // 置信度
+}
+
+// 前端解析后的时间戳数据结构
+export interface TimestampData {
+  text: string;           // 对应的文本片段
+  start_time: number;     // 开始时间（毫秒）
+  end_time: number;       // 结束时间（毫秒）
+}
+
+// 豆包前端数据结构
+export interface DoubaoFrontendData {
+  words: WordTimestamp[];
+}
+
+// 豆包 TTS 完整响应结构
+export interface DoubaoTTSResponse {
+  code: number;
+  message?: string;
+  reqid: string;
+  data: string;  // Base64 encoded audio data
+  addition: {
+    duration: string;      // 音频时长（毫秒）
+    first_pkg?: string;    // 首包时间
+    frontend?: string;     // JSON字符串，包含详细的单词时间戳
+  };
+}
+
+// TTS API 响应类型 (保持向后兼容)
 export interface TTSResponse {
   data: string; // Base64 encoded audio
   status: number;
   message?: string;
+  timestamps?: TimestampData[];  // 新增时间戳字段
 }
 
 // TTS 请求参数
@@ -385,6 +419,70 @@ export interface TTSRequest {
   emotion?: string;
   language?: string;
   silence_duration?: number;
+}
+
+// TTS 配置
+export interface TTSConfig {
+  appid: string;
+  token: string;
+  cluster?: string;
+  defaultVoiceType?: string;
+  defaultSpeedRatio?: number;
+}
+
+// TTS 合成选项
+export interface TTSSynthesizeOptions {
+  text: string;
+  voiceType?: string;
+  speedRatio?: number;
+  encoding?: string;
+  userId?: string;
+  
+  // 大模型特有参数
+  emotion?: string;
+  enableEmotion?: boolean;
+  emotionScale?: number;
+  rate?: number;
+  loudnessRatio?: number;
+  withTimestamp?: boolean;
+  textType?: 'plain' | 'ssml';
+  silenceDuration?: number;
+  operation?: 'query' | 'submit';
+  disableMarkdownFilter?: boolean;
+  enableLatexTn?: boolean;
+  explicitLanguage?: string;
+  contextLanguage?: string;
+}
+
+// 音频编码格式
+export enum AudioEncoding {
+  MP3 = 'mp3',
+  WAV = 'wav',
+  PCM = 'pcm',
+  OGG_OPUS = 'ogg_opus'
+}
+
+// 音色类型枚举
+export enum VoiceType {
+  ZH_MALE_CONVERSATION = 'zh_male_conversation_wvae_bigtts',
+  ZH_FEMALE_QINGXIN = 'zh_female_qingxin'
+}
+
+// 额外参数
+export interface ExtraParams {
+  disable_markdown_filter?: boolean;
+  enable_latex_tn?: boolean;
+}
+
+// TTS 错误类
+export class TTSError extends Error {
+  public code: number;
+  
+  constructor(code: number, message: string) {
+    super(message);
+    this.name = 'TTSError';
+    this.code = code;
+  }
 }
 
 // 清理文本（移除多余空格和换行）

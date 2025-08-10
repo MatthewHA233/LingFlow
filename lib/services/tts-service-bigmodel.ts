@@ -1,12 +1,16 @@
 import { 
   TTSRequest, 
   TTSResponse, 
+  DoubaoTTSResponse,
   TTSConfig, 
   TTSSynthesizeOptions, 
   TTSError,
   AudioEncoding,
   VoiceType,
-  ExtraParams
+  ExtraParams,
+  TimestampData,
+  WordTimestamp,
+  DoubaoFrontendData
 } from '@/types/tts';
 import { BinaryProtocol } from './binary-protocol';
 
@@ -121,11 +125,40 @@ export class BigModelTTSService {
   }
 
   /**
+   * 解析豆包API返回的时间戳数据
+   */
+  private parseTimestamps(addition: any): TimestampData[] | undefined {
+    try {
+      if (!addition.frontend) {
+        return undefined;
+      }
+
+      const frontendData: DoubaoFrontendData = JSON.parse(addition.frontend);
+      if (!frontendData.words || !Array.isArray(frontendData.words)) {
+        return undefined;
+      }
+
+      // 将单词级别的时间戳转换为句子级别的时间戳
+      // 这里可以按需要调整，比如按标点符号分组，或者保持单词级别
+      return frontendData.words.map(word => ({
+        text: word.word,
+        start_time: word.start_time,
+        end_time: word.end_time
+      }));
+
+    } catch (error) {
+      console.warn('解析时间戳数据失败:', error);
+      return undefined;
+    }
+  }
+
+  /**
    * HTTP 方式合成语音（非流式）
    */
   async synthesize(options: TTSSynthesizeOptions): Promise<{
     audio: ArrayBuffer;
     duration: number;
+    timestamps?: TimestampData[];
   }> {
     const requestData = this.buildRequestData({
       ...options,
@@ -155,13 +188,21 @@ export class BigModelTTSService {
         throw new TTSError(response.status, errorMessage);
       }
 
-      const result: TTSResponse = await response.json();
+      const result: DoubaoTTSResponse = await response.json();
       
-      console.log('豆包 TTS API 响应:', {
+      // 仅在开发环境输出完整响应（避免生产环境泄露敏感信息）
+      if (process.env.NODE_ENV === 'development') {
+        console.log('豆包 TTS API 完整响应:', JSON.stringify(result, null, 2));
+      }
+      console.log('豆包 TTS API 响应摘要:', {
         code: result.code,
         message: result.message,
         hasData: !!result.data,
-        dataLength: result.data?.length
+        dataLength: result.data?.length,
+        hasAddition: !!result.addition,
+        additionKeys: result.addition ? Object.keys(result.addition) : [],
+        hasTimestamps: !!result.addition?.timestamps,
+        timestampsCount: result.addition?.timestamps?.length || 0
       });
       
       if (result.code !== 3000) {
@@ -170,10 +211,12 @@ export class BigModelTTSService {
 
       const audioBuffer = this.base64ToArrayBuffer(result.data);
       const duration = parseInt(result.addition.duration);
+      const timestamps = this.parseTimestamps(result.addition);
 
       return {
         audio: audioBuffer,
-        duration
+        duration,
+        timestamps
       };
     } catch (error) {
       if (error instanceof TTSError) {
@@ -196,6 +239,7 @@ export class BigModelTTSService {
   ): Promise<{
     audio: ArrayBuffer;
     duration: number;
+    timestamps?: TimestampData[];
   }> {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(this.wsEndpoint, [], {
@@ -206,6 +250,7 @@ export class BigModelTTSService {
 
       const audioChunks: ArrayBuffer[] = [];
       let totalDuration = 0;
+      let allTimestamps: TimestampData[] = [];
 
       ws.binaryType = 'arraybuffer';
 
@@ -254,7 +299,8 @@ export class BigModelTTSService {
               ws.close();
               resolve({
                 audio: combinedAudio,
-                duration: totalDuration
+                duration: totalDuration,
+                timestamps: allTimestamps.length > 0 ? allTimestamps : undefined
               });
             }
           }
@@ -289,12 +335,14 @@ export class BigModelTTSService {
   async synthesizeToBase64(options: TTSSynthesizeOptions): Promise<{
     audio: string;
     duration: number;
+    timestamps?: TimestampData[];
   }> {
     const result = await this.synthesize(options);
     
     return {
       audio: this.arrayBufferToBase64(result.audio),
-      duration: result.duration
+      duration: result.duration,
+      timestamps: result.timestamps
     };
   }
 
@@ -304,13 +352,15 @@ export class BigModelTTSService {
   async synthesizeToBlob(options: TTSSynthesizeOptions): Promise<{
     blob: Blob;
     duration: number;
+    timestamps?: TimestampData[];
   }> {
     const result = await this.synthesize(options);
     const mimeType = this.getMimeType(options.encoding || AudioEncoding.MP3);
     
     return {
       blob: new Blob([result.audio], { type: mimeType }),
-      duration: result.duration
+      duration: result.duration,
+      timestamps: result.timestamps
     };
   }
 
@@ -320,14 +370,16 @@ export class BigModelTTSService {
   async synthesizeToURL(options: TTSSynthesizeOptions): Promise<{
     url: string;
     duration: number;
+    timestamps?: TimestampData[];
     cleanup: () => void;
   }> {
-    const { blob, duration } = await this.synthesizeToBlob(options);
+    const { blob, duration, timestamps } = await this.synthesizeToBlob(options);
     const url = URL.createObjectURL(blob);
     
     return {
       url,
       duration,
+      timestamps,
       cleanup: () => URL.revokeObjectURL(url)
     };
   }

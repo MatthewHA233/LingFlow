@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { useSession } from '@/hooks/use-session'
-import { getVoicesByCategory, getVoiceCategories, getVoiceInfo, loadVoicesFromCSV } from '@/types/tts'
+import { getVoicesByCategory, getVoiceCategories, getVoiceInfo, loadVoicesFromCSV, TimestampData } from '@/types/tts'
 import { useEffect } from 'react'
 
 // 获取音频 MIME 类型
@@ -240,6 +240,13 @@ export default function TTSTestPage() {
       }
 
       console.log('API 响应数据:', data) // 调试信息
+      
+      // 打印时间戳信息
+      if (data.data && data.data.timestamps) {
+        console.log('时间戳数据:', data.data.timestamps);
+        console.log('时间戳数量:', data.data.timestamps.length);
+      }
+      
       setResult(data)
       
       if (data.data && data.data.audio) {
@@ -822,6 +829,75 @@ export default function TTSTestPage() {
                       </div>
                     )}
 
+                    {/* 时间戳显示区域 */}
+                    {result.data.timestamps && result.data.timestamps.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium text-gray-200">单词级时间戳</Label>
+                          <div className="flex items-center gap-2 text-xs text-gray-400">
+                            <Volume2 className="w-3 h-3" />
+                            <span>{result.data.timestamps.length} 个单词</span>
+                          </div>
+                        </div>
+                        <div className="p-3 bg-blue-900/20 rounded-lg border-2 border-blue-700 max-h-64 overflow-y-auto">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {result.data.timestamps.map((timestamp: TimestampData, index: number) => (
+                              <div 
+                                key={index} 
+                                className="flex items-center gap-2 p-2 bg-gray-800/50 rounded-lg border border-blue-600/30 hover:bg-gray-800/70 transition-colors"
+                              >
+                                <div className="flex-shrink-0 w-8 h-6 bg-blue-600 rounded flex items-center justify-center">
+                                  <span className="text-xs text-white font-mono">{index + 1}</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm text-gray-200 font-medium mb-1 truncate">
+                                    "{timestamp.text}"
+                                  </div>
+                                  <div className="flex items-center gap-3 text-xs text-gray-400">
+                                    <span className="flex items-center gap-1">
+                                      <div className="w-1 h-1 bg-green-500 rounded-full"></div>
+                                      {(timestamp.start_time / 1000).toFixed(2)}s
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <div className="w-1 h-1 bg-red-500 rounded-full"></div>
+                                      {(timestamp.end_time / 1000).toFixed(2)}s
+                                    </span>
+                                    <span className="text-yellow-400">
+                                      {((timestamp.end_time - timestamp.start_time) / 1000).toFixed(2)}s
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          
+                          {/* 统计信息 */}
+                          <div className="mt-4 p-3 bg-gray-800/30 rounded-lg border border-blue-600/20">
+                            <div className="grid grid-cols-3 gap-4 text-center">
+                              <div>
+                                <div className="text-lg font-bold text-blue-400">
+                                  {result.data.timestamps.length}
+                                </div>
+                                <div className="text-xs text-gray-400">总单词数</div>
+                              </div>
+                              <div>
+                                <div className="text-lg font-bold text-green-400">
+                                  {(result.data.duration / 1000).toFixed(1)}s
+                                </div>
+                                <div className="text-xs text-gray-400">音频时长</div>
+                              </div>
+                              <div>
+                                <div className="text-lg font-bold text-yellow-400">
+                                  {((result.data.timestamps.length / (result.data.duration / 1000)) * 60).toFixed(0)}
+                                </div>
+                                <div className="text-xs text-gray-400">语速(词/分)</div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <details className="mt-4">
                       <summary className="cursor-pointer text-sm font-medium text-gray-300 hover:text-gray-100">
                         查看调试信息
@@ -1294,7 +1370,7 @@ export default function TTSTestPage() {
                   <ul className="space-y-2 text-sm text-gray-300">
                     <li className="flex items-start gap-2">
                       <div className="w-1.5 h-1.5 bg-teal-400 rounded-full mt-2 flex-shrink-0"></div>
-                      时间戳：返回 TN 后文本的精确时间戳
+                      单词级时间戳：返回每个单词的精确开始和结束时间，支持音频同步
                     </li>
                     <li className="flex items-start gap-2">
                       <div className="w-1.5 h-1.5 bg-teal-400 rounded-full mt-2 flex-shrink-0"></div>
