@@ -860,7 +860,7 @@ export function ContextBlocks({
 
   // 添加语境块选择相关状态
   const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [selectionType, setSelectionType] = useState<'start' | 'end' | 'tts' | null>(null);
+  const [selectionType, setSelectionType] = useState<'start' | 'end' | 'tts' | 'tts_start' | 'tts_end' | null>(null);
   const [isBlockSelectable, setIsBlockSelectable] = useState(false);
   const [isSelectedAsStart, setIsSelectedAsStart] = useState(false);
   const [isSelectedAsEnd, setIsSelectedAsEnd] = useState(false);
@@ -994,16 +994,40 @@ export function ContextBlocks({
         setIsTTSStartBlock(false);
       }
     };
+    
+    // TTS起始块标记事件处理
+    const handleMarkTTSStartBlock = (event: CustomEvent) => {
+      const { blockId } = event.detail;
+      if (block.id === blockId) {
+        setIsTTSStartBlock(true);
+        setIsTTSSelectedBlock(false);
+      }
+    };
+    
+    // TTS终点块标记事件处理
+    const handleMarkTTSEndBlock = (event: CustomEvent) => {
+      const { blockId } = event.detail;
+      if (block.id === blockId) {
+        setIsTTSSelectedBlock(true);
+        // 不重置起始块状态
+      }
+    };
 
     const handleMarkTTSBlocksSelected = (event: CustomEvent) => {
-      const { selectedBlockIds } = event.detail;
+      const { blockIds } = event.detail;
       
-      if (selectedBlockIds && Array.isArray(selectedBlockIds)) {
-        const isInSelection = selectedBlockIds.includes(block.id);
+      if (blockIds && Array.isArray(blockIds)) {
+        const isInSelection = blockIds.includes(block.id);
         setIsTTSSelectedBlock(isInSelection);
         
-        // 如果不在选择中，则也不是起始块
-        if (!isInSelection) {
+        // 如果是第一个块，标记为起始块
+        if (isInSelection && blockIds[0] === block.id) {
+          setIsTTSStartBlock(true);
+        } else if (isInSelection && blockIds[blockIds.length - 1] === block.id) {
+          // 如果是最后一个块，只标记为选中
+          setIsTTSStartBlock(false);
+        } else if (!isInSelection) {
+          // 如果不在选择中，清除所有标记
           setIsTTSStartBlock(false);
         }
       }
@@ -1053,31 +1077,59 @@ export function ContextBlocks({
       console.log(`✅ 语境块 ${block.id} 处理完成，清除动画和选择状态`);
     };
 
-    // 添加enable-tts-selection事件处理
+    // 添加enable-tts-selection事件处理（支持分步模式）
     const handleStartTTSSelection = (event: CustomEvent) => {
       console.log('🎯 ContextBlocks收到enable-tts-selection事件', event.detail);
+      const { mode } = event.detail || {};
+      
       setIsSelectionMode(true);
-      setSelectionType('tts');
       setIsBlockSelectable(true);
       setIsTTSMode(true);
-      setTtsStartBlock(null);
-      setTtsSelectedBlocks([]);
-      setIsSelectedAsStart(false);
-      setIsSelectedAsEnd(false);
       setIsProcessingAlignment(false);
+      
+      if (mode === 'tts_start') {
+        // TTS起始块选择模式
+        setSelectionType('tts_start');
+        setTtsStartBlock(null);
+        setTtsSelectedBlocks([]);
+        setIsSelectedAsStart(false);
+        setIsSelectedAsEnd(false);
+        setIsTTSStartBlock(false);
+        setIsTTSSelectedBlock(false);
+      } else if (mode === 'tts_end') {
+        // TTS终点块选择模式
+        setSelectionType('tts_end');
+        // 保留起始块的选择状态
+        setIsSelectedAsEnd(false);
+      } else {
+        // 兼容旧的多选模式
+        setSelectionType('tts');
+        setTtsStartBlock(null);
+        setTtsSelectedBlocks([]);
+        setIsSelectedAsStart(false);
+        setIsSelectedAsEnd(false);
+      }
+      
       setSelectedRange(null);
     };
 
     // 添加disable-tts-selection事件处理
-    const handleDisableTTSSelection = () => {
+    const handleDisableTTSSelection = (event?: CustomEvent) => {
+      const keepHighlight = event?.detail?.keepHighlight || false;
+      
       setIsSelectionMode(false);
       setSelectionType(null);
       setIsBlockSelectable(false);
       setIsTTSMode(false);
-      setTtsStartBlock(null);
-      setTtsSelectedBlocks([]);
-      setIsTTSStartBlock(false);
-      setIsTTSSelectedBlock(false);
+      
+      // 如果不保留高亮，清除所有选择状态
+      if (!keepHighlight) {
+        setTtsStartBlock(null);
+        setTtsSelectedBlocks([]);
+        setIsTTSStartBlock(false);
+        setIsTTSSelectedBlock(false);
+      }
+      // 保留高亮时，始和终标记继续显示
     };
 
     window.addEventListener('enable-block-selection', handleEnableSelection as EventListener);
@@ -1087,6 +1139,8 @@ export function ContextBlocks({
     window.addEventListener('alignment-processing-complete', handleProcessingComplete as EventListener);
     window.addEventListener('mark-start-block-selected', handleMarkStartBlockSelected as EventListener);
     window.addEventListener('mark-tts-block-selected', handleMarkTTSBlockSelected as EventListener);
+    window.addEventListener('mark-tts-start-block', handleMarkTTSStartBlock as EventListener);
+    window.addEventListener('mark-tts-end-block', handleMarkTTSEndBlock as EventListener);
     window.addEventListener('mark-tts-blocks-selected', handleMarkTTSBlocksSelected as EventListener);
     window.addEventListener('reset-tts-selection', handleResetTTSSelection as EventListener);
     window.addEventListener('enable-tts-selection', handleStartTTSSelection as EventListener);
@@ -1100,6 +1154,8 @@ export function ContextBlocks({
       window.removeEventListener('alignment-processing-complete', handleProcessingComplete as EventListener);
       window.removeEventListener('mark-start-block-selected', handleMarkStartBlockSelected as EventListener);
       window.removeEventListener('mark-tts-block-selected', handleMarkTTSBlockSelected as EventListener);
+      window.removeEventListener('mark-tts-start-block', handleMarkTTSStartBlock as EventListener);
+      window.removeEventListener('mark-tts-end-block', handleMarkTTSEndBlock as EventListener);
       window.removeEventListener('mark-tts-blocks-selected', handleMarkTTSBlocksSelected as EventListener);
       window.removeEventListener('reset-tts-selection', handleResetTTSSelection as EventListener);
       window.removeEventListener('enable-tts-selection', handleStartTTSSelection as EventListener);
@@ -1114,6 +1170,28 @@ export function ContextBlocks({
     e.preventDefault();
     e.stopPropagation();
     
+    // TTS分步选择模式
+    if (selectionType === 'tts_start' || selectionType === 'tts_end') {
+      // 发送TTS块选择事件
+      window.dispatchEvent(new CustomEvent('tts-block-selected', {
+        detail: {
+          blockId: block.id,
+          blockContent: block.content
+        }
+      }));
+      
+      // 标记当前块
+      if (selectionType === 'tts_start') {
+        setIsTTSStartBlock(true);
+        setTtsStartBlock(block.id);
+      } else if (selectionType === 'tts_end') {
+        setIsTTSSelectedBlock(true);
+      }
+      
+      return;
+    }
+    
+    // 兼容旧的多选模式
     if (selectionType === 'tts') {
       // TTS模式的选择逻辑 - 支持多选
       const isCurrentlySelected = ttsSelectedBlocks.includes(block.id);
@@ -1191,10 +1269,10 @@ export function ContextBlocks({
     }
     
     // 提供用户反馈
-    if (selectionType !== 'tts') {
+    if (selectionType !== 'tts' && selectionType !== 'tts_start' && selectionType !== 'tts_end') {
       toast.success(selectionType === 'start' ? '起始语境块已选择' : '结束语境块已选择');
     }
-  }, [isSelectionMode, selectionType, block.id, block.content, ttsStartBlock]);
+  }, [isSelectionMode, selectionType, block.id, block.content, ttsStartBlock, ttsSelectedBlocks]);
 
   // 修改handleClick函数，添加语境块选择逻辑
   const handleClick = (e: React.MouseEvent) => {
@@ -1549,7 +1627,7 @@ export function ContextBlocks({
         isClicking.current = false;
       }, 100);
     }
-  }, [audioUrl, block.id, block.id, embeddedSentences, getSentenceIdsFromContent, onTimeChange, blockSpeechId]);
+  }, [audioUrl, block.id, embeddedSentences, getSentenceIdsFromContent, onTimeChange, blockSpeechId]);
 
   // 修改renderSentenceWithWords函数，区分单词高亮和句子高亮
   const renderSentenceWithWords = (sentence: any, sentenceIndex: number) => {
@@ -2197,7 +2275,7 @@ export function ContextBlocks({
             {/* 翻译图标 */}
             <button
               onClick={() => handleShowTranslation()}
-              className="p-0.5 rounded-full bg-background/80 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all opacity-0 group-hover:opacity-100 transition-opacity"
+              className="p-0.5 rounded-full bg-background/80 hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all opacity-0 group-hover:opacity-100"
               title="翻译"
             >
               <Globe className="h-3 w-3" />
@@ -2205,7 +2283,7 @@ export function ContextBlocks({
             
             <button
               onClick={handleEnterAnchorMode}
-              className="p-0.5 rounded-full bg-background/80 hover:bg-blue-500/10 text-muted-foreground hover:text-blue-500 transition-all opacity-0 group-hover:opacity-100 transition-opacity"
+              className="p-0.5 rounded-full bg-background/80 hover:bg-blue-500/10 text-muted-foreground hover:text-blue-500 transition-all opacity-0 group-hover:opacity-100"
               title="词锚点"
             >
               <Network className="h-3 w-3" />
@@ -2632,7 +2710,7 @@ export function ContextBlocks({
       window.removeEventListener('focus-block', handleFocusBlock as EventListener);
       window.removeEventListener('force-update-block-content', handleForceUpdateContent as EventListener);
     };
-  }, [block.id, block.block_type]);
+  }, [block.id, block.block_type, block.content]);
 
   // 添加合并块的处理函数
   const handleMergeWithPreviousBlock = useCallback(async () => {
@@ -3443,7 +3521,7 @@ export function ContextBlocks({
       window.removeEventListener('keyboard-previous-sentence', handleKeyboardPrevious);
       window.removeEventListener('keyboard-toggle-translation', handleKeyboardToggleTranslation);
     };
-  }, [activeIndex, sentences, activeBlockId, block.id, showInlineTranslation]);
+  }, [activeIndex, sentences, activeBlockId, block.id, showInlineTranslation, embeddedSentences, getSentenceIdsFromContent, playSentence, playWord]);
 
   // 监听全局翻译显示状态
   useEffect(() => {
@@ -3552,8 +3630,8 @@ export function ContextBlocks({
 
       {/* TTS选择指示器 */}
       {(isTTSStartBlock || isTTSSelectedBlock) && (
-        <div className="absolute -top-1 -right-1 w-6 h-6 bg-blue-500 text-white text-xs font-bold rounded-full flex items-center justify-center z-10 shadow-lg">
-          {isTTSStartBlock ? 'T' : '✓'}
+        <div className="absolute -top-1 -right-1 w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-600 text-white text-sm font-bold rounded-full flex items-center justify-center z-10 shadow-lg ring-2 ring-white dark:ring-gray-800">
+          {isTTSStartBlock ? '始' : isTTSSelectedBlock ? '终' : ''}
         </div>
       )}
 
