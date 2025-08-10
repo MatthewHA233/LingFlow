@@ -874,6 +874,7 @@ export function ContextBlocks({
   const [ttsSelectedBlocks, setTtsSelectedBlocks] = useState<string[]>([]);
   const [isTTSStartBlock, setIsTTSStartBlock] = useState(false);
   const [isTTSSelectedBlock, setIsTTSSelectedBlock] = useState(false);
+  const [isTTSMiddleBlock, setIsTTSMiddleBlock] = useState(false);
 
   // 监听对齐处理开始和完成事件
   useEffect(() => {
@@ -945,6 +946,7 @@ export function ContextBlocks({
       setTtsSelectedBlocks([]);
       setIsTTSStartBlock(false);
       setIsTTSSelectedBlock(false);
+      setIsTTSMiddleBlock(false);
     };
 
     // 监听选择确认事件
@@ -1014,21 +1016,34 @@ export function ContextBlocks({
     };
 
     const handleMarkTTSBlocksSelected = (event: CustomEvent) => {
-      const { blockIds } = event.detail;
+      const { blockIds, startBlockId, endBlockId } = event.detail;
       
       if (blockIds && Array.isArray(blockIds)) {
         const isInSelection = blockIds.includes(block.id);
-        setIsTTSSelectedBlock(isInSelection);
         
-        // 如果是第一个块，标记为起始块
-        if (isInSelection && blockIds[0] === block.id) {
+        // 设置起始块
+        if (block.id === startBlockId) {
           setIsTTSStartBlock(true);
-        } else if (isInSelection && blockIds[blockIds.length - 1] === block.id) {
-          // 如果是最后一个块，只标记为选中
+          setIsTTSSelectedBlock(false);
+          setIsTTSMiddleBlock(false);
+        } 
+        // 设置结束块
+        else if (block.id === endBlockId) {
           setIsTTSStartBlock(false);
-        } else if (!isInSelection) {
-          // 如果不在选择中，清除所有标记
+          setIsTTSSelectedBlock(true);
+          setIsTTSMiddleBlock(false);
+        }
+        // 中间块 - 只高亮，不显示标记
+        else if (isInSelection) {
           setIsTTSStartBlock(false);
+          setIsTTSSelectedBlock(false);
+          setIsTTSMiddleBlock(true);
+        }
+        // 不在选择范围内
+        else {
+          setIsTTSStartBlock(false);
+          setIsTTSSelectedBlock(false);
+          setIsTTSMiddleBlock(false);
         }
       }
     };
@@ -1036,6 +1051,7 @@ export function ContextBlocks({
     const handleResetTTSSelection = () => {
       setIsTTSStartBlock(false);
       setIsTTSSelectedBlock(false);
+      setIsTTSMiddleBlock(false);
     };
 
     // 监听处理开始事件 - 改进逻辑
@@ -1096,6 +1112,7 @@ export function ContextBlocks({
         setIsSelectedAsEnd(false);
         setIsTTSStartBlock(false);
         setIsTTSSelectedBlock(false);
+        setIsTTSMiddleBlock(false);
       } else if (mode === 'tts_end') {
         // TTS终点块选择模式
         setSelectionType('tts_end');
@@ -1128,6 +1145,7 @@ export function ContextBlocks({
         setTtsSelectedBlocks([]);
         setIsTTSStartBlock(false);
         setIsTTSSelectedBlock(false);
+        setIsTTSMiddleBlock(false);
       }
       // 保留高亮时，始和终标记继续显示
     };
@@ -1201,6 +1219,7 @@ export function ContextBlocks({
         const newSelection = ttsSelectedBlocks.filter(id => id !== block.id);
         setTtsSelectedBlocks(newSelection);
         setIsTTSSelectedBlock(false);
+        setIsTTSMiddleBlock(false);
         
         // 如果取消的是起始块，重新设置起始块
         if (block.id === ttsStartBlock && newSelection.length > 0) {
@@ -3589,7 +3608,7 @@ export function ContextBlocks({
         showCompleteAnimation ? 'alignment-complete' : '',
         isInAnchorMode ? 'bg-gradient-to-r from-blue-50/50 to-purple-50/50 dark:from-blue-950/20 dark:to-purple-950/20 border-blue-200 dark:border-blue-800' : '',
         // 选择模式的预选择状态（悬浮高亮）
-        isSelectionMode && isBlockSelectable && !isSelectedAsStart && !isSelectedAsEnd && !isTTSStartBlock && !isTTSSelectedBlock ? (
+        isSelectionMode && isBlockSelectable && !isSelectedAsStart && !isSelectedAsEnd && !isTTSStartBlock && !isTTSSelectedBlock && !isTTSMiddleBlock ? (
           selectionType === 'start' 
             ? 'hover:bg-gradient-to-r hover:from-orange-50 hover:to-red-50 dark:hover:from-orange-900/10 dark:hover:to-red-900/10 hover:border-orange-200 dark:hover:border-orange-800 cursor-pointer'
             : selectionType === 'tts'
@@ -3602,6 +3621,7 @@ export function ContextBlocks({
         // TTS选择状态
         isTTSStartBlock ? 'bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 border-blue-400 dark:border-blue-600 shadow-lg ring-2 ring-blue-300 dark:ring-blue-700' : '',
         isTTSSelectedBlock && !isTTSStartBlock ? 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-300 dark:border-blue-700 shadow-md' : '',
+        isTTSMiddleBlock ? 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-300 dark:border-blue-700 shadow-md' : '',
         // 处理中状态
         isProcessingAlignment ? 'bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 border-purple-400 dark:border-purple-600 shadow-lg' : ''
       )}
@@ -3704,6 +3724,7 @@ export function ContextBlocks({
         isSelectedAsEnd ? 'text-green-900 dark:text-green-100' : '',
         isTTSStartBlock ? 'text-blue-900 dark:text-blue-100' : '',
         isTTSSelectedBlock && !isTTSStartBlock ? 'text-blue-800 dark:text-blue-200' : '',
+        isTTSMiddleBlock ? 'text-blue-800 dark:text-blue-200' : '',
         isProcessingAlignment ? 'text-purple-900 dark:text-purple-100' : ''
       )}>
         {renderContent()}

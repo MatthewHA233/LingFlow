@@ -31,6 +31,7 @@ import { Confetti } from '@/components/ui/confetti'
 import AudioProcessingOrb from '@/components/ui/audio-processing-orb'
 import { TTSGenerator } from '@/components/tts/TTSGenerator'
 import { VoiceSelector } from '@/components/tts/VoiceSelector'
+import { TTSSettingsPanel } from '@/components/tts/TTSSettingsPanel'
 import { getVoiceInfo, loadVoicesFromCSV, emotionLabels } from '@/types/tts'
 
 // 测试模式开关 - 只能在代码中开启
@@ -254,15 +255,15 @@ export function AudioProcessingPanel({
   
   // TTS相关状态
   const [ttsText, setTtsText] = useState<string>('')
-  const [ttsVoiceType, setTtsVoiceType] = useState<string>('en_female_candice_emo_v2_mars_bigtts') // 使用英文多情感音色
+  const [ttsVoiceType, setTtsVoiceType] = useState<string>('en_female_candice_emo_v2_mars_bigtts') // 默认使用Candice多情感音色
   const [ttsSelectedBlocks, setTtsSelectedBlocks] = useState<string[]>([])
   const [ttsProgress, setTtsProgress] = useState<number>(0)
   const [ttsChunks, setTtsChunks] = useState<Array<{text: string, blockIds: string[], bytes: number}>>([])
   const [showVoiceSelector, setShowVoiceSelector] = useState(false)
   const [ttsSpeedRatio, setTtsSpeedRatio] = useState(1.0)
-  const [ttsEnableEmotion, setTtsEnableEmotion] = useState(false)
-  const [ttsEmotion, setTtsEmotion] = useState('neutral')
-  const [ttsEmotionScale, setTtsEmotionScale] = useState(3)
+  const [ttsEnableEmotion, setTtsEnableEmotion] = useState(true) // 默认开启，因为默认音色Candice支持多情感
+  const [ttsEmotion, setTtsEmotion] = useState('neutral') // 默认中性情感
+  const [ttsEmotionScale, setTtsEmotionScale] = useState(5) // 默认情感强度5（最大值）
   
   // TTS音色和音频设置状态
   const [selectedVoice, setSelectedVoice] = useState<string>('en_female_candice_emo_v2_mars_bigtts')
@@ -551,7 +552,9 @@ export function AudioProcessingPanel({
     // 高亮显示选定范围内的所有语境块
     window.dispatchEvent(new CustomEvent('mark-tts-blocks-selected', {
       detail: {
-        blockIds: selectedBlocks.map(b => b.id)
+        blockIds: selectedBlocks.map(b => b.id),
+        startBlockId: selectedBlocks[0]?.id,
+        endBlockId: selectedBlocks[selectedBlocks.length - 1]?.id
       }
     }))
     
@@ -2350,117 +2353,26 @@ export function AudioProcessingPanel({
   }, [selectedAudio, stage, playAudioPrompt])
 
   // 常驻的TTS设置面板组件
-  const TTSSettingsPanel = () => {
-    const voiceInfo = getVoiceInfo(ttsVoiceType)
-    const hasEmotions = voiceInfo?.emotions && voiceInfo.emotions.length > 0
-    
-    return (
-      <Card className="border-gray-700 bg-gray-800/50 backdrop-blur-sm">
-        <CardContent className="p-2 space-y-2">
-          {/* 语音选择 */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-gray-300">语音音色</Label>
-            <Popover open={showVoiceSelector} onOpenChange={setShowVoiceSelector}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="w-full justify-between h-9 text-xs border-gray-600 bg-gray-700/50 hover:bg-gray-700 text-gray-200 hover:text-white"
-                >
-                  <span className="flex items-center gap-2 text-gray-200">
-                    <Volume2 className="w-3.5 h-3.5 text-gray-300" />
-                    {voiceInfo?.name || '选择音色'}
-                  </span>
-                  <ChevronDown className="h-3.5 w-3.5 opacity-50 text-gray-400" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 bg-transparent border-0" align="end" sideOffset={5}>
-                <VoiceSelector
-                  selectedVoice={ttsVoiceType}
-                  onSelect={(voiceId) => {
-                    setTtsVoiceType(voiceId)
-                    setSelectedVoice(voiceId)
-                    setShowVoiceSelector(false)
-                    // 如果选择的是多情感音色，自动开启情感
-                    const newVoiceInfo = getVoiceInfo(voiceId)
-                    if (newVoiceInfo?.emotions && newVoiceInfo.emotions.length > 0) {
-                      setTtsEnableEmotion(true)
-                      setTtsEmotionScale(5)
-                      if (newVoiceInfo.emotions.length > 0) {
-                        setTtsEmotion(newVoiceInfo.emotions[0])
-                      }
-                    } else {
-                      setTtsEnableEmotion(false)
-                    }
-                  }}
-                  onClose={() => setShowVoiceSelector(false)}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          {/* 情感设置 - 仅当音色支持时显示 */}
-          {hasEmotions && (
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-medium text-gray-300">情感表达</Label>
-                <Switch
-                  checked={ttsEnableEmotion}
-                  onCheckedChange={setTtsEnableEmotion}
-                  className="scale-75"
-                />
-              </div>
-              {ttsEnableEmotion && (
-                <>
-                  <Select value={ttsEmotion} onValueChange={setTtsEmotion}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {voiceInfo?.emotions?.map((emotion) => (
-                        <SelectItem key={emotion} value={emotion}>
-                          {emotionLabels[emotion] || emotion}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-gray-400">强度</span>
-                      <span className="text-[10px] text-gray-500">{ttsEmotionScale}</span>
-                    </div>
-                    <Slider
-                      value={[ttsEmotionScale]}
-                      onValueChange={(value) => setTtsEmotionScale(value[0])}
-                      min={1}
-                      max={10}
-                      step={1}
-                      className="w-full"
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* 语速设置 */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs text-gray-300">语速</Label>
-              <span className="text-xs text-gray-500">{ttsSpeedRatio}x</span>
-            </div>
-            <Slider
-              value={[ttsSpeedRatio]}
-              onValueChange={(value) => setTtsSpeedRatio(value[0])}
-              min={0.5}
-              max={2}
-              step={0.1}
-              className="w-full"
-            />
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
+  // 使用独立的 TTS 设置面板组件
+  const renderTTSSettingsPanel = () => (
+    <TTSSettingsPanel
+      voiceType={ttsVoiceType}
+      onVoiceChange={(voiceId) => {
+        setTtsVoiceType(voiceId)
+        setSelectedVoice(voiceId)
+      }}
+      showVoiceSelector={showVoiceSelector}
+      onVoiceSelectorToggle={setShowVoiceSelector}
+      speedRatio={ttsSpeedRatio}
+      onSpeedChange={setTtsSpeedRatio}
+      enableEmotion={ttsEnableEmotion}
+      onEnableEmotionChange={setTtsEnableEmotion}
+      emotion={ttsEmotion}
+      onEmotionChange={setTtsEmotion}
+      emotionScale={ttsEmotionScale}
+      onEmotionScaleChange={setTtsEmotionScale}
+    />
+  )
 
   const renderMainContent = () => {
     console.log('🎨 渲染内容，当前stage:', stage)
@@ -3084,7 +2996,7 @@ export function AudioProcessingPanel({
             </AnimatePresence>
 
             {/* TTS设置面板 - 常驻 */}
-            <TTSSettingsPanel />
+            {renderTTSSettingsPanel()}
 
             {/* 操作按钮 */}
             <motion.div 
@@ -3472,7 +3384,7 @@ export function AudioProcessingPanel({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: 0.1 }}
             >
-              <TTSSettingsPanel />
+              {renderTTSSettingsPanel()}
             </motion.div>
 
             {/* 操作按钮 */}
@@ -3485,6 +3397,8 @@ export function AudioProcessingPanel({
               <button className="flex-1 bg-slate-800 no-underline group cursor-pointer relative shadow-2xl shadow-zinc-900 rounded-full p-px text-xs font-semibold leading-6 text-white inline-block"
                       onClick={() => {
                         setStage('tts_text_input')
+                        // 退出语境块选择模式
+                        window.dispatchEvent(new CustomEvent('disable-tts-selection'))
                       }}>
                 <span className="absolute inset-0 overflow-hidden rounded-full">
                   <span className="absolute inset-0 rounded-full bg-[image:radial-gradient(75%_100%_at_50%_0%,rgba(59,130,246,0.6)_0%,rgba(59,130,246,0)_75%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
@@ -3573,7 +3487,7 @@ export function AudioProcessingPanel({
             </AnimatePresence>
 
             {/* TTS设置面板 - 常驻 */}
-            <TTSSettingsPanel />
+            {renderTTSSettingsPanel()}
 
             {/* 操作按钮 - 带动画 */}
             <motion.div 
@@ -3804,136 +3718,7 @@ export function AudioProcessingPanel({
             )}
 
             {/* TTS设置卡片 - 更紧凑 */}
-            <Card className="border-gray-700 bg-gray-800/50 backdrop-blur-sm">
-              <CardContent className="p-2 space-y-2">
-                {/* 语音选择 - 使用新的选择器 */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-gray-300">语音音色</Label>
-                  <Popover open={showVoiceSelector} onOpenChange={setShowVoiceSelector}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-between h-9 text-xs border-gray-600 bg-gray-700/50 hover:bg-gray-700 text-gray-200 hover:text-white"
-                      >
-                        <span className="flex items-center gap-2 text-gray-200">
-                          <Volume2 className="w-3.5 h-3.5 text-gray-300" />
-                          {getVoiceInfo(ttsVoiceType)?.name || '选择音色'}
-                        </span>
-                        <ChevronDown className="h-3.5 w-3.5 opacity-50 text-gray-400" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 bg-transparent border-0" align="end" sideOffset={5}>
-                      <VoiceSelector
-                        selectedVoice={ttsVoiceType}
-                        onSelect={(voiceId) => {
-                          setTtsVoiceType(voiceId)
-                          setShowVoiceSelector(false)
-                          // 如果选择的是多情感音色，自动开启情感并设置默认值
-                          const voiceInfo = getVoiceInfo(voiceId)
-                          if (voiceInfo?.emotions && voiceInfo.emotions.length > 0) {
-                            setTtsEnableEmotion(true)
-                            setTtsEmotionScale(5)
-                            // 设置默认情感为第一个
-                            if (voiceInfo.emotions.length > 0) {
-                              setTtsEmotion(voiceInfo.emotions[0])
-                            }
-                          }
-                        }}
-                        onClose={() => setShowVoiceSelector(false)}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                {/* 语速调节 */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-[10px] font-medium text-gray-300">语速</Label>
-                    <span className="text-[10px] text-gray-500">{ttsSpeedRatio.toFixed(1)}x</span>
-                  </div>
-                  <Slider
-                    value={[ttsSpeedRatio]}
-                    onValueChange={([value]) => setTtsSpeedRatio(value)}
-                    min={0.5}
-                    max={2.0}
-                    step={0.1}
-                    className="h-0.5"
-                  />
-                </div>
-
-                {/* 情感设置 - 如果支持 */}
-                {getVoiceInfo(ttsVoiceType)?.emotions && getVoiceInfo(ttsVoiceType)!.emotions!.length > 0 && (
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs font-medium text-gray-300">情感表达</Label>
-                      <Switch
-                        checked={ttsEnableEmotion}
-                        onCheckedChange={setTtsEnableEmotion}
-                        className="h-4 w-8"
-                      />
-                    </div>
-                    
-                    {ttsEnableEmotion && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="space-y-2"
-                      >
-                        <Select value={ttsEmotion} onValueChange={setTtsEmotion}>
-                          <SelectTrigger className="h-8 text-xs border-purple-500/30 bg-gradient-to-r from-purple-900/20 to-pink-900/20 hover:from-purple-800/30 hover:to-pink-800/30 transition-all">
-                            <SelectValue placeholder="选择情感表达" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-gray-900/95 backdrop-blur-xl border-purple-500/30">
-                            {getVoiceInfo(ttsVoiceType)!.emotions!.map(emotion => (
-                              <SelectItem 
-                                key={emotion} 
-                                value={emotion}
-                                className="text-xs text-gray-200 hover:bg-purple-500/20 hover:text-white focus:bg-purple-500/30 focus:text-white data-[highlighted]:text-white cursor-pointer transition-colors"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 rounded-full bg-gradient-to-r from-purple-400 to-pink-400" />
-                                  <span>{emotionLabels[emotion] || emotion}</span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        
-                        {/* 情感强度 */}
-                        <div className="space-y-1.5 p-2 rounded-lg bg-gradient-to-r from-purple-900/10 to-pink-900/10 border border-purple-500/20">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-[10px] text-purple-300 font-medium">情感强度</Label>
-                            <div className="flex items-center gap-1">
-                              {[1, 2, 3, 4, 5].map((level) => (
-                                <div
-                                  key={level}
-                                  className={cn(
-                                    "w-1.5 h-1.5 rounded-full transition-all",
-                                    level <= ttsEmotionScale
-                                      ? "bg-gradient-to-r from-purple-400 to-pink-400"
-                                      : "bg-gray-600"
-                                  )}
-                                />
-                              ))}
-                              <span className="text-[10px] text-purple-300 ml-1 font-medium">{ttsEmotionScale}</span>
-                            </div>
-                          </div>
-                          <Slider
-                            value={[ttsEmotionScale]}
-                            onValueChange={([value]) => setTtsEmotionScale(value)}
-                            min={1}
-                            max={5}
-                            step={1}
-                            className="h-1 [&_[role=slider]]:h-3 [&_[role=slider]]:w-3 [&_[role=slider]]:bg-gradient-to-r [&_[role=slider]]:from-purple-400 [&_[role=slider]]:to-pink-400 [&_[role=slider]]:border-purple-500/50 [&_[role=slider]]:shadow-lg [&_[role=slider]]:shadow-purple-500/20"
-                          />
-                        </div>
-                      </motion.div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            {renderTTSSettingsPanel()}
 
             {/* 操作按钮 - 更紧凑 */}
             <div className="flex gap-2">
